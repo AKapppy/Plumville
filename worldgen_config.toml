@@ -41,4 +41,4 @@ center_label = "Blackport"
 center_x = 294
 center_z = 390
 radius = 2000
-sample_step = 4
+sample_step = 1

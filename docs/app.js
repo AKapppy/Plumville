@@ -51,7 +51,6 @@ const CONSTANTS = {
   alignmentMinSize: 30,
   alignmentLabelSize: 10,
   worldMapAlpha: 0.745,
-  worldMapBoundsColor: '#f3d66b',
   blackportVar: 'P_ABCDE',
   blackportViewRadius: 2000,
 };
@@ -232,6 +231,15 @@ function bindEvents() {
     zoomAt(event.offsetX, event.offsetY, event.deltaY > 0 ? 1 / CONSTANTS.zoomStep : CONSTANTS.zoomStep);
   }, { passive: false });
 
+  document.addEventListener('pointerdown', (event) => {
+    if (infoPopup.hidden || infoPopup.contains(event.target)) {
+      return;
+    }
+    state.selectedStop = null;
+    hidePopup();
+    render();
+  });
+
   searchInput.addEventListener('input', refreshSearch);
   searchInput.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
@@ -392,10 +400,6 @@ function drawTerrainUnderlay() {
   ctx.globalAlpha = CONSTANTS.worldMapAlpha;
   ctx.imageSmoothingEnabled = true;
   ctx.drawImage(image, left, top, right - left, bottom - top);
-  ctx.strokeStyle = CONSTANTS.worldMapBoundsColor;
-  ctx.lineWidth = 2;
-  ctx.setLineDash([6, 4]);
-  ctx.strokeRect(left, top, right - left, bottom - top);
   ctx.restore();
 }
 
