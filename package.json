@@ -1,0 +1,6 @@
+{
+  "name": "plumville",
+  "dependencies": {
+    "bedrock-protocol": "^3.55.0"
+  }
+}

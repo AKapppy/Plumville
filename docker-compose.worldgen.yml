@@ -1,0 +1,51 @@
+services:
+  bedrock:
+    image: ${BEDROCK_IMAGE}
+    environment:
+      EULA: ${BEDROCK_EULA}
+      VERSION: ${BEDROCK_SERVER_VERSION}
+      LEVEL_NAME: ${BEDROCK_LEVEL_NAME}
+      LEVEL_SEED: ${BEDROCK_LEVEL_SEED}
+      ONLINE_MODE: ${BEDROCK_ONLINE_MODE}
+      ALLOW_CHEATS: ${BEDROCK_ALLOW_CHEATS}
+      GAMEMODE: ${BEDROCK_GAMEMODE}
+      DEFAULT_PLAYER_PERMISSION_LEVEL: ${BEDROCK_DEFAULT_PLAYER_PERMISSION_LEVEL}
+      VIEW_DISTANCE: ${BEDROCK_VIEW_DISTANCE}
+      TICK_DISTANCE: ${BEDROCK_TICK_DISTANCE}
+      PLAYER_IDLE_TIMEOUT: ${BEDROCK_PLAYER_IDLE_TIMEOUT}
+    ports:
+      - "${BEDROCK_PORT}:19132/udp"
+    restart: "no"
+    stdin_open: true
+    tty: true
+    volumes:
+      - "${BEDROCK_DATA_DIR}:/data"
+
+  chunk-loader:
+    image: node:22-bookworm-slim
+    working_dir: /app
+    depends_on:
+      - bedrock
+    environment:
+      BEDROCK_HOST: bedrock
+      BEDROCK_PORT: 19132
+      BEDROCK_USERNAME: ${BEDROCK_LOADER_USERNAME}
+      BEDROCK_VERSION: ${BEDROCK_LOADER_CLIENT_VERSION}
+      BEDROCK_RAKNET_BACKEND: ${BEDROCK_LOADER_RAKNET_BACKEND}
+      BEDROCK_USE_RAKNET_WORKERS: "false"
+      BEDROCK_WAIT_MS: ${BEDROCK_LOADER_WAIT_MS}
+      BEDROCK_CHUNK_RADIUS: ${BEDROCK_LOADER_CHUNK_RADIUS}
+      BEDROCK_LOADER_RESULT_FILE: ${BEDROCK_LOADER_RESULT_FILE}
+    command: >
+      sh -lc "if [ ! -d node_modules/bedrock-protocol ]; then npm ci --ignore-scripts; fi;
+      if [ \"$$BEDROCK_RAKNET_BACKEND\" = \"raknet-native\" ] && [ ! -f node_modules/raknet-native/build/Release/node-raknet.node ]; then
+      apt-get update && apt-get install -y --no-install-recommends python3 make g++ cmake ca-certificates && npm rebuild raknet-native;
+      fi;
+      node worldgen/headless_loader.js"
+    restart: "no"
+    volumes:
+      - ".:/app"
+      - "chunk_loader_node_modules:/app/node_modules"
+
+volumes:
+  chunk_loader_node_modules:

@@ -1,0 +1,90 @@
+Minecraft Metro Map Notes
+=========================
+
+Current Items
+-------------
+[] World map: keep filling the rectangle with repeated Auto Fill Step clicks.
+   - active generated world folder: `metro_map_world_boxfill`
+   - render area is centered on Blackport at x=294, z=390, radius=2000
+   - Auto Fill now scans saved chunk columns and targets the smallest under-filled Blackport box
+   - coverage now includes cached headless packet columns as well as LevelDB columns
+   - latest Auto Fill backend pass targeted 12 under-filled points: (-474, -378), (678, -378), (-474, 6), (1062, 774), (-90, 1158), (294, -378), (1062, 1158), (-474, 774), (1062, -378), (678, 1158), (-474, 390), and (-474, 1158)
+   - next target scan now sees 14 under-filled targets around the first Blackport box
+   - Auto Fill Step is the only world-map button; it runs one longer Bedrock load session, then renders
+   - current load session settings: wait 75 seconds, up to 12 teleport targets
+   - latest focused backend load cached 1083 level-chunk packets, 1072 unique chunk columns, and 8043 subchunk payloads
+   - latest render reads 12260 chunk columns and draws 7984 known-color pixels
+   - latest rendered terrain bounds: x -926..1518, z -830..1614
+   - default gray / unknown blocks are now transparent instead of rendered, so the map is intentionally sparse until more network palette IDs are mapped back to block names
+   - unknown/uncolored block details are written to `worldgen_output/uncolored_blocks_report.txt` after each render
+   - latest report found 560 uncolored block entries and 63799308 sampled uncolored occurrences
+   - latest render has 15 subchunk decode errors
+   - headless loader now saves `headless_start_game.json` so the next renderer pass can inspect whether Bedrock is using hashed block network IDs and which block names were advertised
+   - do not repair or edit the live Bedrock DB before Auto Fill; the old recovered world crashed after repeated restarts plus live DB mutation
+
+Completed Items
+---------------
+[x] add a modular `worldgen/` package instead of stuffing this into `metro_stops.py`
+[x] add `worldgen_config.toml` so seed, level name, storage, and render area are editable
+[x] add `docker-compose.worldgen.yml` for the Bedrock container
+[x] set the Bedrock seed to `437241185583693582`
+[x] mount persistent Bedrock data to a local folder
+[x] add a Python CLI/backend for `start`, `wait`, `stop`, `prepare`, `world-path`, `render-plan`, `render`, and `load-chunks`
+[x] cache the resolved world path and write a Blackport-centered starter render plan
+[x] add a README and gitignore entries for generated world data
+[x] prove the Docker flow end-to-end on a machine with Docker Desktop running
+[x] read Bedrock chunk data from disk with `plyvel`
+[x] decode Bedrock subchunk palettes correctly
+[x] map top visible blocks to colors for a real rendered image
+[x] make the renderer use surface-level blocks only
+   - renderer processes saved subchunks top-down and skips lower subchunks once the surface block is already known for that sampled x/z column
+[x] wire a Generate/status flow into the Tk app
+[x] add a Load Chunks button that uses the headless loader without opening Minecraft
+[x] make missing render pixels transparent instead of drawing a huge dark rectangle
+[x] record visible rendered bounds in metadata and draw a dashed outline around the actual rendered patch in the app
+[x] add a `repair-db` command that backs up the Bedrock LevelDB folder and writes a repaired copy after a render-read corruption error
+[x] add a Repair DB button to the World Map panel
+[x] change Load Chunks to advance through a saved list of render-area target points instead of restarting at Blackport every time
+[x] render active Bedrock LevelDB data plus recovered `db/lost` table files so repair does not hide older loaded patches
+[x] make `m` zoom to the latest rendered map area
+[x] make render repair happen on temporary copies instead of modifying the live Bedrock DB in place
+[x] bound Load Chunks cleanup/reporting so a Bedrock crash returns a useful failure summary instead of hanging
+[x] switch the default worldgen folder to `metro_map_world_recovered` so the broken `metro_map_world_latest_clean` DB stays untouched
+[x] switch the default worldgen folder again to `metro_map_world_boxfill` after the recovered world started crashing on startup
+[x] switch the headless loader to `createClient`, unique bot names, and teleport-after-spawn
+[x] add Auto Fill Step to run the load/render order from the app
+[x] make Auto Fill Step the only world-map action button
+[x] make render-area teleport targets fill square boxes outward from Blackport
+[x] make each Auto Fill Step use one longer load session instead of multiple server restart cycles
+[x] fix the railway finishing dropdown by keeping sidebar clicks from stealing focus back to the canvas
+[x] make Auto Fill Step choose under-filled box targets from saved chunk-column coverage instead of blindly advancing the square
+[x] set the Bedrock world spawn to Blackport before each headless load so initial join chunks are useful
+[x] cache headless `level_chunk` and `subchunk` packets so rendering is not limited to what Bedrock persists in LevelDB
+[x] make Auto Fill coverage count cached packet chunk columns
+[x] fix packet subchunk palette decoding so cached network subchunks render without decode errors
+[x] make any unconnected metro segment dashed like it is in railway finishing mode
+[x] allow railway finishing mode to switch village of origin with a simple click
+[x] keep the railway finishing mode dropdown limited to unfinished connected railways
+[x] let a railway finish coordinate extend connected/finished stations along that line
+[x] zoom railway finishing mode to the unfinished connected railway area after coordinate saves
+[x] hide default gray/unknown world-map blocks instead of rendering them
+[x] write an uncolored block report so missing world-map colors can be added
+
+Current World Map Process
+-------------------------
+1. in the app, click Auto Fill Step to load the next Blackport box batch and render it in one task
+2. repeat Auto Fill Step until the requested rectangle is covered
+3. optionally run `python3 -m worldgen status` to see the current cache and expected world path
+4. for backend debugging only, run `python3 -m worldgen load-chunks` then `python3 -m worldgen render`
+5. if render says LevelDB repair is needed, run `python3 -m worldgen repair-db` to write a backup and repaired inspection copy
+6. run `python3 -m worldgen stop` if the server was intentionally left running
+
+Future Items
+------------
+[] World map: expand chunk loading across the full requested render area, not just the first patch around Blackport.
+[] World map: if server-side teleports do not persist new chunk areas, make the headless client move itself or reconnect at the next target.
+[] World map: add a focused preview or "zoom to rendered area" helper if the full-radius render stays hard to inspect.
+[] World map: improve the terrain palette after coverage is reliable.
+[] World map: consider moving generated world data out of iCloud Drive if performance or sync weirdness becomes a problem.
+[] World map: remember that changing the seed later will not magically regenerate an existing saved world.
+[] World map: remember that Bedrock only saves chunks that have actually been generated/visited.
