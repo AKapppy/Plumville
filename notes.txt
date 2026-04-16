@@ -2,7 +2,7 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-   [] is it possible to make the new circle just be a little larger than the old circle? essentially just expanding the circle every time instead of moving it?
+   [] circles aren't working. can we move back to how it was before, maybe with just larger areas at a time?
 
 #App (Web Version)
    [x] it still uses the old map image, not the updated one
@@ -18,7 +18,7 @@ Minecraft Metro Map Notes
       - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels
       - latest fresh report found 1116 sampled uncolored occurrences
       - Auto Fill now advances one circular target only after a successful chunk load
-      - next target circle is drawn in blue around the next circular load target
+      - next target circle expands outward from Blackport to cover the next circular load target
       - latest expansion pass targeted (294, 246), cached 760 chunk columns, and rendered 194560 known-color pixels
       - next expansion target preview is (438, 390), target 3/657
       - coverage now includes cached headless packet columns as well as LevelDB columns

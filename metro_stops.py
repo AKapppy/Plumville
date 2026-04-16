@@ -4408,7 +4408,7 @@ class MetroMapViewer:
 
         self._make_sidebar_caption('World Map').pack(anchor='w', padx=16)
         self._make_sidebar_hint(
-            'Auto Fill Step loads the next Blackport box and renders it. Repeat until the rectangle is filled.'
+            'Auto Fill Step grows the Blackport load circle and renders it. Repeat to keep expanding outward.'
         ).pack(anchor='w', padx=16, pady=(4, 6))
         self.world_map_status_text = tk.Text(
             self.sidebar,
@@ -7071,26 +7071,32 @@ class MetroMapViewer:
             from worldgen.config import load_config
             from worldgen.generator import BedrockWorldGenerator
 
-            preview = BedrockWorldGenerator(load_config()).next_headless_loader_target_preview()
+            config = load_config()
+            preview = BedrockWorldGenerator(config).next_headless_loader_target_preview()
         except Exception:
             return
         if preview is None:
             return
 
-        top_left_x, top_left_y = self.world_to_canvas((preview.min_x, -preview.min_z))
-        bottom_right_x, bottom_right_y = self.world_to_canvas((preview.max_x, -preview.max_z))
-        left = min(top_left_x, bottom_right_x)
-        right = max(top_left_x, bottom_right_x)
-        top = min(top_left_y, bottom_right_y)
-        bottom = max(top_left_y, bottom_right_y)
-        if right <= left or bottom <= top:
+        target_radius = max(preview.max_x - preview.min_x, preview.max_z - preview.min_z) / 2
+        target_distance = dist(
+            (config.render.center_x, config.render.center_z),
+            (preview.target_x, preview.target_z),
+        )
+        expansion_radius = min(config.render.radius, target_distance + target_radius)
+        center_x, center_y = self.world_to_canvas((config.render.center_x, -config.render.center_z))
+        edge_x, _edge_y = self.world_to_canvas(
+            (config.render.center_x + expansion_radius, -config.render.center_z)
+        )
+        canvas_radius = abs(edge_x - center_x)
+        if canvas_radius <= 0:
             return
 
         self.canvas.create_oval(
-            left,
-            top,
-            right,
-            bottom,
+            center_x - canvas_radius,
+            center_y - canvas_radius,
+            center_x + canvas_radius,
+            center_y + canvas_radius,
             outline=WORLD_MAP_NEXT_TARGET_COLOR,
             width=WORLD_MAP_NEXT_TARGET_WIDTH,
             dash=WORLD_MAP_NEXT_TARGET_DASH,
