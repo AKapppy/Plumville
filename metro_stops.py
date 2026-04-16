@@ -102,7 +102,9 @@ WORLD_MAP_RENDER_BOUNDS_WIDTH: Final[int] = 2
 WORLD_MAP_RENDER_BOUNDS_DASH: Final[tuple[int, int]] = (6, 4)
 WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE: Final[int] = 24
 WORLD_MAP_AUTO_LOAD_PASSES: Final[int] = 1
-SIDEBAR_SCROLL_UNITS: Final[int] = 3
+SIDEBAR_SCROLL_PIXELS: Final[int] = 36
+SIDEBAR_SCROLL_FRAMES: Final[int] = 3
+SIDEBAR_SCROLL_FRAME_DELAY_MS: Final[int] = 8
 SIDEBAR_WIDTH: Final[int] = 340
 SIDEBAR_TITLE_FONT_SIZE: Final[int] = 20
 SIDEBAR_TEXT_FONT_SIZE: Final[int] = 12
@@ -4139,6 +4141,8 @@ class MetroMapViewer:
         self.path_node_canvas_positions: dict[str, tuple[float, float]] = {}
         self.info_popup_frame: tk.Frame | None = None
         self.info_popup_variables: list[tk.BooleanVar] = []
+        self.sidebar_scroll_after_id: str | None = None
+        self.sidebar_scroll_remaining = 0.0
         self.current_route: RouteResult | None = None
         self.route_request: tuple[str, str] | None = None
         self.route_controls_dirty = True
@@ -7460,7 +7464,38 @@ class MetroMapViewer:
     def _scroll_sidebar_units(self, units: int) -> None:
         if units == 0:
             return
-        self.sidebar_canvas.yview_scroll(units * SIDEBAR_SCROLL_UNITS, 'units')
+        self.sidebar_scroll_remaining += units * SIDEBAR_SCROLL_PIXELS
+        if self.sidebar_scroll_after_id is None:
+            self._run_sidebar_scroll_frame()
+
+    def _run_sidebar_scroll_frame(self) -> None:
+        self.sidebar_scroll_after_id = None
+        if abs(self.sidebar_scroll_remaining) < 0.5:
+            self.sidebar_scroll_remaining = 0.0
+            return
+        step = self.sidebar_scroll_remaining / SIDEBAR_SCROLL_FRAMES
+        if abs(step) < 1:
+            step = 1.0 if self.sidebar_scroll_remaining > 0 else -1.0
+        self.sidebar_scroll_remaining -= step
+        self._scroll_sidebar_pixels(step)
+        if abs(self.sidebar_scroll_remaining) >= 0.5:
+            self.sidebar_scroll_after_id = self.root.after(
+                SIDEBAR_SCROLL_FRAME_DELAY_MS,
+                self._run_sidebar_scroll_frame,
+            )
+
+    def _scroll_sidebar_pixels(self, pixels: float) -> None:
+        bbox = self.sidebar_canvas.bbox('all')
+        if bbox is None:
+            return
+        content_height = max(1.0, float(bbox[3] - bbox[1]))
+        visible_height = max(1.0, float(self.sidebar_canvas.winfo_height()))
+        if content_height <= visible_height:
+            return
+        max_top = max(0.0, 1.0 - (visible_height / content_height))
+        current_top, _current_bottom = self.sidebar_canvas.yview()
+        next_top = min(max_top, max(0.0, current_top + (pixels / content_height)))
+        self.sidebar_canvas.yview_moveto(next_top)
 
     def _on_global_left_click_release(self, event: object) -> None:
         widget = getattr(event, 'widget', None)

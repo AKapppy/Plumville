@@ -30,7 +30,7 @@ const CONSTANTS = {
   gridColor: '#4b4b4b',
   intersectionColor: '#ffffff',
   defaultZoom: 1,
-  zoomStep: 1.25,
+  zoomStep: 1.15,
   maxVisibleBlocksAtMaxZoom: 10,
   labelAngle: -30 * Math.PI / 180,
   baseLabelFontSize: 12,

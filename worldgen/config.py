@@ -166,7 +166,10 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
         teleport_retry_seconds=(
             _optional_positive_int(headless_loader_table, 'teleport_retry_seconds') or 5
         ),
-        teleport_attempts=_optional_positive_int(headless_loader_table, 'teleport_attempts') or 4,
+        teleport_attempts=_optional_int_default(
+            _optional_nonnegative_int(headless_loader_table, 'teleport_attempts'),
+            4,
+        ),
         chunk_radius=_optional_positive_int(headless_loader_table, 'chunk_radius') or 12,
     )
 

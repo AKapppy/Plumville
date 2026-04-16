@@ -2,33 +2,27 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-   [x] can we make scroll and zoom rates faster
+   [x] scroll speed should go back to what it was (slower than now), but the frame rate should go up. ie, smaller step, same overall scrolling speed
 
 #App (Web Version)
-   [x] of the view options, all should default to off except station labels
    [x] can we make zoom rate slower
 
 #World Map
-   [x] i got this error: "Auto filling world map failed. \n docker is not installed or is not on PATH." i never changed anything about docker
-   [x] there's a lot of visual noise going on. we should be doing a block-by-block read of the terrain, not stopping at chunk-by-chunk
+   [x] can we reset the map (keep the old file just in case we want to revert) so i can see the new progress to see if the noise is decreasing? it should grow in one big circle around blackport, no teleporting spots
    [] this should be a completely virtual experience. no minecraft world will be opened at anytime to generate the terrain. it should just be based off the seed and the seed alone. if docker desktop is looking for an open or saved minecraft file, it will never find one. we should reroute it if this is the case
    [] keep filling the rectangle with repeated Auto Fill Step clicks.
-      - current blocker: Docker Desktop is installed, but its daemon is not running; open Docker Desktop before the next Auto Fill Step
+      - reset backup: `worldgen_data/reset_backups/20260416_094729`
       - active generated world folder: `metro_map_world_boxfill`
       - render area is centered on Blackport at x=294, z=390, radius=2000
-      - Auto Fill now scans saved chunk columns and targets the smallest under-filled Blackport box
+      - Auto Fill now starts at Blackport/world spawn only; no teleport targets are sent
+      - latest fresh Blackport-only load cached 545 chunk columns
+      - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels
+      - latest fresh report found 1116 sampled uncolored occurrences
       - coverage now includes cached headless packet columns as well as LevelDB columns
-      - latest Auto Fill backend pass targeted 12 under-filled points: (-474, -378), (678, -378), (-474, 6), (1062, 774), (-90, 1158), (294, -378), (1062, 1158), (-474, 774), (1062, -378), (678, 1158), (-474, 390), and (-474, 1158)
-      - next target scan now sees 14 under-filled targets around the first Blackport box
       - Auto Fill Step is the only world-map button; it runs one longer Bedrock load session, then renders
-      - current load session settings: wait 75 seconds, up to 12 teleport targets
-      - latest focused backend load cached 1083 level-chunk packets, 1072 unique chunk columns, and 8043 subchunk payloads
-      - latest render reads 12260 chunk columns and draws 7984 known-color pixels
-      - latest rendered terrain bounds: x -926..1518, z -830..1614
+      - current load session settings: wait 75 seconds, 0 teleport targets
       - default gray / unknown blocks are now transparent instead of rendered, so the map is intentionally sparse until more network palette IDs are mapped back to block names
       - unknown/uncolored block details are written to `worldgen_output/uncolored_blocks_report.txt` after each render
-      - latest report found 560 uncolored block entries and 63799308 sampled uncolored occurrences
-      - latest render has 15 subchunk decode errors
       - headless loader now saves `headless_start_game.json` so the next renderer pass can inspect whether Bedrock is using hashed block network IDs and which block names were advertised
       - do not repair or edit the live Bedrock DB before Auto Fill; the old recovered world crashed after repeated restarts plus live DB mutation
 
