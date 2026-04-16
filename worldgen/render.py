@@ -778,6 +778,10 @@ def render_topdown_map(
         min_chunk_z=min_chunk_z,
         max_chunk_z=max_chunk_z,
     )
+    packet_records = _filter_packet_records_against_persistent_columns(
+        packet_records,
+        persistent_records=persistent_records,
+    )
     persistent_subchunks: dict[tuple[int | None, int, int, int], DecodedSubchunk] = {}
     decoded_subchunks: dict[tuple[str, int, int, int], DecodedSubchunk] = {}
     if diagnose_unknown_blocks and prefer_persistent_bedrock:
@@ -811,7 +815,9 @@ def render_topdown_map(
         (*persistent_records, *packet_records),
         key=lambda record: (
             record.subchunk_y,
-            1 if (prefer_persistent_bedrock and not record.uses_runtime_palette) else 0,
+            1 if not record.uses_runtime_palette else 0,
+            record.chunk_z,
+            record.chunk_x,
         ),
         reverse=True,
     )
@@ -1019,6 +1025,30 @@ def _record_cache_key(record: SubchunkRecord) -> tuple[str, int, int, int]:
         record.chunk_x,
         record.chunk_z,
         record.subchunk_y,
+    )
+
+
+def _record_column_key(record: SubchunkRecord) -> tuple[int, int, int]:
+    return (
+        OVERWORLD_DIMENSION_ID if record.dimension_id is None else record.dimension_id,
+        record.chunk_x,
+        record.chunk_z,
+    )
+
+
+def _filter_packet_records_against_persistent_columns(
+    packet_records: tuple[SubchunkRecord, ...],
+    *,
+    persistent_records: tuple[SubchunkRecord, ...],
+) -> tuple[SubchunkRecord, ...]:
+    if not packet_records or not persistent_records:
+        return packet_records
+
+    persistent_columns = {_record_column_key(record) for record in persistent_records}
+    return tuple(
+        record
+        for record in packet_records
+        if _record_column_key(record) not in persistent_columns
     )
 
 

@@ -19,6 +19,7 @@ from .render import RenderPlan, RenderResult, build_render_plan, render_topdown_
 BEDROCK_SERVICE_NAME = 'bedrock'
 HEADLESS_LOADER_RESULT_FILE_NAME = 'headless_loader_result.json'
 HEADLESS_LOADER_CHUNK_PACKET_FILE_NAME = 'headless_chunk_packets.jsonl'
+HEADLESS_LOADER_PROGRESS_FILE_NAME = 'headless_loader_progress.json'
 HEADLESS_LOADER_MAX_ATTEMPTS = 3
 HEADLESS_LOADER_RETRY_DELAY_SECONDS = 5
 HEADLESS_LOADER_STARTUP_TIMEOUT_SECONDS = 300
@@ -63,6 +64,19 @@ class HeadlessChunkLoadResult:
     teleport_targets: tuple[str, ...]
     server_stopped: bool
     output: str
+
+
+@dataclass(frozen=True, slots=True)
+class HeadlessLoaderTargetPreview:
+    target_x: int
+    target_z: int
+    target_index: int
+    target_count: int
+    min_x: int
+    max_x: int
+    min_z: int
+    max_z: int
+    coverage: float | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -295,9 +309,21 @@ class BedrockWorldGenerator:
         effective_wait_seconds = wait_seconds or loader_config.wait_seconds
         result_path = self.paths.cache_dir / HEADLESS_LOADER_RESULT_FILE_NAME
         chunk_packet_path = self.paths.cache_dir / HEADLESS_LOADER_CHUNK_PACKET_FILE_NAME
+        progress_path = self.paths.cache_dir / HEADLESS_LOADER_PROGRESS_FILE_NAME
         coverage_world_path = self._world_folder_for_coverage_scan()
         teleport_points = _render_area_teleport_points(self.config, world_path=coverage_world_path)
-        teleport_start_index = 0
+        teleport_start_index = _load_headless_loader_progress(
+            progress_path,
+            config=self.config,
+            teleport_points=teleport_points,
+        )
+        teleport_start_index = _next_undercovered_teleport_index(
+            self.config,
+            teleport_points,
+            start_index=teleport_start_index,
+            world_path=coverage_world_path,
+        )
+        current_teleport_index = teleport_start_index
         result_path.parent.mkdir(parents=True, exist_ok=True)
         container_result_path = _container_repo_path(self.config.repo_root, result_path)
         container_chunk_packet_path = _container_repo_path(self.config.repo_root, chunk_packet_path)
@@ -318,12 +344,17 @@ class BedrockWorldGenerator:
                 container_result_path=container_result_path,
                 container_chunk_packet_path=container_chunk_packet_path,
                 teleport_points=teleport_points,
-                teleport_start_index=teleport_start_index,
+                teleport_start_index=current_teleport_index,
                 loader_username=_headless_loader_username(attempt_number),
             )
             attempts.append(attempt)
 
             if attempt.chunks_received > 0:
+                current_teleport_index = _advance_teleport_index(
+                    current_teleport_index,
+                    attempt.teleport_commands_sent,
+                    len(teleport_points),
+                )
                 break
             if attempt_number < HEADLESS_LOADER_MAX_ATTEMPTS:
                 self.stop(
@@ -333,10 +364,13 @@ class BedrockWorldGenerator:
                 time.sleep(HEADLESS_LOADER_RETRY_DELAY_SECONDS)
 
         last_attempt = attempts[-1]
-        successful_attempt = last_attempt if last_attempt.chunks_received > 0 else None
-        teleport_next_index = teleport_start_index
-        if successful_attempt is not None:
-            teleport_next_index = successful_attempt.teleport_commands_sent % len(teleport_points)
+        teleport_next_index = current_teleport_index
+        _save_headless_loader_progress(
+            progress_path,
+            config=self.config,
+            teleport_points=teleport_points,
+            next_index=teleport_next_index,
+        )
 
         server_stopped = False
         if stop_after:
@@ -625,6 +659,41 @@ class BedrockWorldGenerator:
         except FileNotFoundError:
             return None
 
+    def next_headless_loader_target_preview(self) -> HeadlessLoaderTargetPreview | None:
+        progress_path = self.paths.cache_dir / HEADLESS_LOADER_PROGRESS_FILE_NAME
+        world_path = self._world_folder_for_coverage_scan()
+        teleport_points = _render_area_teleport_points(self.config, world_path=world_path)
+        if not teleport_points:
+            return None
+        progress_index = _load_headless_loader_progress(
+            progress_path,
+            config=self.config,
+            teleport_points=teleport_points,
+        )
+        target_index = _next_undercovered_teleport_index(
+            self.config,
+            teleport_points,
+            start_index=progress_index,
+            world_path=world_path,
+        )
+        target = teleport_points[target_index]
+        coverage = None
+        if world_path is not None and world_path.exists():
+            saved_columns = _saved_render_chunk_columns(self.config, world_path)
+            coverage = _teleport_point_chunk_coverage(self.config, target, saved_columns)
+        min_x, max_x, min_z, max_z = _teleport_target_world_bounds(self.config, target)
+        return HeadlessLoaderTargetPreview(
+            target_x=target[0],
+            target_z=target[1],
+            target_index=target_index,
+            target_count=len(teleport_points),
+            min_x=min_x,
+            max_x=max_x,
+            min_z=min_z,
+            max_z=max_z,
+            coverage=coverage,
+        )
+
 
 def _tail_lines(text: str, limit: int) -> str:
     lines = [line for line in text.splitlines() if line.strip()]
@@ -633,6 +702,91 @@ def _tail_lines(text: str, limit: int) -> str:
 
 def _bedrock_server_crashed(logs_output: str) -> bool:
     return any(marker in logs_output for marker in BEDROCK_NATIVE_CRASH_MARKERS)
+
+
+
+def _advance_teleport_index(current_index: int, teleports_used: int, target_count: int) -> int:
+    if target_count <= 0:
+        return 0
+    return (current_index + max(0, teleports_used)) % target_count
+
+
+def _next_undercovered_teleport_index(
+    config: WorldgenConfig,
+    teleport_points: tuple[tuple[int, int], ...],
+    *,
+    start_index: int,
+    world_path: Path | None,
+) -> int:
+    if not teleport_points:
+        return 0
+    if world_path is None or not world_path.exists():
+        return start_index % len(teleport_points)
+
+    saved_columns = _saved_render_chunk_columns(config, world_path)
+    if not saved_columns:
+        return start_index % len(teleport_points)
+
+    target_count = len(teleport_points)
+    for offset in range(target_count):
+        index = (start_index + offset) % target_count
+        coverage = _teleport_point_chunk_coverage(config, teleport_points[index], saved_columns)
+        if coverage < TELEPORT_TARGET_COVERAGE_THRESHOLD:
+            return index
+    return start_index % target_count
+
+
+def _load_headless_loader_progress(
+    path: Path,
+    *,
+    config: WorldgenConfig,
+    teleport_points: tuple[tuple[int, int], ...],
+) -> int:
+    if not teleport_points or not path.exists():
+        return 0
+    try:
+        payload = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    expected_signature = _headless_loader_progress_signature(config, len(teleport_points))
+    if payload.get('signature') != expected_signature:
+        return 0
+    next_index = payload.get('next_index')
+    if not isinstance(next_index, int):
+        return 0
+    return next_index % len(teleport_points)
+
+
+def _save_headless_loader_progress(
+    path: Path,
+    *,
+    config: WorldgenConfig,
+    teleport_points: tuple[tuple[int, int], ...],
+    next_index: int,
+) -> None:
+    if not teleport_points:
+        return
+    payload = {
+        'signature': _headless_loader_progress_signature(config, len(teleport_points)),
+        'next_index': next_index % len(teleport_points),
+        'target_count': len(teleport_points),
+        'updated_at': utc_now_iso(),
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + '\n', encoding='utf-8')
+
+
+def _headless_loader_progress_signature(config: WorldgenConfig, target_count: int) -> dict[str, object]:
+    return {
+        'center_x': config.render.center_x,
+        'center_z': config.render.center_z,
+        'render_radius': config.render.radius,
+        'chunk_radius': config.headless_loader.chunk_radius,
+        'teleport_y': config.headless_loader.teleport_y,
+        'target_count': target_count,
+    }
 
 
 def _load_loader_result_payload(path: Path) -> dict[str, object]:
@@ -695,85 +849,45 @@ def _render_area_teleport_points(
     *,
     world_path: Path | None = None,
 ) -> tuple[tuple[int, int], ...]:
-    step = max(16, config.headless_loader.chunk_radius * 16 * 2)
-    x_values = _render_axis_teleport_values(
-        config.render.min_x,
-        config.render.max_x,
-        config.render.center_x,
-        step,
-    )
-    z_values = _render_axis_teleport_values(
-        config.render.min_z,
-        config.render.max_z,
-        config.render.center_z,
-        step,
-    )
-    points = [(x, z) for z in z_values for x in x_values]
-    if world_path is not None and world_path.exists():
-        saved_columns = _saved_render_chunk_columns(config, world_path)
-        if saved_columns:
-            return _undercovered_box_teleport_points(config, points, step, saved_columns)
-        return _first_box_teleport_points(config, points, step)
-    points.sort(key=lambda point: _box_fill_teleport_sort_key(config, point, step))
-    return tuple(points)
+    # Build targets directly from the circular render radius. No square box gating,
+    # no undercoverage resorting, just a stable outward progression.
+    del world_path
 
+    step = max(16, round(config.headless_loader.chunk_radius * 16 * 0.75))
+    radius = max(step, config.render.radius)
+    center_x = config.render.center_x
+    center_z = config.render.center_z
+    max_offset_steps = math.ceil(radius / step)
 
-def _first_box_teleport_points(
-    config: WorldgenConfig,
-    points: list[tuple[int, int]],
-    step: int,
-) -> tuple[tuple[int, int], ...]:
-    first_ring = min(_box_fill_teleport_ring(config, point, step) for point in points)
+    points: set[tuple[int, int]] = {(center_x, center_z)}
+    for z_step in range(-max_offset_steps, max_offset_steps + 1):
+        for x_step in range(-max_offset_steps, max_offset_steps + 1):
+            point = (center_x + (x_step * step), center_z + (z_step * step))
+            if _point_in_render_radius(config, point, padding=step * 0.5):
+                points.add(point)
+
     return tuple(
         sorted(
-            (point for point in points if _box_fill_teleport_ring(config, point, step) == first_ring),
+            points,
             key=lambda point: _box_fill_teleport_sort_key(config, point, step),
         )
     )
 
+def _progressive_box_teleport_points(
+    config: WorldgenConfig,
+    points: list[tuple[int, int]] | tuple[tuple[int, int], ...],
+    step: int,
+) -> tuple[tuple[int, int], ...]:
+    return tuple(sorted(points, key=lambda point: _box_fill_teleport_sort_key(config, point, step)))
 
 def _undercovered_box_teleport_points(
     config: WorldgenConfig,
-    points: list[tuple[int, int]],
+    points: list[tuple[int, int]] | tuple[tuple[int, int], ...],
     step: int,
     saved_columns: set[tuple[int, int]],
 ) -> tuple[tuple[int, int], ...]:
-    coverages = {
-        point: _teleport_point_chunk_coverage(config, point, saved_columns)
-        for point in points
-    }
-    rings = sorted({_box_fill_teleport_ring(config, point, step) for point in points})
-    for ring in rings:
-        box_points = [
-            point
-            for point in points
-            if _box_fill_teleport_ring(config, point, step) <= ring
-        ]
-        undercovered_points = [
-            point
-            for point in box_points
-            if coverages[point] < TELEPORT_TARGET_COVERAGE_THRESHOLD
-        ]
-        if undercovered_points:
-            return tuple(
-                sorted(
-                    undercovered_points,
-                    key=lambda point: (
-                        coverages[point],
-                        _box_fill_teleport_sort_key(config, point, step),
-                    ),
-                )
-            )
-    return tuple(
-        sorted(
-            points,
-            key=lambda point: (
-                coverages[point],
-                _box_fill_teleport_sort_key(config, point, step),
-            ),
-        )
-    )
-
+    del saved_columns
+    return tuple(sorted(points, key=lambda point: _box_fill_teleport_sort_key(config, point, step)))
 
 def _saved_render_chunk_columns(
     config: WorldgenConfig,
@@ -851,62 +965,126 @@ def _teleport_point_chunk_coverage(
     point: tuple[int, int],
     saved_columns: set[tuple[int, int]],
 ) -> float:
-    render = config.render
     radius = config.headless_loader.chunk_radius
     center_chunk_x = point[0] // 16
     center_chunk_z = point[1] // 16
-    min_chunk_x = max(render.min_x // 16, center_chunk_x - radius)
-    max_chunk_x = min(render.max_x // 16, center_chunk_x + radius)
-    min_chunk_z = max(render.min_z // 16, center_chunk_z - radius)
-    max_chunk_z = min(render.max_z // 16, center_chunk_z + radius)
-    requested_count = (
-        (max_chunk_x - min_chunk_x + 1)
-        * (max_chunk_z - min_chunk_z + 1)
-    )
-    if requested_count <= 0:
+
+    requested_columns: list[tuple[int, int]] = []
+    for chunk_x in range(center_chunk_x - radius, center_chunk_x + radius + 1):
+        for chunk_z in range(center_chunk_z - radius, center_chunk_z + radius + 1):
+            if not _chunk_column_in_render_radius(config, chunk_x, chunk_z):
+                continue
+            requested_columns.append((chunk_x, chunk_z))
+
+    if not requested_columns:
         return 1.0
+
     saved_count = sum(
         1
-        for chunk_x in range(min_chunk_x, max_chunk_x + 1)
-        for chunk_z in range(min_chunk_z, max_chunk_z + 1)
-        if (chunk_x, chunk_z) in saved_columns
+        for column in requested_columns
+        if column in saved_columns
     )
-    return saved_count / requested_count
-
+    return saved_count / len(requested_columns)
 
 def _chunk_touch_fill_commands(
     config: WorldgenConfig,
     point: tuple[int, int],
 ) -> tuple[str, ...]:
-    render = config.render
     radius = config.headless_loader.chunk_radius
     center_chunk_x = point[0] // 16
     center_chunk_z = point[1] // 16
-    min_chunk_x = max(render.min_x // 16, center_chunk_x - radius)
-    max_chunk_x = min(render.max_x // 16, center_chunk_x + radius)
-    min_chunk_z = max(render.min_z // 16, center_chunk_z - radius)
-    max_chunk_z = min(render.max_z // 16, center_chunk_z + radius)
-    min_x = min_chunk_x * 16
-    max_x = (max_chunk_x * 16) + 15
-    min_z = min_chunk_z * 16
-    max_z = (max_chunk_z * 16) + 15
-    width = max_x - min_x + 1
-    if width <= 0 or max_z < min_z:
-        return ()
 
-    max_depth = max(1, CHUNK_TOUCH_MAX_BLOCKS // width)
     commands: list[str] = []
-    z_start = min_z
-    while z_start <= max_z:
-        z_end = min(max_z, z_start + max_depth - 1)
-        commands.append(
-            (
-                f'fill {min_x} {CHUNK_TOUCH_Y} {z_start} '
-                f'{max_x} {CHUNK_TOUCH_Y} {z_end} {CHUNK_TOUCH_BLOCK}'
+    for chunk_z in range(center_chunk_z - radius, center_chunk_z + radius + 1):
+        eligible_chunk_x = [
+            chunk_x
+            for chunk_x in range(center_chunk_x - radius, center_chunk_x + radius + 1)
+            if _chunk_column_in_render_radius(config, chunk_x, chunk_z)
+        ]
+        if not eligible_chunk_x:
+            continue
+
+        start_chunk_x = eligible_chunk_x[0]
+        previous_chunk_x = eligible_chunk_x[0]
+        for chunk_x in eligible_chunk_x[1:]:
+            if chunk_x == previous_chunk_x + 1:
+                previous_chunk_x = chunk_x
+                continue
+            commands.append(
+                _chunk_touch_fill_command_for_span(start_chunk_x, previous_chunk_x, chunk_z)
             )
+            start_chunk_x = chunk_x
+            previous_chunk_x = chunk_x
+
+        commands.append(
+            _chunk_touch_fill_command_for_span(start_chunk_x, previous_chunk_x, chunk_z)
         )
-        z_start = z_end + 1
+
     return tuple(commands)
+
+
+def _teleport_target_world_bounds(
+    config: WorldgenConfig,
+    point: tuple[int, int],
+) -> tuple[int, int, int, int]:
+    radius = config.headless_loader.chunk_radius
+    center_chunk_x = point[0] // 16
+    center_chunk_z = point[1] // 16
+    min_chunk_x = center_chunk_x - radius
+    max_chunk_x = center_chunk_x + radius
+    min_chunk_z = center_chunk_z - radius
+    max_chunk_z = center_chunk_z + radius
+    return (
+        max(config.render.min_x, min_chunk_x * 16),
+        min(config.render.max_x, (max_chunk_x * 16) + 15),
+        max(config.render.min_z, min_chunk_z * 16),
+        min(config.render.max_z, (max_chunk_z * 16) + 15),
+    )
+
+
+def _point_distance_from_render_center(
+    config: WorldgenConfig,
+    point: tuple[int, int],
+) -> float:
+    return math.hypot(
+        point[0] - config.render.center_x,
+        point[1] - config.render.center_z,
+    )
+
+
+def _point_in_render_radius(
+    config: WorldgenConfig,
+    point: tuple[int, int],
+    *,
+    padding: float = 0.0,
+) -> bool:
+    return _point_distance_from_render_center(config, point) <= (config.render.radius + padding)
+
+
+def _chunk_column_in_render_radius(
+    config: WorldgenConfig,
+    chunk_x: int,
+    chunk_z: int,
+) -> bool:
+    # Use the chunk center with a small padding so edge columns that overlap the
+    # desired circle are not unfairly excluded.
+    point = ((chunk_x * 16) + 8, (chunk_z * 16) + 8)
+    return _point_in_render_radius(config, point, padding=16.0)
+
+
+def _chunk_touch_fill_command_for_span(
+    start_chunk_x: int,
+    end_chunk_x: int,
+    chunk_z: int,
+) -> str:
+    min_x = start_chunk_x * 16
+    max_x = (end_chunk_x * 16) + 15
+    min_z = chunk_z * 16
+    max_z = (chunk_z * 16) + 15
+    return (
+        f'fill {min_x} {CHUNK_TOUCH_Y} {min_z} '
+        f'{max_x} {CHUNK_TOUCH_Y} {max_z} {CHUNK_TOUCH_BLOCK}'
+    )
 
 
 def _box_fill_teleport_ring(
@@ -916,23 +1094,23 @@ def _box_fill_teleport_ring(
 ) -> int:
     delta_x = point[0] - config.render.center_x
     delta_z = point[1] - config.render.center_z
-    return round(max(abs(delta_x), abs(delta_z)) / step)
+    return round(math.hypot(delta_x, delta_z) / step)
 
 
 def _box_fill_teleport_sort_key(
     config: WorldgenConfig,
     point: tuple[int, int],
     step: int,
-) -> tuple[int, int, float, float, float]:
+) -> tuple[int, float, float, float, float]:
     delta_x = point[0] - config.render.center_x
     delta_z = point[1] - config.render.center_z
+    distance = math.hypot(delta_x, delta_z)
     ring = _box_fill_teleport_ring(config, point, step)
-    is_box_edge = int(max(abs(delta_x), abs(delta_z)) != ring * step)
     return (
         ring,
-        is_box_edge,
+        abs(distance - (ring * step)),
         math.atan2(delta_z, delta_x),
-        math.hypot(delta_x, delta_z),
+        distance,
         point[0],
     )
 

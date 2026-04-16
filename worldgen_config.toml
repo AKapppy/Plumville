@@ -28,7 +28,7 @@ wait_seconds = 75
 teleport_y = 96
 teleport_delay_seconds = 8
 teleport_retry_seconds = 4
-teleport_attempts = 0
+teleport_attempts = 1
 chunk_radius = 12
 
 [storage]

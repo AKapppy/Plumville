@@ -101,6 +101,9 @@ WORLD_MAP_RENDER_BOUNDS_COLOR: Final[str] = '#f3d66b'
 WORLD_MAP_RENDER_BOUNDS_WIDTH: Final[int] = 2
 WORLD_MAP_RENDER_BOUNDS_DASH: Final[tuple[int, int]] = (6, 4)
 WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE: Final[int] = 24
+WORLD_MAP_NEXT_TARGET_COLOR: Final[str] = '#8ad4ff'
+WORLD_MAP_NEXT_TARGET_WIDTH: Final[int] = 2
+WORLD_MAP_NEXT_TARGET_DASH: Final[tuple[int, int]] = (3, 3)
 WORLD_MAP_AUTO_LOAD_PASSES: Final[int] = 1
 SIDEBAR_SCROLL_PIXELS: Final[int] = 36
 SIDEBAR_SCROLL_FRAMES: Final[int] = 3
@@ -2083,7 +2086,7 @@ def _world_map_auto_fill_step_text() -> str:
             (
                 f'Pass {index}: {load_result.chunks_received} chunks, '
                 f'{load_result.unique_chunk_columns} chunk columns',
-                f'Pass {index} target pool: {load_result.teleport_target_count} under-filled box targets',
+                f'Pass {index} target pool: {load_result.teleport_target_count} circular targets',
                 f'Pass {index} targets: {", ".join(load_result.teleport_targets) or "none"}',
             )
         )
@@ -7023,6 +7026,7 @@ class MetroMapViewer:
         self.overlay_image_refs.append(underlay_image)
         self.canvas.create_image(visible_left, visible_top, anchor='nw', image=underlay_image)
         self._draw_world_map_render_bounds(payload)
+        self._draw_world_map_next_target_bounds()
 
     def _draw_world_map_render_bounds(self, payload: dict[str, object]) -> None:
         try:
@@ -7060,6 +7064,36 @@ class MetroMapViewer:
             outline=WORLD_MAP_RENDER_BOUNDS_COLOR,
             width=WORLD_MAP_RENDER_BOUNDS_WIDTH,
             dash=WORLD_MAP_RENDER_BOUNDS_DASH,
+        )
+
+    def _draw_world_map_next_target_bounds(self) -> None:
+        try:
+            from worldgen.config import load_config
+            from worldgen.generator import BedrockWorldGenerator
+
+            preview = BedrockWorldGenerator(load_config()).next_headless_loader_target_preview()
+        except Exception:
+            return
+        if preview is None:
+            return
+
+        top_left_x, top_left_y = self.world_to_canvas((preview.min_x, -preview.min_z))
+        bottom_right_x, bottom_right_y = self.world_to_canvas((preview.max_x, -preview.max_z))
+        left = min(top_left_x, bottom_right_x)
+        right = max(top_left_x, bottom_right_x)
+        top = min(top_left_y, bottom_right_y)
+        bottom = max(top_left_y, bottom_right_y)
+        if right <= left or bottom <= top:
+            return
+
+        self.canvas.create_rectangle(
+            left,
+            top,
+            right,
+            bottom,
+            outline=WORLD_MAP_NEXT_TARGET_COLOR,
+            width=WORLD_MAP_NEXT_TARGET_WIDTH,
+            dash=WORLD_MAP_NEXT_TARGET_DASH,
         )
 
     def _draw_planning_circle(self) -> None:

@@ -170,7 +170,7 @@ class DecodedSubchunk:
         return block_info.name
 
     def visible_block_info(self, local_x: int, local_y: int, local_z: int) -> BlockInfo | None:
-        block_index = (local_y << 8) | (local_z << 4) | local_x
+        block_index = (local_x << 8) | (local_z << 4) | local_y
         for storage_index, storage in enumerate(self.storages):
             block_info = storage.block_info(block_index, storage_index=storage_index)
             if block_info is not None and is_visible_block(block_info.name):

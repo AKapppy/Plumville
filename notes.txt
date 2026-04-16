@@ -2,7 +2,7 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-   [x] scroll speed should go back to what it was (slower than now), but the frame rate should go up. ie, smaller step, same overall scrolling speed
+   [] zoom seems to lag? i don't think its speed related, it seems like it's lagging
 
 #App (Web Version)
    [x] can we make zoom rate slower
@@ -18,9 +18,13 @@ Minecraft Metro Map Notes
       - latest fresh Blackport-only load cached 545 chunk columns
       - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels
       - latest fresh report found 1116 sampled uncolored occurrences
+      - Auto Fill now advances one circular target only after a successful chunk load
+      - next target rectangle is drawn in blue around the next circular load target
+      - latest expansion pass targeted (294, 246), cached 760 chunk columns, and rendered 194560 known-color pixels
+      - next expansion target preview is (438, 390), target 3/657
       - coverage now includes cached headless packet columns as well as LevelDB columns
       - Auto Fill Step is the only world-map button; it runs one longer Bedrock load session, then renders
-      - current load session settings: wait 75 seconds, 0 teleport targets
+      - current load session settings: wait 75 seconds, 1 teleport target
       - default gray / unknown blocks are now transparent instead of rendered, so the map is intentionally sparse until more network palette IDs are mapped back to block names
       - unknown/uncolored block details are written to `worldgen_output/uncolored_blocks_report.txt` after each render
       - headless loader now saves `headless_start_game.json` so the next renderer pass can inspect whether Bedrock is using hashed block network IDs and which block names were advertised
