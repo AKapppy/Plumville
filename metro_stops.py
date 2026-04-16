@@ -2086,7 +2086,7 @@ def _world_map_auto_fill_step_text() -> str:
             (
                 f'Pass {index}: {load_result.chunks_received} chunks, '
                 f'{load_result.unique_chunk_columns} chunk columns',
-                f'Pass {index} target pool: {load_result.teleport_target_count} circular targets',
+                f'Pass {index} target pool: {load_result.teleport_target_count} rectangular targets',
                 f'Pass {index} targets: {", ".join(load_result.teleport_targets) or "none"}',
             )
         )
@@ -4203,12 +4203,13 @@ class MetroMapViewer:
         self.use_connector_routes_var = tk.BooleanVar(master=self.root, value=True)
         self.use_walk_routes_var = tk.BooleanVar(master=self.root, value=False)
         self.use_flying_routes_var = tk.BooleanVar(master=self.root, value=False)
-        self.show_planning_circle_var = tk.BooleanVar(master=self.root, value=True)
-        self.show_connected_area_var = tk.BooleanVar(master=self.root, value=True)
+        self.show_planning_circle_var = tk.BooleanVar(master=self.root, value=False)
+        self.show_connected_area_var = tk.BooleanVar(master=self.root, value=False)
         self.show_alignment_reminders_var = tk.BooleanVar(master=self.root, value=False)
         self.show_frontier_highlights_var = tk.BooleanVar(master=self.root, value=False)
         self.show_labels_var = tk.BooleanVar(master=self.root, value=True)
         self.show_world_map_render_var = tk.BooleanVar(master=self.root, value=True)
+        self.show_world_map_bounds_var = tk.BooleanVar(master=self.root, value=True)
         self.priority_summary_var = tk.StringVar(master=self.root, value='Planning radius unavailable.')
         self.railway_finish_mode_var = tk.BooleanVar(master=self.root, value=False)
         self.railway_finish_line_var = tk.StringVar(master=self.root)
@@ -4301,18 +4302,9 @@ class MetroMapViewer:
             return
 
     def _build_route_panel(self) -> None:
-        title_label = tk.Label(
-            self.sidebar,
-            text='Directions',
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TITLE_FONT_SIZE, 'bold'),
-            anchor='w',
-        )
-        title_label.pack(anchor='w', padx=16, pady=(16, 10))
-
+        checklist_section = self._make_collapsible_sidebar_section('Checklist', expanded=True)
         stats_label = tk.Label(
-            self.sidebar,
+            checklist_section,
             textvariable=self.stats_summary_var,
             bg=BACKGROUND_COLOR,
             fg=TEXT_COLOR,
@@ -4321,7 +4313,33 @@ class MetroMapViewer:
             justify='left',
             wraplength=SIDEBAR_WIDTH - 32,
         )
-        stats_label.pack(anchor='w', padx=16, pady=(0, 12))
+        stats_label.pack(anchor='w', padx=16, pady=(4, 12))
+
+        priority_section = self._make_collapsible_sidebar_section('Priority List', expanded=False)
+        planning_summary_label = tk.Label(
+            priority_section,
+            textvariable=self.priority_summary_var,
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=SIDEBAR_WIDTH - 32,
+        )
+        planning_summary_label.pack(anchor='w', padx=16, pady=(4, 12))
+        priority_panel = tk.Frame(
+            priority_section,
+            bg=INFO_BOX_BACKGROUND,
+            relief='flat',
+            highlightthickness=1,
+            highlightbackground=INFO_BOX_BORDER,
+        )
+        priority_panel.pack(fill='x', padx=16, pady=(0, 16))
+        self.priority_list_frame = tk.Frame(
+            priority_panel,
+            bg=INFO_BOX_BACKGROUND,
+        )
+        self.priority_list_frame.pack(fill='x', padx=12, pady=12)
 
         self._make_sidebar_caption('Search').pack(anchor='w', padx=16)
         search_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
@@ -4353,8 +4371,177 @@ class MetroMapViewer:
         )
         search_status_label.pack(anchor='w', padx=16, pady=(0, 12))
 
-        self._make_sidebar_caption('From').pack(anchor='w', padx=16)
-        self.route_start_entry = self._make_sidebar_entry(self.sidebar, self.route_start_var)
+        self._make_sidebar_caption('Show/Hide').pack(anchor='w', padx=16)
+        show_world_map_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='World Map',
+            variable=self.show_world_map_render_var,
+            command=self.redraw,
+        )
+        show_world_map_toggle.pack(anchor='w', padx=16, pady=(4, 6))
+        show_world_map_bounds_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='World map rectangle borders',
+            variable=self.show_world_map_bounds_var,
+            command=self.redraw,
+        )
+        show_world_map_bounds_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        connected_area_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='Connected area',
+            variable=self.show_connected_area_var,
+            command=self.redraw,
+        )
+        connected_area_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        planning_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='Planning radius',
+            variable=self.show_planning_circle_var,
+            command=self.redraw,
+        )
+        planning_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        alignment_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='Alignment ellipses',
+            variable=self.show_alignment_reminders_var,
+            command=self.redraw,
+        )
+        alignment_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        frontier_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='Frontier highlights',
+            variable=self.show_frontier_highlights_var,
+            command=self.redraw,
+        )
+        frontier_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        labels_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='Station labels',
+            variable=self.show_labels_var,
+            command=self.redraw,
+        )
+        labels_toggle.pack(anchor='w', padx=16, pady=(0, 12))
+
+        world_map_section = self._make_collapsible_sidebar_section('World Map', expanded=True)
+        self._make_sidebar_hint(
+            'Auto Fill Step loads the next larger Blackport box and renders it. Repeat until the rectangle is filled.',
+            parent=world_map_section,
+        ).pack(anchor='w', padx=16, pady=(4, 6))
+        self.world_map_status_text = tk.Text(
+            world_map_section,
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR,
+            wrap='word',
+            relief='flat',
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=INFO_BOX_BORDER,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            padx=12,
+            pady=10,
+            spacing1=2,
+            spacing3=4,
+            height=8,
+            cursor='xterm',
+            exportselection=True,
+        )
+        self.world_map_status_text.pack(fill='x', padx=16, pady=(0, 8))
+        self._set_world_map_status_text(self.world_map_status_var.get())
+        world_map_auto_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
+        world_map_auto_row.pack(fill='x', padx=16, pady=(0, 12))
+        self._make_sidebar_button(
+            world_map_auto_row,
+            text='Auto Fill Step',
+            command=self._auto_fill_world_map_step,
+        ).pack(side='left')
+
+        railway_section = self._make_collapsible_sidebar_section('Railway Finishing', expanded=True)
+        self._make_sidebar_hint(
+            'Enter the farthest finished coordinate on the selected line. The app tracks finished rail from that line origin to the coordinate.',
+            parent=railway_section,
+        ).pack(anchor='w', padx=16, pady=(4, 6))
+        self._make_sidebar_checkbox(
+            railway_section,
+            text='Railway finishing mode',
+            variable=self.railway_finish_mode_var,
+            command=self._on_railway_finish_mode_changed,
+        ).pack(anchor='w', padx=16, pady=(0, 6))
+
+        railway_line_row = tk.Frame(railway_section, bg=BACKGROUND_COLOR)
+        railway_line_row.pack(fill='x', padx=16, pady=(0, 6))
+        tk.Label(
+            railway_line_row,
+            text='Line',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            width=5,
+            anchor='w',
+        ).pack(side='left')
+        self.railway_finish_line_menu = self._make_sidebar_option_menu(
+            railway_line_row,
+            self.railway_finish_line_var,
+        )
+        self.railway_finish_line_menu.pack(side='left', fill='x', expand=True)
+
+        railway_coordinate_row = tk.Frame(railway_section, bg=BACKGROUND_COLOR)
+        railway_coordinate_row.pack(fill='x', padx=16, pady=(0, 8))
+        tk.Label(
+            railway_coordinate_row,
+            text='Coords',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            width=5,
+            anchor='w',
+        ).pack(side='left')
+        railway_coordinate_entry = self._make_sidebar_entry(
+            railway_coordinate_row,
+            self.railway_finish_coordinates_var,
+        )
+        railway_coordinate_entry.pack(side='left', fill='x', expand=True)
+        railway_coordinate_entry.bind('<Return>', self._on_railway_finish_submit)
+
+        railway_button_row = tk.Frame(railway_section, bg=BACKGROUND_COLOR)
+        railway_button_row.pack(fill='x', padx=16, pady=(0, 8))
+        self._make_sidebar_button(
+            railway_button_row,
+            text='Save Point',
+            command=self._save_railway_finish_point,
+        ).pack(side='left')
+        self._make_sidebar_button(
+            railway_button_row,
+            text='Switch Origin',
+            command=self._switch_railway_finish_origin,
+        ).pack(side='left', padx=(10, 0))
+
+        tk.Label(
+            railway_section,
+            textvariable=self.railway_finish_status_var,
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=SIDEBAR_WIDTH - 32,
+        ).pack(anchor='w', padx=16, pady=(0, 8))
+        tk.Label(
+            railway_section,
+            textvariable=self.railway_finish_progress_var,
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            padx=12,
+            pady=10,
+            wraplength=SIDEBAR_WIDTH - 56,
+        ).pack(fill='x', padx=16, pady=(0, 12))
+
+        directions_section = self._make_collapsible_sidebar_section('Directions', expanded=False)
+        self._make_sidebar_caption('From', parent=directions_section).pack(anchor='w', padx=16)
+        self.route_start_entry = self._make_sidebar_entry(directions_section, self.route_start_var)
         self.route_start_entry.pack(fill='x', padx=16, pady=(4, 4))
         self.route_start_entry.bind('<Return>', self._on_route_submit)
         self._bind_suggestion_entry(
@@ -4362,10 +4549,10 @@ class MetroMapViewer:
             self.route_start_var,
             include_nodes=True,
         )
-        self._make_sidebar_hint('Station label / var or x, y').pack(anchor='w', padx=16, pady=(0, 10))
+        self._make_sidebar_hint('Station label / var or x, y', parent=directions_section).pack(anchor='w', padx=16, pady=(0, 10))
 
-        self._make_sidebar_caption('To').pack(anchor='w', padx=16)
-        self.route_end_entry = self._make_sidebar_entry(self.sidebar, self.route_end_var)
+        self._make_sidebar_caption('To', parent=directions_section).pack(anchor='w', padx=16)
+        self.route_end_entry = self._make_sidebar_entry(directions_section, self.route_end_var)
         self.route_end_entry.pack(fill='x', padx=16, pady=(4, 4))
         self.route_end_entry.bind('<Return>', self._on_route_submit)
         self._bind_suggestion_entry(
@@ -4373,9 +4560,9 @@ class MetroMapViewer:
             self.route_end_var,
             include_nodes=True,
         )
-        self._make_sidebar_hint('Station label / var or x, y').pack(anchor='w', padx=16, pady=(0, 8))
+        self._make_sidebar_hint('Station label / var or x, y', parent=directions_section).pack(anchor='w', padx=16, pady=(0, 8))
 
-        route_type_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        route_type_row = tk.Frame(directions_section, bg=BACKGROUND_COLOR)
         route_type_row.pack(fill='x', padx=16, pady=(0, 12))
         self._make_sidebar_checkbox(
             route_type_row,
@@ -4396,57 +4583,15 @@ class MetroMapViewer:
             command=self._on_route_options_changed,
         ).pack(anchor='w')
 
-        button_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        button_row = tk.Frame(directions_section, bg=BACKGROUND_COLOR)
         button_row.pack(fill='x', padx=16, pady=(0, 12))
         self._make_sidebar_button(button_row, text='Route', command=self._plan_route).pack(side='left')
         self._make_sidebar_button(button_row, text='Swap', command=self._swap_route_endpoints).pack(side='left', padx=(10, 0))
         self._make_sidebar_button(button_row, text='Clear', command=self._clear_route).pack(side='left', padx=(10, 0))
         self._make_sidebar_button(button_row, text='Undo', command=self._undo_last_saved_change).pack(side='left', padx=(10, 0))
-        utility_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
-        utility_row.pack(fill='x', padx=16, pady=(0, 12))
-        self._make_sidebar_button(utility_row, text='Export SVG', command=self._export_current_map).pack(side='left')
-
-        self._make_sidebar_caption('World Map').pack(anchor='w', padx=16)
-        self._make_sidebar_hint(
-            'Auto Fill Step grows the Blackport load circle and renders it. Repeat to keep expanding outward.'
-        ).pack(anchor='w', padx=16, pady=(4, 6))
-        self.world_map_status_text = tk.Text(
-            self.sidebar,
-            bg=INFO_BOX_BACKGROUND,
-            fg=TEXT_COLOR,
-            insertbackground=TEXT_COLOR,
-            wrap='word',
-            relief='flat',
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=INFO_BOX_BORDER,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            padx=12,
-            pady=10,
-            spacing1=2,
-            spacing3=4,
-            height=8,
-            cursor='xterm',
-            exportselection=True,
-        )
-        self.world_map_status_text.pack(fill='x', padx=16, pady=(0, 8))
-        self._set_world_map_status_text(self.world_map_status_var.get())
-        world_map_auto_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
-        world_map_auto_row.pack(fill='x', padx=16, pady=(0, 12))
-        self._make_sidebar_button(
-            world_map_auto_row,
-            text='Auto Fill Step',
-            command=self._auto_fill_world_map_step,
-        ).pack(side='left')
-        self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Show rendered map',
-            variable=self.show_world_map_render_var,
-            command=self.redraw,
-        ).pack(anchor='w', padx=16, pady=(0, 12))
 
         summary_label = tk.Label(
-            self.sidebar,
+            directions_section,
             textvariable=self.route_summary_var,
             bg=BACKGROUND_COLOR,
             fg=TEXT_COLOR,
@@ -4458,7 +4603,7 @@ class MetroMapViewer:
         summary_label.pack(anchor='w', padx=16, pady=(0, 10))
 
         self.route_steps_text = tk.Text(
-            self.sidebar,
+            directions_section,
             bg=INFO_BOX_BACKGROUND,
             fg=TEXT_COLOR,
             insertbackground=TEXT_COLOR,
@@ -4478,13 +4623,19 @@ class MetroMapViewer:
         self._set_route_steps_text('Enter or select a start and destination, then press Route.')
         self.route_steps_text.pack_forget()
 
-        self.path_nodes_heading = self._make_sidebar_caption('Path Nodes')
+        utility_row = tk.Frame(directions_section, bg=BACKGROUND_COLOR)
+        utility_row.pack(fill='x', padx=16, pady=(0, 12))
+        self._make_sidebar_button(utility_row, text='Export SVG', command=self._export_current_map).pack(side='left')
+
+        pathing_section = self._make_collapsible_sidebar_section('Pathing', expanded=False)
+        self.path_nodes_heading = self._make_sidebar_caption('Path Nodes', parent=pathing_section)
         self.path_nodes_heading.pack(anchor='w', padx=16)
         self._make_sidebar_hint(
-            'Add non-station nodes by coordinates. Create and edit walking or metro paths from node popups on the map.'
+            'Add non-station nodes by coordinates. Create and edit walking or metro paths from node popups on the map.',
+            parent=pathing_section,
         ).pack(anchor='w', padx=16, pady=(4, 6))
 
-        node_coords_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        node_coords_row = tk.Frame(pathing_section, bg=BACKGROUND_COLOR)
         node_coords_row.pack(fill='x', padx=16, pady=(0, 6))
         tk.Label(
             node_coords_row,
@@ -4502,7 +4653,7 @@ class MetroMapViewer:
             padx=(0, 10),
         )
 
-        node_label_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        node_label_row = tk.Frame(pathing_section, bg=BACKGROUND_COLOR)
         node_label_row.pack(fill='x', padx=16, pady=(0, 8))
         tk.Label(
             node_label_row,
@@ -4515,7 +4666,7 @@ class MetroMapViewer:
         ).pack(side='left')
         self._make_sidebar_entry(node_label_row, self.path_node_label_var).pack(side='left', fill='x', expand=True)
 
-        node_button_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        node_button_row = tk.Frame(pathing_section, bg=BACKGROUND_COLOR)
         node_button_row.pack(fill='x', padx=16, pady=(0, 12))
         self._make_sidebar_button(
             node_button_row,
@@ -4528,9 +4679,9 @@ class MetroMapViewer:
             command=self._clear_walk_path_fields,
         ).pack(side='left', padx=(10, 0))
 
-        self._make_sidebar_caption('Path Edges').pack(anchor='w', padx=16)
+        self._make_sidebar_caption('Path Edges', parent=pathing_section).pack(anchor='w', padx=16)
         self.path_edge_list_frame = tk.Frame(
-            self.sidebar,
+            pathing_section,
             bg=INFO_BOX_BACKGROUND,
             relief='flat',
             highlightthickness=1,
@@ -4538,160 +4689,41 @@ class MetroMapViewer:
         )
         self.path_edge_list_frame.pack(fill='x', padx=16, pady=(4, 12))
         self._refresh_path_edge_list()
-
-        planning_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Show planning radius',
-            variable=self.show_planning_circle_var,
-            command=self.redraw,
-        )
-        planning_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-
-        connected_area_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Show connected area',
-            variable=self.show_connected_area_var,
-            command=self.redraw,
-        )
-        connected_area_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-
-        alignment_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Show alignment ellipses',
-            variable=self.show_alignment_reminders_var,
-            command=self.redraw,
-        )
-        alignment_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-
-        labels_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Show station labels',
-            variable=self.show_labels_var,
-            command=self.redraw,
-        )
-        labels_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-
-        frontier_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Show frontier highlights',
-            variable=self.show_frontier_highlights_var,
-            command=self.redraw,
-        )
-        frontier_toggle.pack(anchor='w', padx=16, pady=(0, 10))
-
-        self._make_sidebar_caption('Railway Finishing').pack(anchor='w', padx=16)
-        self._make_sidebar_hint(
-            'Enter the farthest finished coordinate on the selected line. The app tracks finished rail from that line origin to the coordinate.'
-        ).pack(anchor='w', padx=16, pady=(4, 6))
-        self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Railway finishing mode',
-            variable=self.railway_finish_mode_var,
-            command=self._on_railway_finish_mode_changed,
-        ).pack(anchor='w', padx=16, pady=(0, 6))
-
-        railway_line_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
-        railway_line_row.pack(fill='x', padx=16, pady=(0, 6))
-        tk.Label(
-            railway_line_row,
-            text='Line',
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            width=5,
-            anchor='w',
-        ).pack(side='left')
-        self.railway_finish_line_menu = self._make_sidebar_option_menu(
-            railway_line_row,
-            self.railway_finish_line_var,
-        )
-        self.railway_finish_line_menu.pack(side='left', fill='x', expand=True)
-
-        railway_coordinate_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
-        railway_coordinate_row.pack(fill='x', padx=16, pady=(0, 8))
-        tk.Label(
-            railway_coordinate_row,
-            text='Coords',
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            width=5,
-            anchor='w',
-        ).pack(side='left')
-        railway_coordinate_entry = self._make_sidebar_entry(
-            railway_coordinate_row,
-            self.railway_finish_coordinates_var,
-        )
-        railway_coordinate_entry.pack(side='left', fill='x', expand=True)
-        railway_coordinate_entry.bind('<Return>', self._on_railway_finish_submit)
-
-        railway_button_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
-        railway_button_row.pack(fill='x', padx=16, pady=(0, 8))
-        self._make_sidebar_button(
-            railway_button_row,
-            text='Save Point',
-            command=self._save_railway_finish_point,
-        ).pack(side='left')
-        self._make_sidebar_button(
-            railway_button_row,
-            text='Switch Origin',
-            command=self._switch_railway_finish_origin,
-        ).pack(side='left', padx=(10, 0))
-
-        tk.Label(
-            self.sidebar,
-            textvariable=self.railway_finish_status_var,
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            anchor='w',
-            justify='left',
-            wraplength=SIDEBAR_WIDTH - 32,
-        ).pack(anchor='w', padx=16, pady=(0, 8))
-        tk.Label(
-            self.sidebar,
-            textvariable=self.railway_finish_progress_var,
-            bg=INFO_BOX_BACKGROUND,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            anchor='w',
-            justify='left',
-            padx=12,
-            pady=10,
-            wraplength=SIDEBAR_WIDTH - 56,
-        ).pack(fill='x', padx=16, pady=(0, 12))
-
-        planning_summary_label = tk.Label(
-            self.sidebar,
-            textvariable=self.priority_summary_var,
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            anchor='w',
-            justify='left',
-            wraplength=SIDEBAR_WIDTH - 32,
-        )
-        planning_summary_label.pack(anchor='w', padx=16, pady=(0, 12))
-
-        self._make_sidebar_caption('Priority List').pack(anchor='w', padx=16)
-        priority_panel = tk.Frame(
-            self.sidebar,
-            bg=INFO_BOX_BACKGROUND,
-            relief='flat',
-            highlightthickness=1,
-            highlightbackground=INFO_BOX_BORDER,
-        )
-        priority_panel.pack(fill='x', padx=16, pady=(4, 16))
-        self.priority_list_frame = tk.Frame(
-            priority_panel,
-            bg=INFO_BOX_BACKGROUND,
-        )
-        self.priority_list_frame.pack(fill='x', padx=12, pady=12)
         self._refresh_route_controls()
 
-    def _make_sidebar_caption(self, text: str) -> tk.Label:
-        return tk.Label(
+    def _make_collapsible_sidebar_section(self, title: str, *, expanded: bool) -> tk.Frame:
+        body = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        is_expanded = expanded
+        prefix = '+' if is_expanded else '-'
+        header = tk.Label(
             self.sidebar,
+            text=f'{prefix} {title}',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TITLE_FONT_SIZE, 'bold'),
+            anchor='w',
+            cursor='hand2',
+        )
+        header.pack(anchor='w', fill='x', padx=16, pady=(16, 8))
+        if is_expanded:
+            body.pack(fill='x')
+
+        def toggle() -> None:
+            nonlocal is_expanded
+            is_expanded = not is_expanded
+            prefix = '+' if is_expanded else '-'
+            header.configure(text=f'{prefix} {title}')
+            if is_expanded:
+                body.pack(fill='x', after=header)
+            else:
+                body.pack_forget()
+
+        header.bind('<Button-1>', lambda _event: toggle())
+        return body
+
+    def _make_sidebar_caption(self, text: str, *, parent: tk.Misc | None = None) -> tk.Label:
+        return tk.Label(
+            parent or self.sidebar,
             text=text,
             bg=BACKGROUND_COLOR,
             fg=TEXT_COLOR,
@@ -4699,9 +4731,9 @@ class MetroMapViewer:
             anchor='w',
         )
 
-    def _make_sidebar_hint(self, text: str) -> tk.Label:
+    def _make_sidebar_hint(self, text: str, *, parent: tk.Misc | None = None) -> tk.Label:
         return tk.Label(
-            self.sidebar,
+            parent or self.sidebar,
             text=text,
             bg=BACKGROUND_COLOR,
             fg=INFO_CHECKBOX_TEXT_COLOR,
@@ -5038,7 +5070,6 @@ class MetroMapViewer:
                 fill='x',
                 padx=16,
                 pady=(0, 12),
-                before=self.path_nodes_heading,
             )
         else:
             self.route_steps_text.pack_forget()
@@ -7025,6 +7056,8 @@ class MetroMapViewer:
         underlay_image = ImageTk.PhotoImage(underlay)
         self.overlay_image_refs.append(underlay_image)
         self.canvas.create_image(visible_left, visible_top, anchor='nw', image=underlay_image)
+        if not self.show_world_map_bounds_var.get():
+            return
         self._draw_world_map_render_bounds(payload)
         self._draw_world_map_next_target_bounds()
 
@@ -7056,7 +7089,7 @@ class MetroMapViewer:
             top = center_y - (WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE / 2)
             bottom = center_y + (WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE / 2)
 
-        self.canvas.create_oval(
+        self.canvas.create_rectangle(
             left,
             top,
             right,
@@ -7071,32 +7104,26 @@ class MetroMapViewer:
             from worldgen.config import load_config
             from worldgen.generator import BedrockWorldGenerator
 
-            config = load_config()
-            preview = BedrockWorldGenerator(config).next_headless_loader_target_preview()
+            preview = BedrockWorldGenerator(load_config()).next_headless_loader_target_preview()
         except Exception:
             return
         if preview is None:
             return
 
-        target_radius = max(preview.max_x - preview.min_x, preview.max_z - preview.min_z) / 2
-        target_distance = dist(
-            (config.render.center_x, config.render.center_z),
-            (preview.target_x, preview.target_z),
-        )
-        expansion_radius = min(config.render.radius, target_distance + target_radius)
-        center_x, center_y = self.world_to_canvas((config.render.center_x, -config.render.center_z))
-        edge_x, _edge_y = self.world_to_canvas(
-            (config.render.center_x + expansion_radius, -config.render.center_z)
-        )
-        canvas_radius = abs(edge_x - center_x)
-        if canvas_radius <= 0:
+        top_left_x, top_left_y = self.world_to_canvas((preview.min_x, -preview.min_z))
+        bottom_right_x, bottom_right_y = self.world_to_canvas((preview.max_x, -preview.max_z))
+        left = min(top_left_x, bottom_right_x)
+        right = max(top_left_x, bottom_right_x)
+        top = min(top_left_y, bottom_right_y)
+        bottom = max(top_left_y, bottom_right_y)
+        if right <= left or bottom <= top:
             return
 
-        self.canvas.create_oval(
-            center_x - canvas_radius,
-            center_y - canvas_radius,
-            center_x + canvas_radius,
-            center_y + canvas_radius,
+        self.canvas.create_rectangle(
+            left,
+            top,
+            right,
+            bottom,
             outline=WORLD_MAP_NEXT_TARGET_COLOR,
             width=WORLD_MAP_NEXT_TARGET_WIDTH,
             dash=WORLD_MAP_NEXT_TARGET_DASH,

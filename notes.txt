@@ -2,7 +2,27 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-   [] circles aren't working. can we move back to how it was before, maybe with just larger areas at a time?
+   [x] see sorting notes below:
+      Sidebar order:
+         #all sections should be collapsable. A + means start expanded and a - means start collapsed. Whether it starts collapsed or expanded should be a simple boolean so I can change that later
+         1. Checklist (named, façades, stations, connected, …) +
+         1a. Priority List -
+         2. Search (one-liner - no collapsing needed, always open)
+         3. Show/hide (no collapsing needed, always open)
+         4. World map +
+         5. Railway finishing +
+         6. Directions -
+         7. Pathing -
+
+      Show/Hide order:
+         #+ means default to true, - means default false
+         1. World Map (move from the world map section to the show/hide section) +
+         2. World map rectangle borders (new, hiding the yellow and blue rectangles from the viewer) +
+         3. Connected area -
+         4. Planning radius -
+         5. Alignment ellipses -
+         6. Frontier highlights -
+         7. Station labels +
 
 #App (Web Version)
    [x] it still uses the old map image, not the updated one
@@ -17,13 +37,13 @@ Minecraft Metro Map Notes
       - latest fresh Blackport-only load cached 545 chunk columns
       - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels
       - latest fresh report found 1116 sampled uncolored occurrences
-      - Auto Fill now advances one circular target only after a successful chunk load
-      - next target circle expands outward from Blackport to cover the next circular load target
+      - Auto Fill now advances one larger rectangular target only after a successful chunk load
+      - next target rectangle is drawn in blue around the next rectangular load target
       - latest expansion pass targeted (294, 246), cached 760 chunk columns, and rendered 194560 known-color pixels
-      - next expansion target preview is (438, 390), target 3/657
+      - next expansion target preview is (294, 198), target 2/529
       - coverage now includes cached headless packet columns as well as LevelDB columns
       - Auto Fill Step is the only world-map button; it runs one longer Bedrock load session, then renders
-      - current load session settings: wait 75 seconds, 1 teleport target
+      - current load session settings: wait 75 seconds, 1 teleport target, chunk radius 16
       - default gray / unknown blocks are now transparent instead of rendered, so the map is intentionally sparse until more network palette IDs are mapped back to block names
       - unknown/uncolored block details are written to `worldgen_output/uncolored_blocks_report.txt` after each render
       - headless loader now saves `headless_start_game.json` so the next renderer pass can inspect whether Bedrock is using hashed block network IDs and which block names were advertised

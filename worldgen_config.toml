@@ -29,7 +29,7 @@ teleport_y = 96
 teleport_delay_seconds = 8
 teleport_retry_seconds = 4
 teleport_attempts = 1
-chunk_radius = 12
+chunk_radius = 16
 
 [storage]
 data_dir = "worldgen_data/bedrock-data"

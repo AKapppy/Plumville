@@ -849,29 +849,25 @@ def _render_area_teleport_points(
     *,
     world_path: Path | None = None,
 ) -> tuple[tuple[int, int], ...]:
-    # Build targets directly from the circular render radius. No square box gating,
-    # no undercoverage resorting, just a stable outward progression.
     del world_path
 
     step = max(16, round(config.headless_loader.chunk_radius * 16 * 0.75))
-    radius = max(step, config.render.radius)
-    center_x = config.render.center_x
-    center_z = config.render.center_z
-    max_offset_steps = math.ceil(radius / step)
-
-    points: set[tuple[int, int]] = {(center_x, center_z)}
-    for z_step in range(-max_offset_steps, max_offset_steps + 1):
-        for x_step in range(-max_offset_steps, max_offset_steps + 1):
-            point = (center_x + (x_step * step), center_z + (z_step * step))
-            if _point_in_render_radius(config, point, padding=step * 0.5):
-                points.add(point)
-
-    return tuple(
-        sorted(
-            points,
-            key=lambda point: _box_fill_teleport_sort_key(config, point, step),
+    points = [
+        (x, z)
+        for z in _render_axis_teleport_values(
+            config.render.min_z,
+            config.render.max_z,
+            config.render.center_z,
+            step,
         )
-    )
+        for x in _render_axis_teleport_values(
+            config.render.min_x,
+            config.render.max_x,
+            config.render.center_x,
+            step,
+        )
+    ]
+    return _progressive_box_teleport_points(config, points, step)
 
 def _progressive_box_teleport_points(
     config: WorldgenConfig,
@@ -1066,10 +1062,11 @@ def _chunk_column_in_render_radius(
     chunk_x: int,
     chunk_z: int,
 ) -> bool:
-    # Use the chunk center with a small padding so edge columns that overlap the
-    # desired circle are not unfairly excluded.
     point = ((chunk_x * 16) + 8, (chunk_z * 16) + 8)
-    return _point_in_render_radius(config, point, padding=16.0)
+    return (
+        config.render.min_x - 16 <= point[0] <= config.render.max_x + 16
+        and config.render.min_z - 16 <= point[1] <= config.render.max_z + 16
+    )
 
 
 def _chunk_touch_fill_command_for_span(
