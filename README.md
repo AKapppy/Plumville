@@ -1,9 +1,14 @@
 # Minecraft Metro Map
 
+[Open interactive map](https://akapppy.github.io/Plumville/)
+
 This repo now has two active tracks:
 
 - the existing Tk metro-planning app in `metro_stops.py`
 - a new Bedrock world generation backend in `worldgen/`
+- a static read-only browser viewer in `docs/`
+
+The browser viewer is built for GitHub Pages. After these files are pushed to GitHub, enable Pages from the `main` branch `/docs` folder.
 
 The worldgen work is intentionally modular. It does not try to generate Minecraft terrain itself. Instead, it manages a Bedrock Docker container, waits for a world to exist on disk, caches the resolved world path, and writes a Blackport-centered starter render plan for the next rendering phase.
 

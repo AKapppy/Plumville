@@ -1,0 +1,3084 @@
+{
+  "stops": [
+    {
+      "var": "P_ABCDE",
+      "lbl": "Blackport",
+      "x": 294,
+      "y": 390,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "north"
+      ]
+    },
+    {
+      "var": "P_B2",
+      "lbl": "Dicton",
+      "x": 757,
+      "y": 95,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "east",
+        "west"
+      ]
+    },
+    {
+      "var": "P_E2",
+      "lbl": "Northbulge",
+      "x": -433,
+      "y": 150,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": false,
+      "chime_directions": [
+        "east"
+      ]
+    },
+    {
+      "var": "P_D2",
+      "lbl": "Timberville",
+      "x": 32,
+      "y": 1300,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_A2",
+      "lbl": "Cherry Hill",
+      "x": 140,
+      "y": -560,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "east",
+        "west"
+      ]
+    },
+    {
+      "var": "P_C2",
+      "lbl": "Ridgewater",
+      "x": 629,
+      "y": 1300,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_B3",
+      "lbl": "Hidden Valley Ranch",
+      "x": 1283,
+      "y": 95,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "east",
+        "west"
+      ]
+    },
+    {
+      "var": "P_EN",
+      "lbl": "Alexandropol",
+      "x": -962,
+      "y": 800,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_AP",
+      "lbl": "Arrow Falls",
+      "x": -275,
+      "y": -836,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "north",
+        "south"
+      ]
+    },
+    {
+      "var": "P_P2",
+      "lbl": "P_2",
+      "x": -987,
+      "y": -485,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_D3",
+      "lbl": "Green Arch",
+      "x": -300,
+      "y": 1852,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_N2",
+      "lbl": "Glacier Bay",
+      "x": -962,
+      "y": 1372,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_E4",
+      "lbl": "The Edge",
+      "x": -1376,
+      "y": 800,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_C3",
+      "lbl": "Triarchidia",
+      "x": 236,
+      "y": 2320,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_A4",
+      "lbl": "Minas Rojas",
+      "x": 130,
+      "y": -1575,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "east",
+        "west"
+      ]
+    },
+    {
+      "var": "P_B4",
+      "lbl": "Pinkerton",
+      "x": 2267,
+      "y": 95,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "west"
+      ]
+    },
+    {
+      "var": "P_P3",
+      "lbl": "P_3",
+      "x": -1836,
+      "y": 91,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_DN",
+      "lbl": "Nujeau",
+      "x": -791,
+      "y": 2320,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_B5",
+      "lbl": "B_5",
+      "x": 2504,
+      "y": 664,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_N3",
+      "lbl": "White Pines",
+      "x": -1491,
+      "y": 1860,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_E5",
+      "lbl": "E_5",
+      "x": -1939,
+      "y": 1262,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_A5",
+      "lbl": "New Eden",
+      "x": 133,
+      "y": -2015,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": true,
+      "has_signs": true,
+      "chime_directions": [
+        "south"
+      ]
+    },
+    {
+      "var": "P_F5",
+      "lbl": "F_5",
+      "x": 1925,
+      "y": -1451,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_CN",
+      "lbl": "Everly",
+      "x": -300,
+      "y": 2925,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_F4",
+      "lbl": "F_4",
+      "x": 2296,
+      "y": -1432,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_P4",
+      "lbl": "P_4",
+      "x": -2504,
+      "y": 616,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_FG",
+      "lbl": "FG",
+      "x": 1852,
+      "y": -1972,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_D5",
+      "lbl": "Pumpland",
+      "x": -1320,
+      "y": 2762,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_A6",
+      "lbl": "A_6",
+      "x": 680,
+      "y": -2568,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_E6",
+      "lbl": "E_6",
+      "x": -2536,
+      "y": 1384,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_C5",
+      "lbl": "C_5",
+      "x": -520,
+      "y": 3336,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_G2",
+      "lbl": "G_2",
+      "x": 2392,
+      "y": -1860,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_N6",
+      "lbl": "N_6",
+      "x": 632,
+      "y": 3480,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_F3",
+      "lbl": "F_3",
+      "x": 2920,
+      "y": -1384,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_F7",
+      "lbl": "F_7",
+      "x": 1752,
+      "y": -2632,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_A9",
+      "lbl": "A_9",
+      "x": 264,
+      "y": -3064,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_KL",
+      "lbl": "KL",
+      "x": 3544,
+      "y": 1806,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_AF",
+      "lbl": "AF",
+      "x": 1224,
+      "y": -3098,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_F2",
+      "lbl": "F_2",
+      "x": 3464,
+      "y": -1400,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_BK",
+      "lbl": "BK",
+      "x": 4024,
+      "y": 808,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_K3",
+      "lbl": "K_3",
+      "x": 3464,
+      "y": 2424,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_A8",
+      "lbl": "A_8",
+      "x": 648,
+      "y": -3480,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_P5",
+      "lbl": "P_5",
+      "x": -3592,
+      "y": 872,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_G3",
+      "lbl": "G_3",
+      "x": 3489,
+      "y": -1912,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_D6",
+      "lbl": "D_6",
+      "x": -1432,
+      "y": 3992,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_K5",
+      "lbl": "K_5",
+      "x": 2904,
+      "y": 3464,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_HKM",
+      "lbl": "HKM",
+      "x": 3528,
+      "y": 3006,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_D7",
+      "lbl": "D_7",
+      "x": -1848,
+      "y": 3960,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_K9",
+      "lbl": "K_9",
+      "x": 664,
+      "y": 4648,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_C6",
+      "lbl": "C_6",
+      "x": -936,
+      "y": 4488,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_H10",
+      "lbl": "H_{10}",
+      "x": 3832,
+      "y": 2808,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_HL",
+      "lbl": "HL",
+      "x": 4136,
+      "y": 2360,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_P6",
+      "lbl": "P_6",
+      "x": -4008,
+      "y": 840,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_KN",
+      "lbl": "KN",
+      "x": 1336,
+      "y": 4600,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_H5",
+      "lbl": "H_5",
+      "x": 4536,
+      "y": -520,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_FH",
+      "lbl": "FH",
+      "x": 4504,
+      "y": -856,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_EPRV",
+      "lbl": "EPRV",
+      "x": -4104,
+      "y": 1192,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_S2",
+      "lbl": "S_2",
+      "x": -4088,
+      "y": -792,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_H8",
+      "lbl": "H_8",
+      "x": 4552,
+      "y": 2008,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_V2",
+      "lbl": "V_2",
+      "x": -3608,
+      "y": 2888,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_G4",
+      "lbl": "G_4",
+      "x": 4136,
+      "y": -2424,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_N8",
+      "lbl": "N_8",
+      "x": 1768,
+      "y": 4984,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_K7",
+      "lbl": "K_7",
+      "x": 1240,
+      "y": 5160,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_K8",
+      "lbl": "K_8",
+      "x": 824,
+      "y": 5224,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_C7",
+      "lbl": "C_7",
+      "x": -1384,
+      "y": 4968,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_H3",
+      "lbl": "H_3",
+      "x": 4680,
+      "y": -1896,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_BH",
+      "lbl": "BH",
+      "x": 5240,
+      "y": 776,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_E8",
+      "lbl": "E_8",
+      "x": -4664,
+      "y": 1208,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_H7",
+      "lbl": "H_7",
+      "x": 5256,
+      "y": 1192,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_R2",
+      "lbl": "R_2",
+      "x": -4744,
+      "y": 56,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_RS",
+      "lbl": "RS",
+      "x": -4712,
+      "y": -328,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_LM",
+      "lbl": "LM",
+      "x": 4696,
+      "y": 3032,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_M6",
+      "lbl": "M_6",
+      "x": 5144,
+      "y": 2328,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_G5",
+      "lbl": "G_5",
+      "x": 4584,
+      "y": -2632,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_P8",
+      "lbl": "P_8",
+      "x": -4808,
+      "y": 1720,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_S3",
+      "lbl": "S_3",
+      "x": -4536,
+      "y": -2024,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_M5",
+      "lbl": "M_5",
+      "x": 5080,
+      "y": 2904,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_M2",
+      "lbl": "M_2",
+      "x": 3912,
+      "y": 4424,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_ET",
+      "lbl": "ET",
+      "x": -5176,
+      "y": 1224,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_J2",
+      "lbl": "J_2",
+      "x": 5576,
+      "y": -1416,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_J3",
+      "lbl": "J_3",
+      "x": 5720,
+      "y": -936,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_PT",
+      "lbl": "PT",
+      "x": -5144,
+      "y": 1864,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_M7",
+      "lbl": "M_7",
+      "x": 5608,
+      "y": 2312,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_D8",
+      "lbl": "D_8",
+      "x": -2936,
+      "y": 5048,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_H2",
+      "lbl": "H_2",
+      "x": 5232,
+      "y": -2456,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_L4",
+      "lbl": "L_4",
+      "x": 5144,
+      "y": 3384,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_C8",
+      "lbl": "C_8",
+      "x": -2488,
+      "y": 5492,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_G6",
+      "lbl": "G_6",
+      "x": 5080,
+      "y": -3000,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_B8",
+      "lbl": "B_8",
+      "x": 6184,
+      "y": 168,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_T2",
+      "lbl": "T_2",
+      "x": -4632,
+      "y": 4024,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_S4",
+      "lbl": "S_4",
+      "x": -4744,
+      "y": -3176,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_TV",
+      "lbl": "TV",
+      "x": -5080,
+      "y": 3432,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_CD",
+      "lbl": "CD",
+      "x": -3112,
+      "y": 5544,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_MN",
+      "lbl": "MN",
+      "x": 3848,
+      "y": 5624,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_GJ",
+      "lbl": "GJ",
+      "x": 6136,
+      "y": -2072,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_R4",
+      "lbl": "R_4",
+      "x": -5944,
+      "y": -1032,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_BJ",
+      "lbl": "BJ",
+      "x": 6728,
+      "y": 216,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_GH",
+      "lbl": "GH",
+      "x": 5720,
+      "y": -3112,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_CT",
+      "lbl": "CT",
+      "x": -3656,
+      "y": 5592,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_J6",
+      "lbl": "J_6",
+      "x": 6856,
+      "y": 760,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_J4",
+      "lbl": "J_4",
+      "x": 6856,
+      "y": -360,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_G8",
+      "lbl": "G_8",
+      "x": 6056,
+      "y": -3000,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_E10",
+      "lbl": "E_{10}",
+      "x": -6408,
+      "y": 1208,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_G10",
+      "lbl": "G_{10}",
+      "x": 6648,
+      "y": -1896,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_V4",
+      "lbl": "V_4",
+      "x": -5704,
+      "y": 3512,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_R5",
+      "lbl": "R_5",
+      "x": -6300,
+      "y": -1352,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_B10",
+      "lbl": "B_{10}",
+      "x": 7384,
+      "y": -334,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_R6",
+      "lbl": "R_6",
+      "x": -6744,
+      "y": -2088,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    },
+    {
+      "var": "P_B11",
+      "lbl": "B_{11}",
+      "x": 7864,
+      "y": -888,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": []
+    }
+  ],
+  "line_colors": {
+    "A": "#e0d21a",
+    "B": "#008c1a",
+    "C": "#2948e6",
+    "D": "#cf5146",
+    "E": "#8d43e6",
+    "F": "#7fe218",
+    "G": "#efe04a",
+    "H": "#55d8ef",
+    "J": "#8f16d8",
+    "K": "#e56eb7",
+    "L": "#7d91ef",
+    "M": "#b95a0a",
+    "N": "#45afea",
+    "P": "#82de25",
+    "R": "#2ac016",
+    "S": "#6d1aa8",
+    "T": "#2fc8bd",
+    "V": "#f0932d"
+  },
+  "wool_colors": {
+    "A": "Red I Yellow IV",
+    "B": "Yellow I Blue I",
+    "C": "Blue III",
+    "D": "Red",
+    "E": "Purple",
+    "F": "Yellow IV Blue I",
+    "G": "Yellow",
+    "H": "Light Blue",
+    "J": "Red II Blue III",
+    "K": "Red IV Yellow II Blue III",
+    "L": "Red II Yellow II Blue IV",
+    "M": "Red II Yellow II",
+    "N": "Red I Yellow II Blue IV",
+    "P": "Lime",
+    "R": "Yellow III Blue II",
+    "S": "Red I Blue II",
+    "T": "Red I Yellow II Blue III",
+    "V": "Orange"
+  },
+  "line_stop_vars": {
+    "A": [
+      "P_ABCDE",
+      "P_A2",
+      "P_AP",
+      "P_A4",
+      "P_A5",
+      "P_A6",
+      "P_AF",
+      "P_A8",
+      "P_A9"
+    ],
+    "B": [
+      "P_ABCDE",
+      "P_B2",
+      "P_B3",
+      "P_B4",
+      "P_B5",
+      "P_BK",
+      "P_BH",
+      "P_B8",
+      "P_BJ",
+      "P_B10",
+      "P_B11"
+    ],
+    "C": [
+      "P_ABCDE",
+      "P_C2",
+      "P_C3",
+      "P_CN",
+      "P_C5",
+      "P_C6",
+      "P_C7",
+      "P_C8",
+      "P_CD",
+      "P_CT"
+    ],
+    "D": [
+      "P_ABCDE",
+      "P_D2",
+      "P_D3",
+      "P_DN",
+      "P_D5",
+      "P_D6",
+      "P_D7",
+      "P_D8",
+      "P_CD"
+    ],
+    "E": [
+      "P_ABCDE",
+      "P_E2",
+      "P_EN",
+      "P_E4",
+      "P_E5",
+      "P_E6",
+      "P_EPRV",
+      "P_E8",
+      "P_ET",
+      "P_E10"
+    ],
+    "F": [
+      "P_FH",
+      "P_F2",
+      "P_F3",
+      "P_F4",
+      "P_F5",
+      "P_FG",
+      "P_F7",
+      "P_AF"
+    ],
+    "G": [
+      "P_FG",
+      "P_G2",
+      "P_G3",
+      "P_G4",
+      "P_G5",
+      "P_G6",
+      "P_GH",
+      "P_G8",
+      "P_GJ",
+      "P_G10"
+    ],
+    "H": [
+      "P_GH",
+      "P_H2",
+      "P_H3",
+      "P_FH",
+      "P_H5",
+      "P_BH",
+      "P_H7",
+      "P_H8",
+      "P_HL",
+      "P_H10",
+      "P_HKM"
+    ],
+    "J": [
+      "P_GJ",
+      "P_J2",
+      "P_J3",
+      "P_J4",
+      "P_BJ",
+      "P_J6"
+    ],
+    "K": [
+      "P_BK",
+      "P_KL",
+      "P_K3",
+      "P_HKM",
+      "P_K5",
+      "P_KN",
+      "P_K7",
+      "P_K8",
+      "P_K9"
+    ],
+    "L": [
+      "P_KL",
+      "P_HL",
+      "P_LM",
+      "P_L4"
+    ],
+    "M": [
+      "P_MN",
+      "P_M2",
+      "P_HKM",
+      "P_LM",
+      "P_M5",
+      "P_M6",
+      "P_M7"
+    ],
+    "N": [
+      "P_EN",
+      "P_N2",
+      "P_N3",
+      "P_DN",
+      "P_CN",
+      "P_N6",
+      "P_KN",
+      "P_N8",
+      "P_MN"
+    ],
+    "P": [
+      "P_AP",
+      "P_P2",
+      "P_P3",
+      "P_P4",
+      "P_P5",
+      "P_P6",
+      "P_EPRV",
+      "P_P8",
+      "P_PT"
+    ],
+    "R": [
+      "P_EPRV",
+      "P_R2",
+      "P_RS",
+      "P_R4",
+      "P_R5",
+      "P_R6"
+    ],
+    "S": [
+      "P_RS",
+      "P_S2",
+      "P_S3",
+      "P_S4"
+    ],
+    "T": [
+      "P_ET",
+      "P_PT",
+      "P_TV",
+      "P_T2",
+      "P_CT"
+    ],
+    "V": [
+      "P_EPRV",
+      "P_V2",
+      "P_TV",
+      "P_V4"
+    ]
+  },
+  "line_path_specs": {
+    "A": [
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_ABCDE",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_A2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A2",
+        "y_var": "P_A2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AP",
+        "y_var": "P_A2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AP",
+        "y_var": "P_AP",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AP",
+        "y_var": "P_A4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A4",
+        "y_var": "P_A4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A5",
+        "y_var": "P_A4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A5",
+        "y_var": "P_A5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A5",
+        "y_var": "P_A6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A6",
+        "y_var": "P_A6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AF",
+        "y_var": "P_A6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AF",
+        "y_var": "P_AF",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AF",
+        "y_var": "P_A8",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A8",
+        "y_var": "P_A8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A9",
+        "y_var": "P_A8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_A9",
+        "y_var": "P_A9",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "B": [
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_ABCDE",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_B2",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B2",
+        "y_var": "P_B2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B3",
+        "y_var": "P_B3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B4",
+        "y_var": "P_B4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B4",
+        "y_var": "P_B4",
+        "dx": 3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B4",
+        "y_var": "P_B5",
+        "dx": 3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B5",
+        "y_var": "P_B5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_BK",
+        "y_var": "P_BK",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_BH",
+        "y_var": "P_BH",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_BH",
+        "y_var": "P_B8",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B8",
+        "y_var": "P_B8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_BJ",
+        "y_var": "P_BJ",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B10",
+        "y_var": "P_BJ",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B10",
+        "y_var": "P_B10",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B10",
+        "y_var": "P_B11",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_B11",
+        "y_var": "P_B11",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "C": [
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_ABCDE",
+        "dx": 1,
+        "dy": -1
+      },
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_C2",
+        "dx": 1,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C2",
+        "y_var": "P_C2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C2",
+        "y_var": "P_C2",
+        "dx": 3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C2",
+        "y_var": "P_C3",
+        "dx": 3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C3",
+        "y_var": "P_C3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CN",
+        "y_var": "P_C3",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CN",
+        "y_var": "P_CN",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CN",
+        "y_var": "P_C5",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C5",
+        "y_var": "P_C5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C6",
+        "y_var": "P_C5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C6",
+        "y_var": "P_C6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C6",
+        "y_var": "P_C7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C7",
+        "y_var": "P_C7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C8",
+        "y_var": "P_C7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_C8",
+        "y_var": "P_C8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CD",
+        "y_var": "P_CD",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CT",
+        "y_var": "P_CT",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "D": [
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_ABCDE",
+        "dx": -1,
+        "dy": -1
+      },
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_D2",
+        "dx": -1,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D2",
+        "y_var": "P_D2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D3",
+        "y_var": "P_D2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D3",
+        "y_var": "P_D3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D3",
+        "y_var": "P_DN",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_DN",
+        "y_var": "P_DN",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D5",
+        "y_var": "P_DN",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D5",
+        "y_var": "P_D5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D6",
+        "y_var": "P_D6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D7",
+        "y_var": "P_D7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D8",
+        "y_var": "P_D7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D8",
+        "y_var": "P_D8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_D8",
+        "y_var": "P_CD",
+        "dx": 0,
+        "dy": 2
+      },
+      {
+        "x_var": "P_CD",
+        "y_var": "P_CD",
+        "dx": 0,
+        "dy": 2
+      }
+    ],
+    "E": [
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_ABCDE",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_ABCDE",
+        "y_var": "P_E2",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E2",
+        "y_var": "P_E2",
+        "dx": -3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E2",
+        "y_var": "P_EN",
+        "dx": -3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_EN",
+        "y_var": "P_EN",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E4",
+        "y_var": "P_E4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E4",
+        "y_var": "P_E4",
+        "dx": -3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E4",
+        "y_var": "P_E5",
+        "dx": -3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E5",
+        "y_var": "P_E5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E6",
+        "y_var": "P_E6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_EPRV",
+        "y_var": "P_EPRV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E8",
+        "y_var": "P_E8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_ET",
+        "y_var": "P_ET",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_E10",
+        "y_var": "P_E10",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "F": [
+      {
+        "x_var": "P_FH",
+        "y_var": "P_FH",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_FH",
+        "y_var": "P_F2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_F2",
+        "y_var": "P_F2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_F3",
+        "y_var": "P_F3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_F4",
+        "y_var": "P_F4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_F5",
+        "y_var": "P_F5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_FG",
+        "y_var": "P_FG",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_F7",
+        "y_var": "P_F7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AF",
+        "y_var": "P_F7",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_AF",
+        "y_var": "P_AF",
+        "dx": 2,
+        "dy": 0
+      }
+    ],
+    "G": [
+      {
+        "x_var": "P_FG",
+        "y_var": "P_FG",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G2",
+        "y_var": "P_G2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G3",
+        "y_var": "P_G3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G4",
+        "y_var": "P_G3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G4",
+        "y_var": "P_G4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G4",
+        "y_var": "P_G5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G5",
+        "y_var": "P_G5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G6",
+        "y_var": "P_G5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G6",
+        "y_var": "P_G6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_GH",
+        "y_var": "P_GH",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G8",
+        "y_var": "P_G8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_GJ",
+        "y_var": "P_GJ",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_GJ",
+        "y_var": "P_G10",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_G10",
+        "y_var": "P_G10",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "H": [
+      {
+        "x_var": "P_GH",
+        "y_var": "P_GH",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_GH",
+        "y_var": "P_H2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H2",
+        "y_var": "P_H2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H3",
+        "y_var": "P_H2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H3",
+        "y_var": "P_H3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_FH",
+        "y_var": "P_FH",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H5",
+        "y_var": "P_H5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_BH",
+        "y_var": "P_H5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_BH",
+        "y_var": "P_BH",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H7",
+        "y_var": "P_H7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H7",
+        "y_var": "P_H8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H8",
+        "y_var": "P_H8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HL",
+        "y_var": "P_H8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HL",
+        "y_var": "P_HL",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HL",
+        "y_var": "P_H10",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_H10",
+        "y_var": "P_H10",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HKM",
+        "y_var": "P_H10",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HKM",
+        "y_var": "P_HKM",
+        "dx": 2,
+        "dy": 0
+      }
+    ],
+    "J": [
+      {
+        "x_var": "P_GJ",
+        "y_var": "P_GJ",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_J2",
+        "y_var": "P_GJ",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_J2",
+        "y_var": "P_J2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_J3",
+        "y_var": "P_J3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_J3",
+        "y_var": "P_J4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_J4",
+        "y_var": "P_J4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_BJ",
+        "y_var": "P_BJ",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_J6",
+        "y_var": "P_J6",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "K": [
+      {
+        "x_var": "P_BK",
+        "y_var": "P_BK",
+        "dx": 0,
+        "dy": -2
+      },
+      {
+        "x_var": "P_KL",
+        "y_var": "P_BK",
+        "dx": 0,
+        "dy": -2
+      },
+      {
+        "x_var": "P_KL",
+        "y_var": "P_KL",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_K3",
+        "y_var": "P_K3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HKM",
+        "y_var": "P_HKM",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HKM",
+        "y_var": "P_K5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_K5",
+        "y_var": "P_K5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_KN",
+        "y_var": "P_K5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_KN",
+        "y_var": "P_KN",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_KN",
+        "y_var": "P_K7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_K7",
+        "y_var": "P_K7",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_K8",
+        "y_var": "P_K8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_K9",
+        "y_var": "P_K8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_K9",
+        "y_var": "P_K9",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "L": [
+      {
+        "x_var": "P_KL",
+        "y_var": "P_KL",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HL",
+        "y_var": "P_KL",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HL",
+        "y_var": "P_HL",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HL",
+        "y_var": "P_LM",
+        "dx": -2,
+        "dy": 2
+      },
+      {
+        "x_var": "P_LM",
+        "y_var": "P_LM",
+        "dx": 0,
+        "dy": 2
+      },
+      {
+        "x_var": "P_L4",
+        "y_var": "P_LM",
+        "dx": 0,
+        "dy": 2
+      },
+      {
+        "x_var": "P_L4",
+        "y_var": "P_L4",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "M": [
+      {
+        "x_var": "P_MN",
+        "y_var": "P_MN",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_M2",
+        "y_var": "P_M2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HKM",
+        "y_var": "P_M2",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_HKM",
+        "y_var": "P_HKM",
+        "dx": 2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_LM",
+        "y_var": "P_LM",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_M5",
+        "y_var": "P_M5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_M6",
+        "y_var": "P_M6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_M7",
+        "y_var": "P_M7",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "N": [
+      {
+        "x_var": "P_EN",
+        "y_var": "P_EN",
+        "dx": 0,
+        "dy": -2
+      },
+      {
+        "x_var": "P_N2",
+        "y_var": "P_N2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_N2",
+        "y_var": "P_N3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_N3",
+        "y_var": "P_N3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_N3",
+        "y_var": "P_N3",
+        "dx": -3,
+        "dy": 0
+      },
+      {
+        "x_var": "P_N3",
+        "y_var": "P_DN",
+        "dx": -3,
+        "dy": -2
+      },
+      {
+        "x_var": "P_DN",
+        "y_var": "P_DN",
+        "dx": 0,
+        "dy": -2
+      },
+      {
+        "x_var": "P_CN",
+        "y_var": "P_DN",
+        "dx": 0,
+        "dy": -2
+      },
+      {
+        "x_var": "P_CN",
+        "y_var": "P_CN",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CN",
+        "y_var": "P_N6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_N6",
+        "y_var": "P_N6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_KN",
+        "y_var": "P_N6",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_KN",
+        "y_var": "P_KN",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_KN",
+        "y_var": "P_N8",
+        "dx": -2,
+        "dy": 0
+      },
+      {
+        "x_var": "P_N8",
+        "y_var": "P_N8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_MN",
+        "y_var": "P_N8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_MN",
+        "y_var": "P_MN",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "P": [
+      {
+        "x_var": "P_AP",
+        "y_var": "P_AP",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P2",
+        "y_var": "P_AP",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P2",
+        "y_var": "P_P2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P2",
+        "y_var": "P_P3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P3",
+        "y_var": "P_P3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P4",
+        "y_var": "P_P3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P4",
+        "y_var": "P_P4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P4",
+        "y_var": "P_P5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P5",
+        "y_var": "P_P5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P6",
+        "y_var": "P_P6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_EPRV",
+        "y_var": "P_EPRV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_EPRV",
+        "y_var": "P_P8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_P8",
+        "y_var": "P_P8",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_PT",
+        "y_var": "P_PT",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "R": [
+      {
+        "x_var": "P_EPRV",
+        "y_var": "P_EPRV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_R2",
+        "y_var": "P_EPRV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_R2",
+        "y_var": "P_R2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_RS",
+        "y_var": "P_RS",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_RS",
+        "y_var": "P_R4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_R4",
+        "y_var": "P_R4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_R5",
+        "y_var": "P_R4",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_R5",
+        "y_var": "P_R5",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_R5",
+        "y_var": "P_R6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_R6",
+        "y_var": "P_R6",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "S": [
+      {
+        "x_var": "P_RS",
+        "y_var": "P_RS",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_S2",
+        "y_var": "P_RS",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_S2",
+        "y_var": "P_S2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_S2",
+        "y_var": "P_S3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_S3",
+        "y_var": "P_S3",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_S4",
+        "y_var": "P_S4",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "T": [
+      {
+        "x_var": "P_ET",
+        "y_var": "P_ET",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_PT",
+        "y_var": "P_PT",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_TV",
+        "y_var": "P_TV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_TV",
+        "y_var": "P_T2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_T2",
+        "y_var": "P_T2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CT",
+        "y_var": "P_T2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CT",
+        "y_var": "P_CT",
+        "dx": 0,
+        "dy": 0
+      }
+    ],
+    "V": [
+      {
+        "x_var": "P_EPRV",
+        "y_var": "P_EPRV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_V2",
+        "y_var": "P_EPRV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_V2",
+        "y_var": "P_V2",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_V2",
+        "y_var": "P_TV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_TV",
+        "y_var": "P_TV",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_V4",
+        "y_var": "P_V4",
+        "dx": 0,
+        "dy": 0
+      }
+    ]
+  },
+  "alignment_reminders": [
+    {
+      "first_var": "P_A6",
+      "second_var": "P_F7",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_B5",
+      "second_var": "P_BH",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_B8",
+      "second_var": "P_BJ",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_C8",
+      "second_var": "P_CT",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_D5",
+      "second_var": "P_D6",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_D6",
+      "second_var": "P_D7",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_E10",
+      "second_var": "P_E5",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_F2",
+      "second_var": "P_F5",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_F5",
+      "second_var": "P_F7",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_FG",
+      "second_var": "P_G3",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_G6",
+      "second_var": "P_G8",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_G8",
+      "second_var": "P_GJ",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_H3",
+      "second_var": "P_H5",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_BH",
+      "second_var": "P_H7",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_J2",
+      "second_var": "P_J3",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_J4",
+      "second_var": "P_J6",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_HKM",
+      "second_var": "P_KL",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_K7",
+      "second_var": "P_K8",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_K5",
+      "second_var": "P_N6",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_M2",
+      "second_var": "P_MN",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_HKM",
+      "second_var": "P_M5",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_M5",
+      "second_var": "P_M6",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_M6",
+      "second_var": "P_M7",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_P5",
+      "second_var": "P_P6",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_EPRV",
+      "second_var": "P_P6",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_P8",
+      "second_var": "P_PT",
+      "axis": "y"
+    },
+    {
+      "first_var": "P_R2",
+      "second_var": "P_RS",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_S3",
+      "second_var": "P_S4",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_ET",
+      "second_var": "P_TV",
+      "axis": "x"
+    },
+    {
+      "first_var": "P_TV",
+      "second_var": "P_V4",
+      "axis": "y"
+    }
+  ],
+  "extra_edges": [],
+  "path_nodes": [],
+  "railway_finish_progress": {
+    "B": {
+      "x": 2270,
+      "y": 101
+    },
+    "E": {
+      "x": -436,
+      "y": 158
+    },
+    "A": {
+      "x": 133,
+      "y": -2020
+    }
+  },
+  "railway_finish_origins": {
+    "C": "P_ABCDE",
+    "E": "P_ABCDE"
+  }
+}

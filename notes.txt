@@ -88,3 +88,16 @@ Future Items
 [] World map: consider moving generated world data out of iCloud Drive if performance or sync weirdness becomes a problem.
 [] World map: remember that changing the seed later will not magically regenerate an existing saved world.
 [] World map: remember that Bedrock only saves chunks that have actually been generated/visited.
+
+GitHub Browser Viewer Idea
+--------------------------
+[x] Add a first static, read-only browser viewer under `docs/`.
+   - `docs/index.html`, `docs/styles.css`, and `docs/app.js` load `docs/metro_network.json`.
+   - `docs/assets/blackport_topdown.png` is a small tracked sample underlay; keep the rest of `worldgen_output/` ignored.
+   - The viewer keeps editing tools out: no rename, coordinate edit, station creation, railway finishing, save, or export controls.
+   - Current read-only behavior: pan, zoom, station hover, station details, search, line filters, reset view, and unfinished railway styling.
+   - README now has a launch link for `https://akapppy.github.io/Plumville/`.
+[] Enable GitHub Pages from the `main` branch `/docs` folder after the repo is on GitHub.
+[] Keep `docs/metro_network.json` synced when publishing map updates.
+   - Optional later path: add a small sync/export command so the browser viewer data is refreshed from the root `metro_network.json`.
+[] Refresh `docs/assets/blackport_topdown.png` when the generated Minecraft render gets meaningfully better.

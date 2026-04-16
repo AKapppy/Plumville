@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Plumville Metro Viewer</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <main class="viewer-shell">
+      <section class="map-stage" aria-label="Interactive Plumville metro map">
+        <canvas id="metroCanvas" aria-label="Metro map canvas"></canvas>
+        <div id="tooltip" class="tooltip" hidden></div>
+      </section>
+
+      <aside class="side-panel" aria-label="Map controls and station details">
+        <div class="title-block">
+          <p class="eyebrow">Plumville</p>
+          <h1>Metro viewer</h1>
+          <p id="summaryText" class="summary">Loading the network...</p>
+        </div>
+
+        <label class="field-label" for="searchInput">Find a station</label>
+        <input id="searchInput" class="search-input" type="search" autocomplete="off" placeholder="Blackport">
+
+        <div class="actions" aria-label="Map actions">
+          <button id="resetViewButton" type="button">Reset view</button>
+          <button id="showAllButton" type="button">All lines</button>
+          <button id="clearSelectionButton" type="button">Clear</button>
+        </div>
+
+        <section class="details" aria-live="polite">
+          <h2 id="detailsTitle">Select a station</h2>
+          <p id="detailsBody">Click any stop on the map to see its coordinates, served lines, and completion status.</p>
+        </section>
+
+        <section class="lines-section" aria-label="Line filters">
+          <div class="section-heading">
+            <h2>Lines</h2>
+            <span id="visibleLineCount"></span>
+          </div>
+          <div id="lineFilters" class="line-filters"></div>
+        </section>
+      </aside>
+    </main>
+
+    <script src="app.js" defer></script>
+  </body>
+</html>
