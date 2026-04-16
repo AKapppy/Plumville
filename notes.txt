@@ -96,7 +96,7 @@ GitHub Browser Viewer Idea
    - `docs/assets/blackport_topdown.png` is a small tracked sample underlay; keep the rest of `worldgen_output/` ignored.
    - The viewer page uses `https://akapppy.github.io/Plumville/` as its canonical public URL for GitHub Pages.
    - The viewer keeps editing tools out: no rename, coordinate edit, station creation, railway finishing, save, or export controls.
-   - Current read-only behavior: pan, zoom, station hover, station details, search, line filters, reset view, and unfinished railway styling.
+   - Current read-only behavior: Tk-style dark Directions sidebar, pan, zoom, station hover, station popup details, search, route planning, route highlighting, reset view, Blackport view, map/label/alignment/frontier toggles, and unfinished railway styling.
    - README now has a launch link for `https://akapppy.github.io/Plumville/`.
 [] Enable GitHub Pages from the `main` branch `/docs` folder after the repo is on GitHub.
 [] Keep `docs/metro_network.json` synced when publishing map updates.

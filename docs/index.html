@@ -13,40 +13,86 @@
   </head>
   <body>
     <main class="viewer-shell">
-      <section class="map-stage" aria-label="Interactive Plumville metro map">
-        <canvas id="metroCanvas" aria-label="Metro map canvas"></canvas>
-        <div id="tooltip" class="tooltip" hidden></div>
-      </section>
-
       <aside class="side-panel" aria-label="Map controls and station details">
         <div class="title-block">
-          <p class="eyebrow">Plumville</p>
-          <h1>Metro viewer</h1>
+          <h1>Directions</h1>
           <p id="summaryText" class="summary">Loading the network...</p>
         </div>
 
-        <label class="field-label" for="searchInput">Find a station</label>
-        <input id="searchInput" class="search-input" type="search" autocomplete="off" placeholder="Blackport">
+        <section class="control-section">
+          <label class="field-label" for="searchInput">Search</label>
+          <div class="input-row">
+            <input id="searchInput" class="sidebar-input" type="search" autocomplete="off" placeholder="Blackport">
+            <button id="searchButton" type="button">Go</button>
+          </div>
+          <p id="searchStatus" class="hint">Search stations by village name or station code.</p>
+        </section>
+
+        <section class="control-section">
+          <label class="field-label" for="routeStartInput">From</label>
+          <input id="routeStartInput" class="sidebar-input" type="text" autocomplete="off" placeholder="Blackport">
+          <p class="hint">Station label / var</p>
+
+          <label class="field-label spaced" for="routeEndInput">To</label>
+          <input id="routeEndInput" class="sidebar-input" type="text" autocomplete="off" placeholder="Dicton">
+          <p class="hint">Station label / var</p>
+
+          <label class="check-row">
+            <input id="useMetroInput" type="checkbox" checked>
+            <span>Use metro</span>
+          </label>
+          <label class="check-row">
+            <input id="useFlyingInput" type="checkbox">
+            <span>Use flying</span>
+          </label>
+
+          <div class="actions" aria-label="Route actions">
+            <button id="routeButton" type="button">Route</button>
+            <button id="swapRouteButton" type="button">Swap</button>
+            <button id="clearRouteButton" type="button">Clear</button>
+          </div>
+        </section>
+
+        <section class="text-panel" aria-live="polite">
+          <p id="routeSummary">Choose two stations.</p>
+          <pre id="routeSteps">Enter or select a start and destination, then press Route.</pre>
+        </section>
 
         <div class="actions" aria-label="Map actions">
           <button id="resetViewButton" type="button">Reset view</button>
-          <button id="showAllButton" type="button">All lines</button>
+          <button id="blackportButton" type="button">Blackport</button>
           <button id="clearSelectionButton" type="button">Clear</button>
         </div>
 
-        <section class="details" aria-live="polite">
-          <h2 id="detailsTitle">Select a station</h2>
-          <p id="detailsBody">Click any stop on the map to see its coordinates, served lines, and completion status.</p>
+        <section class="control-section">
+          <label class="check-row">
+            <input id="showWorldMapInput" type="checkbox" checked>
+            <span>Show rendered map</span>
+          </label>
+          <label class="check-row">
+            <input id="showLabelsInput" type="checkbox" checked>
+            <span>Show station labels</span>
+          </label>
+          <label class="check-row">
+            <input id="showAlignmentInput" type="checkbox" checked>
+            <span>Show alignment ellipses</span>
+          </label>
+          <label class="check-row">
+            <input id="showFrontierInput" type="checkbox" checked>
+            <span>Show frontier highlights</span>
+          </label>
         </section>
 
-        <section class="lines-section" aria-label="Line filters">
-          <div class="section-heading">
-            <h2>Lines</h2>
-            <span id="visibleLineCount"></span>
-          </div>
-          <div id="lineFilters" class="line-filters"></div>
+        <section class="text-panel">
+          <p id="readOnlyNotice">Read-only viewer. Station names, coordinates, progress, and railway finishing are locked on this site.</p>
         </section>
       </aside>
+
+      <section class="map-stage" aria-label="Interactive Plumville metro map">
+        <canvas id="metroCanvas" aria-label="Metro map canvas"></canvas>
+        <div id="tooltip" class="tooltip" hidden></div>
+        <div id="infoPopup" class="info-popup" hidden></div>
+      </section>
     </main>
 
     <script src="app.js" defer></script>
