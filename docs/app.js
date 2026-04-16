@@ -379,7 +379,7 @@ function loadTerrainImage() {
     state.terrain.loaded = true;
     render();
   };
-  image.src = 'assets/blackport_topdown.png';
+  image.src = `assets/blackport_topdown.png?v=${Date.now()}`;
 }
 
 function drawTerrainUnderlay() {

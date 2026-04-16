@@ -2,13 +2,12 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-   [] zoom seems to lag? i don't think its speed related, it seems like it's lagging
+   [] is it possible to make the new circle just be a little larger than the old circle? essentially just expanding the circle every time instead of moving it?
 
 #App (Web Version)
-   [x] can we make zoom rate slower
+   [x] it still uses the old map image, not the updated one
 
 #World Map
-   [x] can we reset the map (keep the old file just in case we want to revert) so i can see the new progress to see if the noise is decreasing? it should grow in one big circle around blackport, no teleporting spots
    [] this should be a completely virtual experience. no minecraft world will be opened at anytime to generate the terrain. it should just be based off the seed and the seed alone. if docker desktop is looking for an open or saved minecraft file, it will never find one. we should reroute it if this is the case
    [] keep filling the rectangle with repeated Auto Fill Step clicks.
       - reset backup: `worldgen_data/reset_backups/20260416_094729`
@@ -19,7 +18,7 @@ Minecraft Metro Map Notes
       - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels
       - latest fresh report found 1116 sampled uncolored occurrences
       - Auto Fill now advances one circular target only after a successful chunk load
-      - next target rectangle is drawn in blue around the next circular load target
+      - next target circle is drawn in blue around the next circular load target
       - latest expansion pass targeted (294, 246), cached 760 chunk columns, and rendered 194560 known-color pixels
       - next expansion target preview is (438, 390), target 3/657
       - coverage now includes cached headless packet columns as well as LevelDB columns

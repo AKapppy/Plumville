@@ -7056,7 +7056,7 @@ class MetroMapViewer:
             top = center_y - (WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE / 2)
             bottom = center_y + (WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE / 2)
 
-        self.canvas.create_rectangle(
+        self.canvas.create_oval(
             left,
             top,
             right,
@@ -7086,7 +7086,7 @@ class MetroMapViewer:
         if right <= left or bottom <= top:
             return
 
-        self.canvas.create_rectangle(
+        self.canvas.create_oval(
             left,
             top,
             right,
@@ -7364,7 +7364,7 @@ class MetroMapViewer:
         self.pan_x = anchor_x - center_x - ((anchor_x - center_x - self.pan_x) * ratio)
         self.pan_y = anchor_y - center_y - ((anchor_y - center_y - self.pan_y) * ratio)
         self.zoom = new_zoom
-        self.redraw()
+        self._schedule_redraw()
 
     def _set_view_to_plot_bounds(
         self,
