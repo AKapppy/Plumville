@@ -229,6 +229,8 @@ class BedrockWorldGenerator:
             )
         except ComposeError:
             return None
+        if result.returncode != 0:
+            return None
         services = {line.strip() for line in result.stdout.splitlines() if line.strip()}
         return BEDROCK_SERVICE_NAME in services
 

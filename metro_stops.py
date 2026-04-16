@@ -34,7 +34,7 @@ GRID_COLOR: Final[str] = '#4b4b4b'
 INTERSECTION_COLOR: Final[str] = '#ffffff'
 DEFAULT_ZOOM: Final[float] = 1.0
 MAX_VISIBLE_BLOCKS_AT_MAX_ZOOM: Final[float] = 10.0
-ZOOM_STEP: Final[float] = 1.45
+ZOOM_STEP: Final[float] = 1.7
 FRONTIER_LABEL_SIZE_BOOST: Final[int] = 6
 LABEL_ANGLE: Final[float] = 30.0
 BASE_LABEL_FONT_SIZE: Final[int] = 12
@@ -102,6 +102,7 @@ WORLD_MAP_RENDER_BOUNDS_WIDTH: Final[int] = 2
 WORLD_MAP_RENDER_BOUNDS_DASH: Final[tuple[int, int]] = (6, 4)
 WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE: Final[int] = 24
 WORLD_MAP_AUTO_LOAD_PASSES: Final[int] = 1
+SIDEBAR_SCROLL_UNITS: Final[int] = 3
 SIDEBAR_WIDTH: Final[int] = 340
 SIDEBAR_TITLE_FONT_SIZE: Final[int] = 20
 SIDEBAR_TEXT_FONT_SIZE: Final[int] = 12
@@ -7459,7 +7460,7 @@ class MetroMapViewer:
     def _scroll_sidebar_units(self, units: int) -> None:
         if units == 0:
             return
-        self.sidebar_canvas.yview_scroll(units, 'units')
+        self.sidebar_canvas.yview_scroll(units * SIDEBAR_SCROLL_UNITS, 'units')
 
     def _on_global_left_click_release(self, event: object) -> None:
         widget = getattr(event, 'widget', None)

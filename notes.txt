@@ -1,14 +1,19 @@
 Minecraft Metro Map Notes
 =========================
 
-#Web Version
-   [x] clicking outside of the station popup box should close it
-   [x] get rid of world map rectangle
+#App (Python Version)
+   [x] can we make scroll and zoom rates faster
+
+#App (Web Version)
+   [x] of the view options, all should default to off except station labels
+   [x] can we make zoom rate slower
 
 #World Map
+   [x] i got this error: "Auto filling world map failed. \n docker is not installed or is not on PATH." i never changed anything about docker
    [x] there's a lot of visual noise going on. we should be doing a block-by-block read of the terrain, not stopping at chunk-by-chunk
    [] this should be a completely virtual experience. no minecraft world will be opened at anytime to generate the terrain. it should just be based off the seed and the seed alone. if docker desktop is looking for an open or saved minecraft file, it will never find one. we should reroute it if this is the case
    [] keep filling the rectangle with repeated Auto Fill Step clicks.
+      - current blocker: Docker Desktop is installed, but its daemon is not running; open Docker Desktop before the next Auto Fill Step
       - active generated world folder: `metro_map_world_boxfill`
       - render area is centered on Blackport at x=294, z=390, radius=2000
       - Auto Fill now scans saved chunk columns and targets the smallest under-filled Blackport box

@@ -10,6 +10,21 @@ class ComposeError(RuntimeError):
     pass
 
 
+DOCKER_CLI_CANDIDATES = (
+    Path('/Applications/Docker.app/Contents/Resources/bin/docker'),
+    Path('/usr/local/bin/docker'),
+    Path('/opt/homebrew/bin/docker'),
+    Path.home() / '.docker/bin/docker',
+)
+COMPOSE_CLI_CANDIDATES = (
+    Path('/Applications/Docker.app/Contents/Resources/cli-plugins/docker-compose'),
+    Path('/usr/local/bin/docker-compose'),
+    Path('/opt/homebrew/bin/docker-compose'),
+    Path('/usr/local/lib/docker/cli-plugins/docker-compose'),
+    Path('/opt/homebrew/lib/docker/cli-plugins/docker-compose'),
+)
+
+
 @dataclass(frozen=True, slots=True)
 class ComposeResult:
     args: tuple[str, ...]
@@ -24,7 +39,31 @@ class ComposeResult:
 
 
 def docker_available() -> bool:
-    return shutil.which('docker') is not None
+    return compose_command_prefix() is not None
+
+
+def docker_executable() -> str | None:
+    docker_path = shutil.which('docker')
+    if docker_path:
+        return docker_path
+    for candidate in DOCKER_CLI_CANDIDATES:
+        if candidate.exists() and candidate.is_file():
+            return str(candidate)
+    return None
+
+
+def compose_command_prefix() -> tuple[str, ...] | None:
+    compose_path = shutil.which('docker-compose')
+    if compose_path:
+        return (compose_path,)
+    for candidate in COMPOSE_CLI_CANDIDATES:
+        if candidate.exists() and candidate.is_file():
+            return (str(candidate),)
+
+    docker_path = docker_executable()
+    if docker_path:
+        return (docker_path, 'compose')
+    return None
 
 
 def build_compose_command(
@@ -34,9 +73,9 @@ def build_compose_command(
     env_file: Path,
     args: list[str],
 ) -> list[str]:
+    command_prefix = compose_command_prefix() or ('docker', 'compose')
     return [
-        'docker',
-        'compose',
+        *command_prefix,
         '-p',
         project_name,
         '-f',
@@ -71,7 +110,9 @@ def run_compose(
             timeout=timeout_seconds,
         )
     except FileNotFoundError as exc:
-        raise ComposeError('docker is not installed or is not on PATH.') from exc
+        raise ComposeError(
+            'Docker Compose was not found on PATH or in the Docker Desktop app bundle.'
+        ) from exc
     except subprocess.TimeoutExpired as exc:
         stdout = exc.stdout if isinstance(exc.stdout, str) else ''
         stderr = exc.stderr if isinstance(exc.stderr, str) else ''
@@ -93,5 +134,21 @@ def run_compose(
         stderr=completed.stderr,
     )
     if check and completed.returncode != 0:
-        raise ComposeError(result.combined_output or 'docker compose command failed.')
+        raise ComposeError(_friendly_compose_error(result))
     return result
+
+
+def _friendly_compose_error(result: ComposeResult) -> str:
+    output = result.combined_output or 'docker compose command failed.'
+    lower_output = output.lower()
+    if 'cannot connect to the docker daemon' in lower_output:
+        return '\n'.join(
+            (
+                'Docker Desktop is installed, but the Docker daemon is not running.',
+                'Open Docker Desktop and wait until it is fully started, then try Auto Fill Step again.',
+                '',
+                'Original Docker output:',
+                output,
+            )
+        )
+    return output
