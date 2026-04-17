@@ -772,13 +772,15 @@ def render_topdown_map(
             max_chunk_z=max_chunk_z,
         )
     )
+    packet_cache_path = config.storage.cache_dir / HEADLESS_CHUNK_PACKET_FILE_NAME
     packet_records = _iter_cached_packet_subchunk_records(
-        config.storage.cache_dir / HEADLESS_CHUNK_PACKET_FILE_NAME,
+        packet_cache_path,
         min_chunk_x=min_chunk_x,
         max_chunk_x=max_chunk_x,
         min_chunk_z=min_chunk_z,
         max_chunk_z=max_chunk_z,
     )
+    _compact_cached_packet_subchunk_records(packet_cache_path, packet_records)
     packet_records = _filter_packet_records_against_persistent_columns(
         packet_records,
         persistent_records=persistent_records,
@@ -1018,6 +1020,51 @@ def _iter_cached_packet_subchunk_records(
                         )
                     ] = subchunk_record
     return tuple(latest_records.values())
+
+
+def _compact_cached_packet_subchunk_records(
+    packet_cache_path: Path,
+    records: tuple[SubchunkRecord, ...],
+) -> None:
+    if not records or not packet_cache_path.exists():
+        return
+
+    compacted_at = utc_now_iso()
+    lines = []
+    for record in records:
+        if not record.payload:
+            continue
+        lines.append(
+            json.dumps(
+                {
+                    'type': 'subchunk',
+                    'generated_at': compacted_at,
+                    'x': record.chunk_x,
+                    'z': record.chunk_z,
+                    'dimension': (
+                        record.dimension_id
+                        if record.dimension_id is not None
+                        else OVERWORLD_DIMENSION_ID
+                    ),
+                    'subchunk_y': record.subchunk_y,
+                    'payload_base64': base64.b64encode(record.payload).decode('ascii'),
+                },
+                sort_keys=True,
+            )
+        )
+
+    if not lines:
+        return
+
+    temporary_path = packet_cache_path.with_suffix(f'{packet_cache_path.suffix}.tmp')
+    try:
+        temporary_path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        temporary_path.replace(packet_cache_path)
+    except OSError:
+        try:
+            temporary_path.unlink()
+        except OSError:
+            pass
 
 
 def _record_cache_key(record: SubchunkRecord) -> tuple[str, int, int, int]:

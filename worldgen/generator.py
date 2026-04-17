@@ -26,7 +26,9 @@ HEADLESS_LOADER_STARTUP_TIMEOUT_SECONDS = 300
 HEADLESS_LOADER_STOP_GRACE_SECONDS = 10
 HEADLESS_LOADER_STOP_COMMAND_TIMEOUT_SECONDS = 25
 HEADLESS_LOADER_FIRST_TELEPORT_DELAY_SECONDS = 1.0
+HEADLESS_LOADER_SETTLE_AFTER_LAST_TELEPORT_SECONDS = 12.0
 TELEPORT_TARGET_COVERAGE_THRESHOLD = 0.85
+TELEPORT_TARGET_PLANNER_VERSION = 'blank-space-v1'
 CHUNK_TOUCH_BLOCK = 'bedrock'
 CHUNK_TOUCH_Y = -64
 CHUNK_TOUCH_MAX_BLOCKS = 30_000
@@ -46,6 +48,8 @@ class GeneratorStatus:
     render_plan_path: Path
     render_image_path: Path
     render_image_exists: bool
+    docs_render_image_path: Path
+    docs_render_image_exists: bool
     render_cache_path: Path
     render_cache_exists: bool
 
@@ -319,6 +323,22 @@ class BedrockWorldGenerator:
         progress_path = self.paths.cache_dir / HEADLESS_LOADER_PROGRESS_FILE_NAME
         coverage_world_path = self._world_folder_for_coverage_scan()
         teleport_points = _render_area_teleport_points(self.config, world_path=coverage_world_path)
+        if not teleport_points:
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            return HeadlessChunkLoadResult(
+                world_path=coverage_world_path or self.locate_world_folder(require_exists=False),
+                result_path=result_path,
+                returncode=0,
+                chunks_received=0,
+                unique_chunk_columns=0,
+                load_attempts=0,
+                teleport_commands_sent=0,
+                teleport_target_count=0,
+                teleport_next_index=0,
+                teleport_targets=(),
+                server_stopped=False,
+                output='Render area already has no blank chunk columns.',
+            )
         teleport_start_index = _load_headless_loader_progress(
             progress_path,
             config=self.config,
@@ -482,6 +502,9 @@ class BedrockWorldGenerator:
         teleport_commands_sent = 0
         teleport_targets: list[tuple[int, int]] = []
         touched_targets: set[tuple[int, int]] = set()
+        simulated_saved_columns = _saved_render_chunk_columns(self.config, world_path)
+        last_teleport_sent_at: float | None = None
+        kicked_after_target_batch = False
         next_teleport_at = time.monotonic() + min(
             loader_config.teleport_delay_seconds,
             HEADLESS_LOADER_FIRST_TELEPORT_DELAY_SECONDS,
@@ -519,17 +542,42 @@ class BedrockWorldGenerator:
                 )
                 if (target_x, target_z) not in touched_targets:
                     touched_targets.add((target_x, target_z))
-                    touch_commands = _chunk_touch_fill_commands(self.config, (target_x, target_z))
+                    target_columns = _teleport_point_chunk_columns(
+                        self.config,
+                        (target_x, target_z),
+                    )
+                    touch_commands = _chunk_touch_fill_commands(
+                        self.config,
+                        (target_x, target_z),
+                        existing_columns=simulated_saved_columns,
+                    )
                     for touch_command in touch_commands:
                         self.send_command(touch_command, check=False)
+                    simulated_saved_columns.update(target_columns)
                     server_command_outputs.append(
                         (
                             f'$ touch loaded chunks under {target_x},{target_z}\n'
-                            f'{len(touch_commands)} bottom fill commands at y={CHUNK_TOUCH_Y}'
+                            f'{len(touch_commands)} blank-space bottom fill commands at y={CHUNK_TOUCH_Y}'
                         )
                     )
                 teleport_commands_sent += 1
+                last_teleport_sent_at = now
                 next_teleport_at = now + loader_config.teleport_retry_seconds
+            if (
+                not kicked_after_target_batch
+                and teleport_commands_sent >= loader_config.teleport_attempts
+                and last_teleport_sent_at is not None
+                and _headless_loader_has_chunks(output_lines)
+                and now >= last_teleport_sent_at + HEADLESS_LOADER_SETTLE_AFTER_LAST_TELEPORT_SECONDS
+            ):
+                kick_command = f'kick {loader_username} Auto fill target batch complete'
+                server_command_outputs.append(
+                    _format_server_command_output(
+                        kick_command,
+                        self.send_command(kick_command, check=False),
+                    )
+                )
+                kicked_after_target_batch = True
             time.sleep(0.25)
 
         returncode = process.wait()
@@ -574,7 +622,7 @@ class BedrockWorldGenerator:
         self.paths.ensure_runtime_dirs()
         world_path = self._resolve_existing_world_folder()
         self.write_render_plan(world_path)
-        return render_topdown_map(
+        result = render_topdown_map(
             self.config,
             world_path,
             image_path=self.paths.render_image_path,
@@ -582,6 +630,8 @@ class BedrockWorldGenerator:
             diagnose_unknown_blocks=diagnose_unknown_blocks,
             prefer_persistent_bedrock=prefer_persistent_bedrock,
         )
+        shutil.copy2(self.paths.render_image_path, self.paths.docs_render_image_path)
+        return result
 
     def _prepare_db_for_headless_loader(self) -> None:
         return
@@ -637,6 +687,8 @@ class BedrockWorldGenerator:
             render_plan_path=self.paths.render_plan_path,
             render_image_path=self.paths.render_image_path,
             render_image_exists=self.paths.render_image_path.exists(),
+            docs_render_image_path=self.paths.docs_render_image_path,
+            docs_render_image_exists=self.paths.docs_render_image_path.exists(),
             render_cache_path=self.paths.render_cache_path,
             render_cache_exists=self.paths.render_cache_path.exists(),
         )
@@ -701,6 +753,17 @@ class BedrockWorldGenerator:
             coverage=coverage,
         )
 
+    def render_area_coverage_complete(self) -> bool:
+        world_path = self._world_folder_for_coverage_scan()
+        if world_path is None or not world_path.exists():
+            return False
+
+        saved_columns = _saved_render_chunk_columns(self.config, world_path)
+        if not saved_columns:
+            return False
+
+        return not _missing_render_chunk_columns(self.config, saved_columns)
+
 
 def _tail_lines(text: str, limit: int) -> str:
     lines = [line for line in text.splitlines() if line.strip()]
@@ -734,13 +797,10 @@ def _next_undercovered_teleport_index(
     if not saved_columns:
         return start_index % len(teleport_points)
 
-    target_count = len(teleport_points)
-    for offset in range(target_count):
-        index = (start_index + offset) % target_count
-        coverage = _teleport_point_chunk_coverage(config, teleport_points[index], saved_columns)
-        if coverage < TELEPORT_TARGET_COVERAGE_THRESHOLD:
+    for index, point in enumerate(teleport_points):
+        if _teleport_point_missing_chunk_count(config, point, saved_columns) > 0:
             return index
-    return start_index % target_count
+    return start_index % len(teleport_points)
 
 
 def _load_headless_loader_progress(
@@ -792,8 +852,10 @@ def _headless_loader_progress_signature(config: WorldgenConfig, target_count: in
         'render_radius': config.render.radius,
         'chunk_radius': config.headless_loader.chunk_radius,
         'target_outset_blocks': config.headless_loader.target_outset_blocks,
+        'target_overlap_blocks': config.headless_loader.target_overlap_blocks,
         'teleport_y': config.headless_loader.teleport_y,
         'target_count': target_count,
+        'planner_version': TELEPORT_TARGET_PLANNER_VERSION,
     }
 
 
@@ -847,6 +909,10 @@ def _headless_loader_ready_for_teleport(output_lines: list[str]) -> bool:
     return any('spawned' in line for line in output_lines)
 
 
+def _headless_loader_has_chunks(output_lines: list[str]) -> bool:
+    return any('chunk packets' in line or 'chunk_columns=' in line for line in output_lines)
+
+
 def _headless_loader_username(attempt_number: int) -> str:
     unique_number = int(time.time() * 1000) % 1_000_000
     return f'MetroBot{unique_number:06d}{attempt_number}'
@@ -857,47 +923,216 @@ def _render_area_teleport_points(
     *,
     world_path: Path | None = None,
 ) -> tuple[tuple[int, int], ...]:
-    del world_path
+    saved_columns: set[tuple[int, int]] = set()
+    if world_path is not None and world_path.exists():
+        saved_columns = _saved_render_chunk_columns(config, world_path)
+    return _blank_space_fill_teleport_points(config, saved_columns)
 
-    step = max(16, round(config.headless_loader.chunk_radius * 16 * 0.75))
-    points = [
-        (x, z)
-        for z in _render_axis_teleport_values(
-            config.render.min_z,
-            config.render.max_z,
-            config.render.center_z,
-            step,
+
+def _target_stride_chunks(config: WorldgenConfig) -> int:
+    radius = config.headless_loader.chunk_radius
+    target_width_chunks = (radius * 2) + 1
+    overlap_chunks = min(radius * 2, math.ceil(config.headless_loader.target_overlap_blocks / 16))
+    return max(1, target_width_chunks - overlap_chunks)
+
+
+def _chunk_center_world(chunk_coordinate: int) -> int:
+    return (chunk_coordinate * 16) + 8
+
+
+def _blank_space_fill_teleport_points(
+    config: WorldgenConfig,
+    saved_columns: set[tuple[int, int]],
+) -> tuple[tuple[int, int], ...]:
+    missing_columns = _missing_render_chunk_columns(config, saved_columns)
+    ordered_points: list[tuple[int, int]] = []
+
+    while missing_columns:
+        closest_column = min(
+            missing_columns,
+            key=lambda column: _chunk_column_blackport_sort_key(config, column),
         )
-        for x in _render_axis_teleport_values(
-            config.render.min_x,
-            config.render.max_x,
-            config.render.center_x,
-            step,
+        target_center_chunk = _best_blank_space_target_center_chunk(
+            config,
+            closest_column,
+            missing_columns,
         )
-    ]
-    points = [_outset_teleport_point(config, point) for point in points]
-    return _progressive_box_teleport_points(config, points, step)
+        target_point = (
+            _chunk_center_world(target_center_chunk[0]),
+            _chunk_center_world(target_center_chunk[1]),
+        )
+        ordered_points.append(target_point)
+
+        covered_columns = _teleport_center_chunk_columns(
+            config,
+            target_center_chunk[0],
+            target_center_chunk[1],
+        )
+        before_count = len(missing_columns)
+        missing_columns.difference_update(covered_columns)
+        if len(missing_columns) == before_count:
+            missing_columns.discard(closest_column)
+
+    return tuple(ordered_points)
 
 
-def _outset_teleport_point(
+def _best_blank_space_target_center_chunk(
+    config: WorldgenConfig,
+    closest_column: tuple[int, int],
+    missing_columns: set[tuple[int, int]],
+) -> tuple[int, int]:
+    radius = config.headless_loader.chunk_radius
+    center_min_x, center_max_x, center_min_z, center_max_z = _target_center_chunk_bounds(config)
+    closest_chunk_x, closest_chunk_z = closest_column
+    candidate_min_x = max(center_min_x, closest_chunk_x - radius)
+    candidate_max_x = min(center_max_x, closest_chunk_x + radius)
+    candidate_min_z = max(center_min_z, closest_chunk_z - radius)
+    candidate_max_z = min(center_max_z, closest_chunk_z + radius)
+
+    if candidate_min_x > candidate_max_x:
+        clamped_x = _clamp_int(closest_chunk_x, center_min_x, center_max_x)
+        candidate_min_x = candidate_max_x = clamped_x
+    if candidate_min_z > candidate_max_z:
+        clamped_z = _clamp_int(closest_chunk_z, center_min_z, center_max_z)
+        candidate_min_z = candidate_max_z = clamped_z
+
+    best_center = (candidate_min_x, candidate_min_z)
+    best_key: tuple[int, float, float, float, int, int] | None = None
+    for center_chunk_z in range(candidate_min_z, candidate_max_z + 1):
+        for center_chunk_x in range(candidate_min_x, candidate_max_x + 1):
+            covered_missing_count = sum(
+                1
+                for column in _teleport_center_chunk_columns(config, center_chunk_x, center_chunk_z)
+                if column in missing_columns
+            )
+            center_world = (
+                _chunk_center_world(center_chunk_x),
+                _chunk_center_world(center_chunk_z),
+            )
+            closest_world = (
+                _chunk_center_world(closest_chunk_x),
+                _chunk_center_world(closest_chunk_z),
+            )
+            key = (
+                -covered_missing_count,
+                math.hypot(
+                    center_world[0] - config.render.center_x,
+                    center_world[1] - config.render.center_z,
+                ),
+                math.hypot(
+                    center_world[0] - closest_world[0],
+                    center_world[1] - closest_world[1],
+                ),
+                math.atan2(
+                    center_world[1] - config.render.center_z,
+                    center_world[0] - config.render.center_x,
+                ),
+                center_chunk_z,
+                center_chunk_x,
+            )
+            if best_key is None or key < best_key:
+                best_key = key
+                best_center = (center_chunk_x, center_chunk_z)
+
+    return best_center
+
+
+def _chunk_column_blackport_sort_key(
+    config: WorldgenConfig,
+    column: tuple[int, int],
+) -> tuple[float, float, int, int]:
+    world_x = _chunk_center_world(column[0])
+    world_z = _chunk_center_world(column[1])
+    delta_x = world_x - config.render.center_x
+    delta_z = world_z - config.render.center_z
+    return (
+        math.hypot(delta_x, delta_z),
+        math.atan2(delta_z, delta_x),
+        column[1],
+        column[0],
+    )
+
+
+def _target_center_chunk_bounds(config: WorldgenConfig) -> tuple[int, int, int, int]:
+    min_chunk_x, max_chunk_x, min_chunk_z, max_chunk_z = _render_area_chunk_bounds(config)
+    radius = config.headless_loader.chunk_radius
+    center_min_x = min_chunk_x + radius
+    center_max_x = max_chunk_x - radius
+    center_min_z = min_chunk_z + radius
+    center_max_z = max_chunk_z - radius
+    center_chunk_x = config.render.center_x // 16
+    center_chunk_z = config.render.center_z // 16
+
+    if center_min_x > center_max_x:
+        clamped_x = _clamp_int(center_chunk_x, min_chunk_x, max_chunk_x)
+        center_min_x = center_max_x = clamped_x
+    if center_min_z > center_max_z:
+        clamped_z = _clamp_int(center_chunk_z, min_chunk_z, max_chunk_z)
+        center_min_z = center_max_z = clamped_z
+
+    return (center_min_x, center_max_x, center_min_z, center_max_z)
+
+
+def _render_area_chunk_bounds(config: WorldgenConfig) -> tuple[int, int, int, int]:
+    render = config.render
+    return (
+        render.min_x // 16,
+        render.max_x // 16,
+        render.min_z // 16,
+        render.max_z // 16,
+    )
+
+
+def _render_area_chunk_columns(config: WorldgenConfig) -> set[tuple[int, int]]:
+    min_chunk_x, max_chunk_x, min_chunk_z, max_chunk_z = _render_area_chunk_bounds(config)
+    return {
+        (chunk_x, chunk_z)
+        for chunk_z in range(min_chunk_z, max_chunk_z + 1)
+        for chunk_x in range(min_chunk_x, max_chunk_x + 1)
+    }
+
+
+def _missing_render_chunk_columns(
+    config: WorldgenConfig,
+    saved_columns: set[tuple[int, int]],
+) -> set[tuple[int, int]]:
+    return _render_area_chunk_columns(config).difference(saved_columns)
+
+
+def _teleport_point_chunk_columns(
     config: WorldgenConfig,
     point: tuple[int, int],
-) -> tuple[int, int]:
-    outset = config.headless_loader.target_outset_blocks
-    if outset <= 0:
-        return point
+) -> set[tuple[int, int]]:
+    return _teleport_center_chunk_columns(config, point[0] // 16, point[1] // 16)
 
-    delta_x = point[0] - config.render.center_x
-    delta_z = point[1] - config.render.center_z
-    distance = math.hypot(delta_x, delta_z)
-    if distance == 0:
-        return point
 
-    scale = (distance + outset) / distance
-    return (
-        round(config.render.center_x + (delta_x * scale)),
-        round(config.render.center_z + (delta_z * scale)),
+def _teleport_center_chunk_columns(
+    config: WorldgenConfig,
+    center_chunk_x: int,
+    center_chunk_z: int,
+) -> set[tuple[int, int]]:
+    radius = config.headless_loader.chunk_radius
+    min_chunk_x, max_chunk_x, min_chunk_z, max_chunk_z = _render_area_chunk_bounds(config)
+    return {
+        (chunk_x, chunk_z)
+        for chunk_z in range(center_chunk_z - radius, center_chunk_z + radius + 1)
+        if min_chunk_z <= chunk_z <= max_chunk_z
+        for chunk_x in range(center_chunk_x - radius, center_chunk_x + radius + 1)
+        if min_chunk_x <= chunk_x <= max_chunk_x
+    }
+
+
+def _teleport_point_missing_chunk_count(
+    config: WorldgenConfig,
+    point: tuple[int, int],
+    saved_columns: set[tuple[int, int]],
+) -> int:
+    return sum(
+        1
+        for column in _teleport_point_chunk_columns(config, point)
+        if column not in saved_columns
     )
+
 
 def _progressive_box_teleport_points(
     config: WorldgenConfig,
@@ -906,14 +1141,23 @@ def _progressive_box_teleport_points(
 ) -> tuple[tuple[int, int], ...]:
     return tuple(sorted(points, key=lambda point: _box_fill_teleport_sort_key(config, point, step)))
 
+
 def _undercovered_box_teleport_points(
     config: WorldgenConfig,
     points: list[tuple[int, int]] | tuple[tuple[int, int], ...],
     step: int,
     saved_columns: set[tuple[int, int]],
 ) -> tuple[tuple[int, int], ...]:
-    del saved_columns
-    return tuple(sorted(points, key=lambda point: _box_fill_teleport_sort_key(config, point, step)))
+    return tuple(
+        sorted(
+            points,
+            key=lambda point: (
+                _teleport_point_chunk_coverage(config, point, saved_columns),
+                _box_fill_teleport_sort_key(config, point, step),
+            ),
+        )
+    )
+
 
 def _saved_render_chunk_columns(
     config: WorldgenConfig,
@@ -991,17 +1235,7 @@ def _teleport_point_chunk_coverage(
     point: tuple[int, int],
     saved_columns: set[tuple[int, int]],
 ) -> float:
-    radius = config.headless_loader.chunk_radius
-    center_chunk_x = point[0] // 16
-    center_chunk_z = point[1] // 16
-
-    requested_columns: list[tuple[int, int]] = []
-    for chunk_x in range(center_chunk_x - radius, center_chunk_x + radius + 1):
-        for chunk_z in range(center_chunk_z - radius, center_chunk_z + radius + 1):
-            if not _chunk_column_in_render_radius(config, chunk_x, chunk_z):
-                continue
-            requested_columns.append((chunk_x, chunk_z))
-
+    requested_columns = _teleport_point_chunk_columns(config, point)
     if not requested_columns:
         return 1.0
 
@@ -1015,17 +1249,26 @@ def _teleport_point_chunk_coverage(
 def _chunk_touch_fill_commands(
     config: WorldgenConfig,
     point: tuple[int, int],
+    *,
+    existing_columns: set[tuple[int, int]] | None = None,
 ) -> tuple[str, ...]:
     radius = config.headless_loader.chunk_radius
     center_chunk_x = point[0] // 16
     center_chunk_z = point[1] // 16
+    filled_columns = existing_columns or set()
+    min_chunk_x, max_chunk_x, min_chunk_z, max_chunk_z = _render_area_chunk_bounds(config)
 
-    commands: list[str] = []
+    row_spans: list[tuple[int, int, int]] = []
     for chunk_z in range(center_chunk_z - radius, center_chunk_z + radius + 1):
+        if not min_chunk_z <= chunk_z <= max_chunk_z:
+            continue
         eligible_chunk_x = [
             chunk_x
             for chunk_x in range(center_chunk_x - radius, center_chunk_x + radius + 1)
-            if _chunk_column_in_render_radius(config, chunk_x, chunk_z)
+            if (
+                min_chunk_x <= chunk_x <= max_chunk_x
+                and (chunk_x, chunk_z) not in filled_columns
+            )
         ]
         if not eligible_chunk_x:
             continue
@@ -1036,17 +1279,83 @@ def _chunk_touch_fill_commands(
             if chunk_x == previous_chunk_x + 1:
                 previous_chunk_x = chunk_x
                 continue
-            commands.append(
-                _chunk_touch_fill_command_for_span(start_chunk_x, previous_chunk_x, chunk_z)
-            )
+            row_spans.append((start_chunk_x, previous_chunk_x, chunk_z))
             start_chunk_x = chunk_x
             previous_chunk_x = chunk_x
 
-        commands.append(
-            _chunk_touch_fill_command_for_span(start_chunk_x, previous_chunk_x, chunk_z)
-        )
+        row_spans.append((start_chunk_x, previous_chunk_x, chunk_z))
 
+    return _merged_chunk_touch_fill_commands(row_spans)
+
+
+def _merged_chunk_touch_fill_commands(row_spans: list[tuple[int, int, int]]) -> tuple[str, ...]:
+    commands: list[str] = []
+    active_start_x: int | None = None
+    active_end_x: int | None = None
+    active_start_z: int | None = None
+    active_end_z: int | None = None
+
+    def flush_active() -> None:
+        nonlocal active_start_x, active_end_x, active_start_z, active_end_z
+        if (
+            active_start_x is not None
+            and active_end_x is not None
+            and active_start_z is not None
+            and active_end_z is not None
+        ):
+            commands.append(
+                _chunk_touch_fill_command_for_span(
+                    active_start_x,
+                    active_end_x,
+                    active_start_z,
+                    active_end_z,
+                )
+            )
+        active_start_x = None
+        active_end_x = None
+        active_start_z = None
+        active_end_z = None
+
+    for start_x, end_x, chunk_z in row_spans:
+        if active_start_x is None:
+            active_start_x = start_x
+            active_end_x = end_x
+            active_start_z = chunk_z
+            active_end_z = chunk_z
+            continue
+
+        can_extend = (
+            start_x == active_start_x
+            and end_x == active_end_x
+            and active_start_z is not None
+            and active_end_z is not None
+            and chunk_z == active_end_z + 1
+            and _chunk_touch_fill_block_count(start_x, end_x, active_start_z, chunk_z)
+            <= CHUNK_TOUCH_MAX_BLOCKS
+        )
+        if can_extend:
+            active_end_z = chunk_z
+            continue
+
+        flush_active()
+        active_start_x = start_x
+        active_end_x = end_x
+        active_start_z = chunk_z
+        active_end_z = chunk_z
+
+    flush_active()
     return tuple(commands)
+
+
+def _chunk_touch_fill_block_count(
+    start_chunk_x: int,
+    end_chunk_x: int,
+    start_chunk_z: int,
+    end_chunk_z: int,
+) -> int:
+    x_blocks = ((end_chunk_x - start_chunk_x) + 1) * 16
+    z_blocks = ((end_chunk_z - start_chunk_z) + 1) * 16
+    return x_blocks * z_blocks
 
 
 def _teleport_target_world_bounds(
@@ -1068,25 +1377,6 @@ def _teleport_target_world_bounds(
     )
 
 
-def _point_distance_from_render_center(
-    config: WorldgenConfig,
-    point: tuple[int, int],
-) -> float:
-    return math.hypot(
-        point[0] - config.render.center_x,
-        point[1] - config.render.center_z,
-    )
-
-
-def _point_in_render_radius(
-    config: WorldgenConfig,
-    point: tuple[int, int],
-    *,
-    padding: float = 0.0,
-) -> bool:
-    return _point_distance_from_render_center(config, point) <= (config.render.radius + padding)
-
-
 def _chunk_column_in_render_radius(
     config: WorldgenConfig,
     chunk_x: int,
@@ -1102,12 +1392,13 @@ def _chunk_column_in_render_radius(
 def _chunk_touch_fill_command_for_span(
     start_chunk_x: int,
     end_chunk_x: int,
-    chunk_z: int,
+    start_chunk_z: int,
+    end_chunk_z: int,
 ) -> str:
     min_x = start_chunk_x * 16
     max_x = (end_chunk_x * 16) + 15
-    min_z = chunk_z * 16
-    max_z = (chunk_z * 16) + 15
+    min_z = start_chunk_z * 16
+    max_z = (end_chunk_z * 16) + 15
     return (
         f'fill {min_x} {CHUNK_TOUCH_Y} {min_z} '
         f'{max_x} {CHUNK_TOUCH_Y} {max_z} {CHUNK_TOUCH_BLOCK}'
@@ -1142,22 +1433,32 @@ def _box_fill_teleport_sort_key(
     )
 
 
-def _render_axis_teleport_values(
-    min_value: int,
-    max_value: int,
-    center_value: int,
-    step: int,
+def _render_axis_teleport_chunk_values(
+    min_chunk: int,
+    max_chunk: int,
+    center_chunk: int,
+    config: WorldgenConfig,
 ) -> tuple[int, ...]:
-    values = {center_value, min_value, max_value}
-    offset = step
-    while center_value - offset >= min_value:
-        values.add(center_value - offset)
-        offset += step
-    offset = step
-    while center_value + offset <= max_value:
-        values.add(center_value + offset)
-        offset += step
+    radius = config.headless_loader.chunk_radius
+    min_center_chunk = min_chunk + radius
+    max_center_chunk = max_chunk - radius
+    if min_center_chunk > max_center_chunk:
+        return (_clamp_int(center_chunk, min_chunk, max_chunk),)
+
+    stride = _target_stride_chunks(config)
+    requested_chunks = (max_chunk - min_chunk) + 1
+    target_width_chunks = (radius * 2) + 1
+    target_count = max(2, math.ceil((requested_chunks - target_width_chunks) / stride) + 1)
+    center_span = max_center_chunk - min_center_chunk
+    values = {
+        round(min_center_chunk + ((center_span * index) / (target_count - 1)))
+        for index in range(target_count)
+    }
     return tuple(sorted(values))
+
+
+def _clamp_int(value: int, min_value: int, max_value: int) -> int:
+    return max(min_value, min(value, max_value))
 
 
 def _container_repo_path(repo_root: Path, host_path: Path) -> str:

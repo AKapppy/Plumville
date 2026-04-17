@@ -12,6 +12,8 @@ WORLD_CACHE_FILE_NAME = 'world_cache.json'
 RENDER_PLAN_FILE_NAME = 'render_plan.json'
 RENDER_CACHE_FILE_NAME = 'render_cache.json'
 RENDER_IMAGE_FILE_NAME = 'blackport_topdown.png'
+DOCS_ASSETS_DIR_NAME = 'assets'
+DOCS_DIR_NAME = 'docs'
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +30,8 @@ class ProjectPaths:
     render_plan_path: Path
     render_cache_path: Path
     render_image_path: Path
+    docs_assets_dir: Path
+    docs_render_image_path: Path
 
     def ensure_runtime_dirs(self) -> None:
         for directory in (
@@ -35,6 +39,7 @@ class ProjectPaths:
             self.data_dir,
             self.cache_dir,
             self.output_dir,
+            self.docs_assets_dir,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 

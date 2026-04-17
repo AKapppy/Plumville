@@ -186,6 +186,8 @@ def _handle_status(generator: BedrockWorldGenerator) -> int:
         'headless_loader': asdict(config.headless_loader),
         'render_image_file': str(status.render_image_path),
         'render_image_exists': status.render_image_exists,
+        'docs_render_image_file': str(status.docs_render_image_path),
+        'docs_render_image_exists': status.docs_render_image_exists,
         'render_cache_file': str(status.render_cache_path),
         'render_cache_exists': status.render_cache_exists,
     }

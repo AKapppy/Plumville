@@ -110,6 +110,8 @@ Render already-generated Bedrock chunks into a first-pass top-down PNG:
 python3 -m worldgen render
 ```
 
+Each successful render writes `worldgen_output/blackport_topdown.png` and refreshes the web viewer copy at `docs/assets/blackport_topdown.png`.
+
 If rendering reports a LevelDB read/corruption error after chunk loading, build a backed-up repaired copy for inspection:
 
 ```bash
@@ -136,20 +138,19 @@ The first run may pull a Node Docker image and build a native RakNet dependency 
 - a headless Bedrock loader that joins the local Docker server and loads chunks without the game client
 - a LevelDB repair command that writes a backup and repaired copy for render-read debugging
 - crash-aware Load Chunks reporting when the Bedrock server closes before the headless player spawns
-- coverage-aware box-based chunk-loading targets centered on Blackport, plus an app Auto Fill Step button
+- coverage-aware blank-space chunk-loading targets centered on Blackport, plus app Auto Fill controls
 
 ## What Is Still Next
 
-- continuing repeated Auto Fill Step passes until the requested rectangle is covered
 - improving the rendered-image underlay once real terrain chunks are available
 
 ## Notes
 
 - The first render pass should only expect to color chunks that Bedrock has actually generated and saved.
 - The renderer also reads recoverable `db/lost` LevelDB table files, because `repair-db` may move older saved chunk tables there.
-- The app's Auto Fill Step runs the backend load/render flow in order. It scans saved chunk columns, fills the smallest under-covered square around Blackport first, then expands once that square is covered enough. Repeat it to continue outward.
+- The app's Auto Fill runs the backend load/render flow in order. It scans saved chunk columns, chooses the closest blank map space to Blackport, then picks the target covering the most remaining blank chunks before rendering after each batch.
 - Before the headless loader joins, the backend sets the Bedrock world spawn to Blackport with spawn radius zero so the initial join chunks land in the render area.
-- Auto Fill Step uses one longer server session per click. Avoid manually chaining repeated Generate/Load/Render cycles unless debugging, because repeated Bedrock restarts can be fragile while the server is saving terrain.
+- Auto Fill simulates each planned target against the remaining blank chunks, so later targets avoid already-covered space and do not leave holes in the middle. Avoid manually chaining repeated Generate/Load/Render cycles unless debugging, because repeated Bedrock restarts can be fragile while the server is saving terrain.
 - The first render pass does not start Docker. For manual CLI use, run `python3 -m worldgen load-chunks` first, then run `python3 -m worldgen render`.
 - If the render says `Chunk columns read: 0/...`, the saved world exists but Bedrock has not saved terrain in the requested area yet. Run the headless loader, stop the server, and render again.
 - If Load Chunks reports `free(): invalid next size (normal)`, the Bedrock server crashed during headless-player connection before chunks could be saved.

@@ -28,9 +28,10 @@ wait_seconds = 75
 teleport_y = 96
 teleport_delay_seconds = 8
 teleport_retry_seconds = 4
-teleport_attempts = 1
+teleport_attempts = 4
 chunk_radius = 16
-target_outset_blocks = 64
+target_outset_blocks = 0
+target_overlap_blocks = 0
 
 [storage]
 data_dir = "worldgen_data/bedrock-data"

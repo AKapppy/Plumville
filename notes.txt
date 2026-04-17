@@ -39,13 +39,13 @@ Minecraft Metro Map Notes
       - latest fresh Blackport-only load cached 545 chunk columns
       - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels
       - latest fresh report found 1116 sampled uncolored occurrences
-      - Auto Fill now advances one larger rectangular target only after a successful chunk load
+      - Auto Fill now advances through least-covered rectangular targets with zero configured overlap
       - next target rectangle is drawn in blue around the next rectangular load target
       - latest expansion pass targeted (294, 246), cached 760 chunk columns, and rendered 194560 known-color pixels
-      - next expansion target preview is (294, 198), target 2/529
+      - next expansion target preview draws from a 64-target rectangular pool
       - coverage now includes cached headless packet columns as well as LevelDB columns
-      - Auto Fill Step is the only world-map button; it runs one longer Bedrock load session, then renders
-      - current load session settings: wait 75 seconds, 1 teleport target, chunk radius 16
+      - Auto Fill is the only world-map button; it runs one batched Bedrock load session, then renders
+      - current load session settings: wait 75 seconds max, 4 teleport targets, chunk radius 16, zero-block target overlap
       - default gray / unknown blocks are now transparent instead of rendered, so the map is intentionally sparse until more network palette IDs are mapped back to block names
       - unknown/uncolored block details are written to `worldgen_output/uncolored_blocks_report.txt` after each render
       - headless loader now saves `headless_start_game.json` so the next renderer pass can inspect whether Bedrock is using hashed block network IDs and which block names were advertised
@@ -54,7 +54,7 @@ Minecraft Metro Map Notes
 
 Future Items
 ------------
-[] World map: expand chunk loading across the full requested render area, not just the first patch around Blackport.
+[x] World map: expand chunk loading across the full requested render area, not just the first patch around Blackport.
 [] World map: if server-side teleports do not persist new chunk areas, make the headless client move itself or reconnect at the next target.
 [] World map: add a focused preview or "zoom to rendered area" helper if the full-radius render stays hard to inspect.
 [] World map: improve the terrain palette after coverage is reliable.

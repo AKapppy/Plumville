@@ -5,6 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .paths import (
+    DOCS_ASSETS_DIR_NAME,
+    DOCS_DIR_NAME,
     ENV_FILE_NAME,
     ProjectPaths,
     RENDER_CACHE_FILE_NAME,
@@ -50,6 +52,7 @@ class HeadlessLoaderConfig:
     teleport_attempts: int
     chunk_radius: int
     target_outset_blocks: int
+    target_overlap_blocks: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -101,6 +104,7 @@ class WorldgenConfig:
     @property
     def paths(self) -> ProjectPaths:
         runtime_dir = self.repo_root / RUNTIME_DIR_NAME
+        docs_assets_dir = self.repo_root / DOCS_DIR_NAME / DOCS_ASSETS_DIR_NAME
         return ProjectPaths(
             repo_root=self.repo_root,
             config_path=self.config_path,
@@ -114,6 +118,8 @@ class WorldgenConfig:
             render_plan_path=self.storage.cache_dir / RENDER_PLAN_FILE_NAME,
             render_cache_path=self.storage.cache_dir / RENDER_CACHE_FILE_NAME,
             render_image_path=self.storage.output_dir / RENDER_IMAGE_FILE_NAME,
+            docs_assets_dir=docs_assets_dir,
+            docs_render_image_path=docs_assets_dir / RENDER_IMAGE_FILE_NAME,
         )
 
 
@@ -172,7 +178,14 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
             4,
         ),
         chunk_radius=_optional_positive_int(headless_loader_table, 'chunk_radius') or 12,
-        target_outset_blocks=_optional_nonnegative_int(headless_loader_table, 'target_outset_blocks') or 0,
+        target_outset_blocks=_optional_int_default(
+            _optional_nonnegative_int(headless_loader_table, 'target_outset_blocks'),
+            0,
+        ),
+        target_overlap_blocks=_optional_int_default(
+            _optional_nonnegative_int(headless_loader_table, 'target_overlap_blocks'),
+            64,
+        ),
     )
 
     storage = StorageConfig(
