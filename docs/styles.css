@@ -95,10 +95,45 @@ h2 {
   line-height: 1.15;
 }
 
-.title-block,
 .control-section {
   display: grid;
   gap: 8px;
+}
+
+.section-heading,
+.collapsible-section > summary {
+  color: var(--ink);
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.collapsible-section {
+  display: grid;
+  gap: 8px;
+}
+
+.collapsible-section > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.collapsible-section > summary::-webkit-details-marker {
+  display: none;
+}
+
+.collapsible-section > summary::before {
+  content: "- ";
+}
+
+.collapsible-section[open] > summary::before {
+  content: "+ ";
+}
+
+.collapsible-section > .control-section,
+.collapsible-section > .summary,
+.collapsible-section > .text-panel {
+  margin-top: 8px;
 }
 
 .summary,

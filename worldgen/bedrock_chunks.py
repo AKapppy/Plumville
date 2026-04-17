@@ -614,9 +614,12 @@ def _persistent_block_state_lookup() -> dict[tuple[str, str], tuple[int, dict[st
         name = block_state.get('name')
         if not isinstance(name, str):
             continue
+        normalized_name = _normalize_block_name(name)
+        if normalized_name is None:
+            continue
         states = block_state.get('states')
         key = (
-            _normalize_block_name(name),
+            normalized_name,
             json.dumps(_normalize_nbt_for_lookup(states or {}), sort_keys=True, separators=(',', ':')),
         )
         lookup.setdefault(key, (runtime_id, block_state))

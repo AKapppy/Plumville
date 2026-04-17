@@ -6,12 +6,13 @@ from collections import Counter
 import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
 from .bedrock_chunks import (
     BlockInfo,
     ChunkDecodeError,
     DecodedSubchunk,
+    OVERWORLD_DIMENSION_ID,
     SubchunkRecord,
     decode_subchunk,
     iter_packet_subchunk_records,
@@ -1453,7 +1454,7 @@ def _block_color(block_name: str) -> tuple[int, int, int] | None:
     return None
 
 
-def _draw_no_chunks_message(image: object) -> None:
+def _draw_no_chunks_message(image: Any) -> None:
     from PIL import ImageDraw
 
     draw = ImageDraw.Draw(image)

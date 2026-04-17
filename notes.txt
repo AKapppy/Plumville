@@ -2,6 +2,8 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
+   [x] can we make sure that the renderer outputs the map after every step so i can see progress throughout? the blue rectangle moves, but nothing else updates. that way i know where to stop it if im trying to reach a certain point
+   [x] everything seems to load very slowly (initial load, zooming). i have a hunch it has to do with the map. can we try to figure out a way to make it need to process less on the UI side so it runs smoother? maybe its just a lot of processes happening at once, and moving some processes to the background may help? unsure what the culrpit is
    [x] see sorting notes below:
       Sidebar order:
          #all sections should be collapsable. A + means start expanded and a - means start collapsed. Whether it starts collapsed or expanded should be a simple boolean so I can change that later
@@ -25,7 +27,7 @@ Minecraft Metro Map Notes
          7. Station labels +
 
 #App (Web Version)
-   [x] it still uses the old map image, not the updated one
+   [x] can we do something similar with the orders of the sidebar and the show/hide that we did for the python version (i'm keeping the note there for easy access), but obviously disregard portions that are not included in the web version
 
 #World Map
    [] this should be a completely virtual experience. no minecraft world will be opened at anytime to generate the terrain. it should just be based off the seed and the seed alone. if docker desktop is looking for an open or saved minecraft file, it will never find one. we should reroute it if this is the case

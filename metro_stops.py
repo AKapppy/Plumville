@@ -49,6 +49,10 @@ PATH_NODE_CLICK_TOLERANCE: Final[int] = 10
 PATH_NODE_FILL: Final[str] = '#0d1620'
 PATH_NODE_OUTLINE: Final[str] = '#8ad4ff'
 PATH_NODE_LABEL_COLOR: Final[str] = '#c8ebff'
+PATH_EDIT_HANDLE_RADIUS: Final[int] = 5
+PATH_EDIT_HANDLE_TOLERANCE: Final[int] = 10
+PATH_EDIT_ACTIVE_OUTLINE_WIDTH: Final[int] = 9
+PATH_EDIT_ACTIVE_WIDTH: Final[int] = 4
 SELECTED_PATH_NODE_RADIUS: Final[int] = 9
 LINE_CLICK_TOLERANCE: Final[int] = 8
 DRAG_THRESHOLD: Final[int] = 4
@@ -151,7 +155,8 @@ CHIME_DIRECTION_LABELS: Final[dict[ChimeDirection, str]] = {
     'south': 'South',
     'west': 'West',
 }
-WorldMapTaskQueueItem = tuple[Literal['progress', 'done'], bool, str]
+WorldMapTaskQueueItem = tuple[Literal['progress', 'rendered', 'done'], bool, str]
+FileStatKey = tuple[str, int, int]
 
 
 class StopRecord(TypedDict):
@@ -218,6 +223,14 @@ class ExtraEdgeRecord(TypedDict):
     path_specs: NotRequired[list[LinePathSpecRecord]]
     label: NotRequired[str]
     distance: NotRequired[int]
+
+
+def _file_stat_key(path: Path) -> FileStatKey | None:
+    try:
+        stat_result = path.stat()
+    except OSError:
+        return None
+    return (str(path), stat_result.st_mtime_ns, stat_result.st_size)
 
 
 class MetroNetworkPayload(TypedDict):
@@ -2131,7 +2144,7 @@ def _world_map_auto_fill_step_text() -> str:
 
 def _world_map_auto_fill_until_stopped_text(
     stop_event: threading.Event,
-    progress_callback: Callable[[str], None] | None = None,
+    progress_callback: Callable[[str, bool], None] | None = None,
 ) -> str:
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
@@ -2149,7 +2162,8 @@ def _world_map_auto_fill_until_stopped_text(
         if progress_callback is not None:
             progress_callback(
                 f'Auto filling world map...\n\n'
-                f'Running step {step_count}. Stop will happen after this step finishes.'
+                f'Running step {step_count}. Stop will happen after this step finishes.',
+                False,
             )
 
         last_step_message = _world_map_auto_fill_step_text_for_generator(
@@ -2162,7 +2176,8 @@ def _world_map_auto_fill_until_stopped_text(
         if progress_callback is not None:
             progress_callback(
                 f'{last_step_message}\n\n'
-                'Still running. Press Stop Auto Fill to stop after the current step.'
+                'Still running. Press Stop Auto Fill to stop after the current step.',
+                True,
             )
 
     return '\n'.join(
@@ -4196,6 +4211,7 @@ class MetroMapViewer:
         self.selected_stop_var: str | None = None
         self.selected_path_node_key: str | None = None
         self.selected_metro_segment_key: tuple[str, str, str] | None = None
+        self.active_path_edge_id: str | None = None
         self.station_canvas_positions: dict[str, tuple[float, float]] = {}
         self.path_node_canvas_positions: dict[str, tuple[float, float]] = {}
         self.info_popup_frame: tk.Frame | None = None
@@ -4226,6 +4242,13 @@ class MetroMapViewer:
         self.world_map_auto_fill_stop_event: threading.Event | None = None
         self.world_map_auto_fill_running = False
         self.world_map_auto_fill_stop_requested = False
+        self.world_map_render_cache_stat: FileStatKey | None = None
+        self.world_map_render_image_stat: FileStatKey | None = None
+        self.world_map_render_image_path: Path | None = None
+        self.world_map_render_payload: dict[str, object] | None = None
+        self.world_map_render_source_image: Image.Image | None = None
+        self.world_map_next_target_cache_key: tuple[FileStatKey | None, ...] | None = None
+        self.world_map_next_target_preview: Any | None = None
         self.overlay_image_refs: list[ImageTk.PhotoImage] = []
         self.hover_canvas_point: tuple[float, float] | None = None
         self.cursor_readout_coordinates: tuple[int, int] | None = None
@@ -4256,6 +4279,11 @@ class MetroMapViewer:
         self.walk_path_label_var = tk.StringVar(master=self.root)
         self.path_node_coordinates_var = tk.StringVar(master=self.root)
         self.path_node_label_var = tk.StringVar(master=self.root)
+        self.path_click_mode_var = tk.BooleanVar(master=self.root, value=False)
+        self.path_click_status_var = tk.StringVar(
+            master=self.root,
+            value='Choose a path edge, then turn on click editing.',
+        )
         self.route_summary_var = tk.StringVar(
             master=self.root,
             value='Choose two stations or coordinates.',
@@ -4741,6 +4769,28 @@ class MetroMapViewer:
             command=self._clear_walk_path_fields,
         ).pack(side='left', padx=(10, 0))
 
+        self._make_sidebar_caption('Click Path Editing', parent=pathing_section).pack(anchor='w', padx=16)
+        self._make_sidebar_hint(
+            'Use this alongside typed coordinates. Pick a path edge below, then click its line to add a point or click a middle point to remove it.',
+            parent=pathing_section,
+        ).pack(anchor='w', padx=16, pady=(4, 6))
+        self._make_sidebar_checkbox(
+            pathing_section,
+            text='Click add/remove mode',
+            variable=self.path_click_mode_var,
+            command=self._on_path_click_mode_changed,
+        ).pack(anchor='w', padx=16, pady=(0, 6))
+        tk.Label(
+            pathing_section,
+            textvariable=self.path_click_status_var,
+            bg=BACKGROUND_COLOR,
+            fg=INFO_CHECKBOX_TEXT_COLOR,
+            font=('Helvetica', max(10, SIDEBAR_TEXT_FONT_SIZE - 1)),
+            anchor='w',
+            justify='left',
+            wraplength=SIDEBAR_WIDTH - 32,
+        ).pack(anchor='w', padx=16, pady=(0, 12))
+
         self._make_sidebar_caption('Path Edges', parent=pathing_section).pack(anchor='w', padx=16)
         self.path_edge_list_frame = tk.Frame(
             pathing_section,
@@ -5147,8 +5197,9 @@ class MetroMapViewer:
         else:
             self.route_steps_text.pack_forget()
 
-    def _post_world_map_task_progress(self, message: str) -> None:
-        self.world_map_task_queue.put(('progress', True, message))
+    def _post_world_map_task_progress(self, message: str, rendered_map: bool) -> None:
+        message_kind: Literal['progress', 'rendered'] = 'rendered' if rendered_map else 'progress'
+        self.world_map_task_queue.put((message_kind, True, message))
 
     def _start_world_map_task(
         self,
@@ -5184,13 +5235,16 @@ class MetroMapViewer:
                 self.root.after(200, self._poll_world_map_task)
             return
 
-        if message_kind == 'progress':
+        if message_kind in ('progress', 'rendered'):
             if self.world_map_auto_fill_stop_requested:
                 message = (
                     f'{message.rstrip()}\n\n'
                     'Stop requested. The current step will finish, then Auto Fill will stop.'
                 )
             self._set_world_map_status_text(message)
+            if message_kind == 'rendered':
+                self._invalidate_world_map_render_cache()
+                self.redraw()
             if self.world_map_task_running:
                 self.root.after(200, self._poll_world_map_task)
             return
@@ -5200,6 +5254,7 @@ class MetroMapViewer:
         self.world_map_task_completion_callback = None
         self._set_world_map_status_text(message)
         if succeeded:
+            self._invalidate_world_map_render_cache()
             self._set_world_map_status_text(f'{message}\n\n{_world_map_cached_status_text()}')
             self.redraw()
         if completion_callback is not None:
@@ -5825,6 +5880,42 @@ class MetroMapViewer:
         self.path_node_coordinates_var.set('')
         self.path_node_label_var.set('')
 
+    def _active_path_edge(self) -> ExtraEdgeDefinition | None:
+        if self.active_path_edge_id is None:
+            return None
+        return next((edge for edge in EXTRA_EDGES if edge.id == self.active_path_edge_id), None)
+
+    def _set_active_path_edge(self, extra_edge: ExtraEdgeDefinition | None) -> None:
+        self.active_path_edge_id = None if extra_edge is None else extra_edge.id
+        if extra_edge is None:
+            self.path_click_status_var.set('Choose a path edge, then turn on click editing.')
+            return
+        self.path_click_status_var.set(
+            f'Editing {_extra_edge_full_summary(extra_edge)}. Click the line to add a point; click a middle point to remove it.'
+        )
+
+    def _on_path_click_mode_changed(self) -> None:
+        if self.path_click_mode_var.get():
+            active_edge = self._active_path_edge()
+            if active_edge is None:
+                self.path_click_status_var.set('Click a path edge on the map, or press Edit Points on a listed edge.')
+            else:
+                self._set_active_path_edge(active_edge)
+        else:
+            self.path_click_status_var.set('Click editing is off. Typed coordinates still work.')
+        self.redraw()
+
+    def _edit_path_edge_points(self, extra_edge: ExtraEdgeDefinition) -> None:
+        self.path_click_mode_var.set(True)
+        self._set_active_path_edge(extra_edge)
+        self.selected_stop_var = None
+        self.selected_path_node_key = None
+        self.selected_metro_segment_key = None
+        self.hover_canvas_point = None
+        self.cursor_readout_coordinates = None
+        self.show_cursor_guides = False
+        self.redraw()
+
     def _add_path_node_from_sidebar(self) -> None:
         from tkinter import messagebox
 
@@ -6150,6 +6241,76 @@ class MetroMapViewer:
 
         return best_node
 
+    def _extra_edge_hit_test(self, canvas_x: int, canvas_y: int) -> ExtraEdgeDefinition | None:
+        best_edge: ExtraEdgeDefinition | None = None
+        best_distance_sq: float | None = None
+        max_distance_sq = float(LINE_CLICK_TOLERANCE ** 2)
+        click_point = (float(canvas_x), float(canvas_y))
+
+        for extra_edge in EXTRA_EDGES:
+            canvas_points = tuple(self.world_to_canvas(point) for point in extra_edge.plot_points)
+            distance_sq = _point_to_polyline_distance_sq(click_point, canvas_points)
+            if distance_sq is None or distance_sq > max_distance_sq:
+                continue
+            if best_distance_sq is None or distance_sq < best_distance_sq:
+                best_edge = extra_edge
+                best_distance_sq = distance_sq
+
+        return best_edge
+
+    def _path_edit_points_for_edge(self, extra_edge: ExtraEdgeDefinition) -> list[tuple[int, int]]:
+        if extra_edge.path_points:
+            return list(extra_edge.path_points)
+        return [extra_edge.from_endpoint.coordinates, extra_edge.to_endpoint.coordinates]
+
+    def _path_edit_handle_hit_test(
+        self,
+        extra_edge: ExtraEdgeDefinition,
+        canvas_x: int,
+        canvas_y: int,
+    ) -> int | None:
+        points = self._path_edit_points_for_edge(extra_edge)
+        if len(points) <= 2:
+            return None
+
+        click_point = (float(canvas_x), float(canvas_y))
+        max_distance_sq = float(PATH_EDIT_HANDLE_TOLERANCE ** 2)
+        best_index: int | None = None
+        best_distance_sq: float | None = None
+        for index, point in enumerate(points[1:-1], start=1):
+            handle_x, handle_y = self.world_to_canvas((point[0], -point[1]))
+            distance_sq = ((handle_x - click_point[0]) ** 2) + ((handle_y - click_point[1]) ** 2)
+            if distance_sq > max_distance_sq:
+                continue
+            if best_distance_sq is None or distance_sq < best_distance_sq:
+                best_index = index
+                best_distance_sq = distance_sq
+        return best_index
+
+    def _path_edit_insert_index(
+        self,
+        extra_edge: ExtraEdgeDefinition,
+        canvas_x: int,
+        canvas_y: int,
+    ) -> int | None:
+        points = self._path_edit_points_for_edge(extra_edge)
+        if len(points) < 2:
+            return None
+
+        click_point = (float(canvas_x), float(canvas_y))
+        max_distance_sq = float(LINE_CLICK_TOLERANCE ** 2)
+        best_index: int | None = None
+        best_distance_sq: float | None = None
+        canvas_points = [self.world_to_canvas((point[0], -point[1])) for point in points]
+        for index, (start_point, end_point) in enumerate(zip(canvas_points, canvas_points[1:]), start=1):
+            distance_sq = _point_to_segment_distance_sq(click_point, start_point, end_point)
+            if distance_sq > max_distance_sq:
+                continue
+            if best_distance_sq is None or distance_sq < best_distance_sq:
+                best_index = index
+                best_distance_sq = distance_sq
+        return best_index
+
     def _selected_metro_segment(self) -> MetroLineSegment | None:
         if self.selected_metro_segment_key is None:
             return None
@@ -6365,19 +6526,24 @@ class MetroMapViewer:
                 ).pack(anchor='w')
                 edge_actions_row = tk.Frame(edge_row, bg=INFO_BOX_BACKGROUND)
                 edge_actions_row.pack(anchor='w', pady=(4, 0))
+                self._make_info_button(
+                    edge_actions_row,
+                    text='Edit Points',
+                    command=lambda active_edge=extra_edge: self._edit_path_edge_points(active_edge),
+                ).pack(side='left')
                 if extra_edge.shape_label == 'direct':
                     if extra_edge.can_turn:
                         self._make_info_button(
                             edge_actions_row,
                             text='Add Turn',
                             command=lambda active_edge=extra_edge: self._add_turn_to_path_edge(active_edge),
-                        ).pack(side='left')
+                        ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
                 else:
                     self._make_info_button(
                         edge_actions_row,
                         text='Direct',
                         command=lambda active_edge=extra_edge: self._make_path_edge_direct(active_edge),
-                    ).pack(side='left')
+                    ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
                     if extra_edge.can_turn:
                         self._make_info_button(
                             edge_actions_row,
@@ -6779,10 +6945,12 @@ class MetroMapViewer:
         self.priority_dirty = True
         self.redraw()
 
-    def _refresh_after_path_edit(self) -> None:
+    def _refresh_after_path_edit(self, *, refresh_path_status: bool = True) -> None:
         self.route_controls_dirty = True
         self.route_dirty = True
         self.priority_dirty = True
+        if refresh_path_status and self.active_path_edge_id is not None:
+            self._set_active_path_edge(self._active_path_edge())
         self.redraw()
 
     def _refresh_path_edge_list(self) -> None:
@@ -6810,9 +6978,12 @@ class MetroMapViewer:
         for extra_edge in EXTRA_EDGES:
             edge_frame = tk.Frame(self.path_edge_list_frame, bg=INFO_BOX_BACKGROUND)
             edge_frame.pack(fill='x', padx=12, pady=(12, 0))
+            edge_summary = _extra_edge_full_summary(extra_edge)
+            if extra_edge.id == self.active_path_edge_id:
+                edge_summary = f'Editing: {edge_summary}'
             tk.Label(
                 edge_frame,
-                text=_extra_edge_full_summary(extra_edge),
+                text=edge_summary,
                 bg=INFO_BOX_BACKGROUND,
                 fg=TEXT_COLOR,
                 font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
@@ -6820,8 +6991,26 @@ class MetroMapViewer:
                 justify='left',
                 wraplength=SIDEBAR_WIDTH - 80,
             ).pack(anchor='w')
+            edge_actions_row = tk.Frame(edge_frame, bg=INFO_BOX_BACKGROUND)
+            edge_actions_row.pack(anchor='w', pady=(6, 0))
+            self._make_sidebar_button(
+                edge_actions_row,
+                text='Edit Points',
+                command=lambda active_edge=extra_edge: self._edit_path_edge_points(active_edge),
+            ).pack(side='left')
+            if extra_edge.id == self.active_path_edge_id:
+                self._make_sidebar_button(
+                    edge_actions_row,
+                    text='Stop Editing',
+                    command=lambda: self._edit_path_edge_points_off(),
+                ).pack(side='left', padx=(10, 0))
 
         tk.Frame(self.path_edge_list_frame, bg=INFO_BOX_BACKGROUND, height=12).pack(fill='x')
+
+    def _edit_path_edge_points_off(self) -> None:
+        self.path_click_mode_var.set(False)
+        self._set_active_path_edge(None)
+        self.redraw()
 
     def _make_metro_segment_direct(self, segment: MetroLineSegment) -> None:
         from tkinter import messagebox
@@ -6960,6 +7149,71 @@ class MetroMapViewer:
 
         self._refresh_after_path_edit()
 
+    def _handle_path_click_edit(self, canvas_x: int, canvas_y: int) -> bool:
+        if not self.path_click_mode_var.get():
+            return False
+
+        from tkinter import messagebox
+
+        active_edge = self._active_path_edge()
+        if active_edge is None:
+            clicked_edge = self._extra_edge_hit_test(canvas_x, canvas_y)
+            if clicked_edge is None:
+                self.path_click_status_var.set('Click a path edge to choose it for point editing.')
+            else:
+                self._set_active_path_edge(clicked_edge)
+            self.redraw()
+            return True
+
+        remove_index = self._path_edit_handle_hit_test(active_edge, canvas_x, canvas_y)
+        points = self._path_edit_points_for_edge(active_edge)
+        try:
+            if remove_index is not None:
+                removed_point = points.pop(remove_index)
+                set_extra_edge_path_points(active_edge.id, points)
+                refreshed_edge = self._active_path_edge()
+                self.path_click_status_var.set(
+                    f'Removed point ({removed_point[0]}, {removed_point[1]}).'
+                    + (
+                        f' Editing {_extra_edge_full_summary(refreshed_edge)}.'
+                        if refreshed_edge is not None
+                        else ''
+                    )
+                )
+            else:
+                insert_index = self._path_edit_insert_index(active_edge, canvas_x, canvas_y)
+                if insert_index is None:
+                    clicked_edge = self._extra_edge_hit_test(canvas_x, canvas_y)
+                    if clicked_edge is not None and clicked_edge.id != active_edge.id:
+                        self._set_active_path_edge(clicked_edge)
+                    else:
+                        self.path_click_status_var.set('Click the active path line to add a point, or a middle point to remove it.')
+                    self.redraw()
+                    return True
+
+                new_point = self.canvas_to_world((float(canvas_x), float(canvas_y)))
+                if new_point in points:
+                    self.path_click_status_var.set(f'Point ({new_point[0]}, {new_point[1]}) is already on this path.')
+                    self.redraw()
+                    return True
+                points.insert(insert_index, new_point)
+                set_extra_edge_path_points(active_edge.id, points)
+                refreshed_edge = self._active_path_edge()
+                self.path_click_status_var.set(
+                    f'Added point ({new_point[0]}, {new_point[1]}).'
+                    + (
+                        f' Editing {_extra_edge_full_summary(refreshed_edge)}.'
+                        if refreshed_edge is not None
+                        else ''
+                    )
+                )
+        except ValueError as exc:
+            messagebox.showerror('Could Not Edit Path Points', str(exc), parent=self.root)
+            return True
+
+        self._refresh_after_path_edit(refresh_path_status=False)
+        return True
+
     def _undo_last_saved_change(self) -> None:
         from tkinter import messagebox
 
@@ -7046,6 +7300,8 @@ class MetroMapViewer:
             self.selected_path_node_key = None
         if self.selected_metro_segment_key is not None and self._selected_metro_segment() is None:
             self.selected_metro_segment_key = None
+        if self.active_path_edge_id is not None and self._active_path_edge() is None:
+            self._set_active_path_edge(None)
         self._refresh_path_edge_list()
         self.canvas.delete('all')
         self.station_canvas_positions = {}
@@ -7151,34 +7407,113 @@ class MetroMapViewer:
         self.overlay_image_refs.append(overlay_image)
         self.canvas.create_image(0, 0, anchor='nw', image=overlay_image)
 
-    def _draw_world_map_render_underlay(self) -> None:
-        if not self.show_world_map_render_var.get():
-            return
+    def _invalidate_world_map_render_cache(self) -> None:
+        self.world_map_render_cache_stat = None
+        self.world_map_render_image_stat = None
+        self.world_map_render_image_path = None
+        self.world_map_render_payload = None
+        self.world_map_render_source_image = None
+        self.world_map_next_target_cache_key = None
+        self.world_map_next_target_preview = None
 
+    def _current_world_map_render_underlay(self) -> tuple[dict[str, object], Image.Image] | None:
         try:
             from worldgen.config import load_config
 
             config = load_config()
-            render_cache_path = config.paths.render_cache_path
-            if not render_cache_path.exists():
-                return
-            payload = json.loads(render_cache_path.read_text(encoding='utf-8'))
         except Exception:
-            return
+            self._invalidate_world_map_render_cache()
+            return None
+
+        render_cache_path = config.paths.render_cache_path
+        render_cache_stat = _file_stat_key(render_cache_path)
+        if render_cache_stat is None:
+            self._invalidate_world_map_render_cache()
+            return None
+
+        if (
+            self.world_map_render_cache_stat == render_cache_stat
+            and self.world_map_render_payload is not None
+            and self.world_map_render_source_image is not None
+            and self.world_map_render_image_path is not None
+        ):
+            image_stat = _file_stat_key(self.world_map_render_image_path)
+            if image_stat is not None and image_stat == self.world_map_render_image_stat:
+                return (self.world_map_render_payload, self.world_map_render_source_image)
+
+        try:
+            payload = json.loads(render_cache_path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError):
+            self._invalidate_world_map_render_cache()
+            return None
+        if not isinstance(payload, dict):
+            self._invalidate_world_map_render_cache()
+            return None
 
         image_path = Path(str(payload.get('image_path', '')))
         if not image_path.exists():
             image_path = config.paths.render_image_path
-        if not image_path.exists():
-            return
+        image_stat = _file_stat_key(image_path)
+        if image_stat is None:
+            self._invalidate_world_map_render_cache()
+            return None
 
         try:
-            render_min_x = int(payload['min_x'])
-            render_max_x = int(payload['max_x'])
-            render_min_z = int(payload['min_z'])
-            render_max_z = int(payload['max_z'])
             source_image = Image.open(image_path).convert('RGBA')
-        except (OSError, KeyError, TypeError, ValueError):
+        except OSError:
+            self._invalidate_world_map_render_cache()
+            return None
+
+        self.world_map_render_cache_stat = render_cache_stat
+        self.world_map_render_image_stat = image_stat
+        self.world_map_render_image_path = image_path
+        self.world_map_render_payload = payload
+        self.world_map_render_source_image = source_image
+        return (payload, source_image)
+
+    def _current_world_map_next_target_preview(self) -> Any | None:
+        try:
+            from worldgen.config import load_config
+            from worldgen.generator import (
+                HEADLESS_LOADER_PROGRESS_FILE_NAME,
+                BedrockWorldGenerator,
+            )
+
+            config = load_config()
+            progress_path = config.paths.cache_dir / HEADLESS_LOADER_PROGRESS_FILE_NAME
+            cache_key = (
+                _file_stat_key(config.config_path),
+                _file_stat_key(config.paths.render_cache_path),
+                _file_stat_key(progress_path),
+            )
+            if cache_key == self.world_map_next_target_cache_key:
+                return self.world_map_next_target_preview
+
+            preview = BedrockWorldGenerator(config).next_headless_loader_target_preview()
+        except Exception:
+            self.world_map_next_target_cache_key = None
+            self.world_map_next_target_preview = None
+            return None
+
+        self.world_map_next_target_cache_key = cache_key
+        self.world_map_next_target_preview = preview
+        return preview
+
+    def _draw_world_map_render_underlay(self) -> None:
+        if not self.show_world_map_render_var.get():
+            return
+
+        render_underlay = self._current_world_map_render_underlay()
+        if render_underlay is None:
+            return
+        payload, source_image = render_underlay
+
+        try:
+            render_min_x = _render_cache_int(payload, 'min_x')
+            render_max_x = _render_cache_int(payload, 'max_x')
+            render_min_z = _render_cache_int(payload, 'min_z')
+            render_max_z = _render_cache_int(payload, 'max_z')
+        except (KeyError, TypeError, ValueError):
             return
 
         top_left_x, top_left_y = self.world_to_canvas((render_min_x, -render_min_z))
@@ -7262,13 +7597,7 @@ class MetroMapViewer:
         )
 
     def _draw_world_map_next_target_bounds(self) -> None:
-        try:
-            from worldgen.config import load_config
-            from worldgen.generator import BedrockWorldGenerator
-
-            preview = BedrockWorldGenerator(load_config()).next_headless_loader_target_preview()
-        except Exception:
-            return
+        preview = self._current_world_map_next_target_preview()
         if preview is None:
             return
 
@@ -7507,14 +7836,35 @@ class MetroMapViewer:
             line_kwargs: dict[str, object] = {}
             if extra_edge.kind == 'walk':
                 line_kwargs['dash'] = (6, 4)
+            if extra_edge.id == self.active_path_edge_id:
+                self.canvas.create_line(
+                    *canvas_points,
+                    fill=ROUTE_HIGHLIGHT_OUTLINE,
+                    width=PATH_EDIT_ACTIVE_OUTLINE_WIDTH,
+                    capstyle='round',
+                    joinstyle='round',
+                    **line_kwargs,
+                )
             self.canvas.create_line(
                 *canvas_points,
                 fill=CONNECTOR_ROUTE_COLOR if extra_edge.kind == 'connector' else WALK_ROUTE_COLOR,
-                width=3,
+                width=PATH_EDIT_ACTIVE_WIDTH if extra_edge.id == self.active_path_edge_id else 3,
                 capstyle='round',
                 joinstyle='round',
                 **line_kwargs,
             )
+            if extra_edge.id == self.active_path_edge_id and self.path_click_mode_var.get():
+                for point in self._path_edit_points_for_edge(extra_edge)[1:-1]:
+                    handle_x, handle_y = self.world_to_canvas((point[0], -point[1]))
+                    self.canvas.create_oval(
+                        handle_x - PATH_EDIT_HANDLE_RADIUS,
+                        handle_y - PATH_EDIT_HANDLE_RADIUS,
+                        handle_x + PATH_EDIT_HANDLE_RADIUS,
+                        handle_y + PATH_EDIT_HANDLE_RADIUS,
+                        fill=INFO_BOX_BACKGROUND,
+                        outline=ROUTE_HIGHLIGHT_OUTLINE,
+                        width=2,
+                    )
 
     def _draw_frontier_highlights(self, visible_line_names: set[str]) -> None:
         if not self.show_frontier_highlights_var.get():
@@ -7786,6 +8136,11 @@ class MetroMapViewer:
         release_y = int(getattr(event, 'y', 0))
         self._cancel_scheduled_redraw()
         if not self.is_dragging:
+            if self._handle_path_click_edit(release_x, release_y):
+                self.drag_start = None
+                self.drag_origin = None
+                self.is_dragging = False
+                return
             selected_stop = self._station_hit_test(
                 release_x,
                 release_y,
@@ -9322,6 +9677,31 @@ def add_extra_edge(
     payload['extra_edges'].append(edge_record)
     _sync_alignment_reminder_for_edge_record(payload, edge_record)
     _normalize_extra_edges(payload)
+    _normalize_alignment_reminders(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+
+
+def set_extra_edge_path_points(
+    edge_id: str,
+    path_points: Sequence[tuple[int, int]],
+) -> None:
+    payload = _load_network_payload()
+    edge_record = _find_extra_edge_record(payload, edge_id)
+
+    normalized_points: list[PathPointRecord] = []
+    previous_coordinates: tuple[int, int] | None = None
+    for raw_x, raw_y in path_points:
+        coordinates = (int(raw_x), int(raw_y))
+        if coordinates == previous_coordinates:
+            continue
+        previous_coordinates = coordinates
+        normalized_points.append({'x': coordinates[0], 'y': coordinates[1]})
+
+    edge_record['path_points'] = normalized_points
+    _normalize_extra_edges(payload)
+    edge_record = _find_extra_edge_record(payload, edge_id)
+    _sync_alignment_reminder_for_edge_record(payload, edge_record)
     _normalize_alignment_reminders(payload)
     _write_network_payload(payload)
     _apply_network_payload(payload)

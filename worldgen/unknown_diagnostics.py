@@ -871,9 +871,9 @@ def _append_sample_coordinate(target: list[list[int]], sample: Any) -> None:
     world_x = sample.get('world_x')
     world_y = sample.get('world_y')
     world_z = sample.get('world_z')
-    if not all(isinstance(value, int) for value in (world_x, world_y, world_z)):
+    if not isinstance(world_x, int) or not isinstance(world_y, int) or not isinstance(world_z, int):
         return
-    coordinate = [world_x, world_y, world_z]
+    coordinate: list[int] = [world_x, world_y, world_z]
     if coordinate not in target:
         target.append(coordinate)
 
@@ -924,7 +924,8 @@ def _write_csv(path: Path, cases: list[dict[str, Any]]) -> None:
         writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
         writer.writeheader()
         for case in cases:
-            lookup = case.get('lookup') if isinstance(case.get('lookup'), dict) else {}
+            raw_lookup = case.get('lookup')
+            lookup: dict[str, Any] = raw_lookup if isinstance(raw_lookup, dict) else {}
             writer.writerow(
                 {
                     'unknown_label': case.get('unknown_label'),
@@ -1240,7 +1241,7 @@ def _sample_block_index(sample: dict[str, Any]) -> int | None:
     local_x = sample.get('local_x')
     local_y = sample.get('local_y')
     local_z = sample.get('local_z')
-    if not all(isinstance(value, int) for value in (local_x, local_y, local_z)):
+    if not isinstance(local_x, int) or not isinstance(local_y, int) or not isinstance(local_z, int):
         return None
     if not (0 <= local_x < 16 and 0 <= local_y < 16 and 0 <= local_z < 16):
         return None
