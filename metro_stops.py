@@ -151,6 +151,7 @@ CHIME_DIRECTION_LABELS: Final[dict[ChimeDirection, str]] = {
     'south': 'South',
     'west': 'West',
 }
+WorldMapTaskQueueItem = tuple[Literal['progress', 'done'], bool, str]
 
 
 class StopRecord(TypedDict):
@@ -2065,19 +2066,19 @@ def _world_map_render_text() -> str:
     return '\n'.join(lines)
 
 
-def _world_map_auto_fill_step_text() -> str:
-    from worldgen.config import load_config
-    from worldgen.generator import BedrockWorldGenerator
-
-    config = load_config()
-    generator = BedrockWorldGenerator(config)
+def _world_map_auto_fill_step_text_for_generator(
+    generator: Any,
+    *,
+    step_number: int | None = None,
+) -> str:
+    step_label = f'Auto fill step {step_number}' if step_number is not None else 'Auto fill step'
     load_results = [
-        generator.load_chunks_headless()
+        generator.load_chunks_headless(stop_after=True, restart_existing=False)
         for _index in range(WORLD_MAP_AUTO_LOAD_PASSES)
     ]
     render_result = generator.render_map()
     lines = [
-        'Auto fill step finished.',
+        f'{step_label} finished.',
         f'World: {render_result.world_path}',
         f'Load passes: {len(load_results)}',
     ]
@@ -2115,8 +2116,63 @@ def _world_map_auto_fill_step_text() -> str:
         )
     if render_result.subchunk_decode_errors:
         lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
-    lines.append('Run Auto Fill Step again to continue outward from Blackport.')
+    lines.append('Auto Fill can continue with the next step.')
     return '\n'.join(lines)
+
+
+def _world_map_auto_fill_step_text() -> str:
+    from worldgen.config import load_config
+    from worldgen.generator import BedrockWorldGenerator
+
+    config = load_config()
+    generator = BedrockWorldGenerator(config)
+    return _world_map_auto_fill_step_text_for_generator(generator)
+
+
+def _world_map_auto_fill_until_stopped_text(
+    stop_event: threading.Event,
+    progress_callback: Callable[[str], None] | None = None,
+) -> str:
+    from worldgen.config import load_config
+    from worldgen.generator import BedrockWorldGenerator
+
+    config = load_config()
+    generator = BedrockWorldGenerator(config)
+    step_count = 0
+    last_step_message = ''
+
+    while True:
+        if stop_event.is_set() and step_count > 0:
+            break
+
+        step_count += 1
+        if progress_callback is not None:
+            progress_callback(
+                f'Auto filling world map...\n\n'
+                f'Running step {step_count}. Stop will happen after this step finishes.'
+            )
+
+        last_step_message = _world_map_auto_fill_step_text_for_generator(
+            generator,
+            step_number=step_count,
+        )
+        if stop_event.is_set():
+            break
+
+        if progress_callback is not None:
+            progress_callback(
+                f'{last_step_message}\n\n'
+                'Still running. Press Stop Auto Fill to stop after the current step.'
+            )
+
+    return '\n'.join(
+        (
+            f'Auto fill stopped after {step_count} step{"s" if step_count != 1 else ""}.',
+            'The stop request waited for the active step to finish.',
+            '',
+            last_step_message,
+        )
+    )
 
 
 def _world_map_stop_world_text() -> str:
@@ -4160,11 +4216,16 @@ class MetroMapViewer:
         self.search_entry: tk.Entry
         self.route_steps_text: tk.Text
         self.world_map_status_text: tk.Text
+        self.world_map_auto_fill_button: tk.Label
         self.path_nodes_heading: tk.Label
         self.priority_list_frame: tk.Frame
         self.railway_finish_line_menu: tk.Menubutton
-        self.world_map_task_queue: queue.SimpleQueue[tuple[bool, str]] = queue.SimpleQueue()
+        self.world_map_task_queue: queue.SimpleQueue[WorldMapTaskQueueItem] = queue.SimpleQueue()
+        self.world_map_task_completion_callback: Callable[[bool, str], None] | None = None
         self.world_map_task_running = False
+        self.world_map_auto_fill_stop_event: threading.Event | None = None
+        self.world_map_auto_fill_running = False
+        self.world_map_auto_fill_stop_requested = False
         self.overlay_image_refs: list[ImageTk.PhotoImage] = []
         self.hover_canvas_point: tuple[float, float] | None = None
         self.cursor_readout_coordinates: tuple[int, int] | None = None
@@ -4424,7 +4485,7 @@ class MetroMapViewer:
 
         world_map_section = self._make_collapsible_sidebar_section('World Map', expanded=True)
         self._make_sidebar_hint(
-            'Auto Fill Step loads the next larger Blackport box and renders it. Repeat until the rectangle is filled.',
+            'Auto Fill keeps loading and rendering outward from Blackport until you stop it. Stop finishes the active step first.',
             parent=world_map_section,
         ).pack(anchor='w', padx=16, pady=(4, 6))
         self.world_map_status_text = tk.Text(
@@ -4450,11 +4511,12 @@ class MetroMapViewer:
         self._set_world_map_status_text(self.world_map_status_var.get())
         world_map_auto_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
         world_map_auto_row.pack(fill='x', padx=16, pady=(0, 12))
-        self._make_sidebar_button(
+        self.world_map_auto_fill_button = self._make_sidebar_button(
             world_map_auto_row,
-            text='Auto Fill Step',
-            command=self._auto_fill_world_map_step,
-        ).pack(side='left')
+            text='Start Auto Fill',
+            command=self._start_auto_fill_world_map,
+        )
+        self.world_map_auto_fill_button.pack(side='left')
 
         railway_section = self._make_collapsible_sidebar_section('Railway Finishing', expanded=True)
         self._make_sidebar_hint(
@@ -4819,6 +4881,17 @@ class MetroMapViewer:
         button.bind('<Button-1>', lambda _event: command())
         return button
 
+    def _configure_sidebar_button(
+        self,
+        button: tk.Label,
+        *,
+        text: str,
+        command: Callable[[], None],
+    ) -> None:
+        button.configure(text=text, bg=INFO_BUTTON_BACKGROUND, cursor='hand2')
+        button.unbind('<Button-1>')
+        button.bind('<Button-1>', lambda _event: command())
+
     def _make_sidebar_checkbox(
         self,
         parent: tk.Misc,
@@ -5074,38 +5147,63 @@ class MetroMapViewer:
         else:
             self.route_steps_text.pack_forget()
 
-    def _start_world_map_task(self, task_label: str, worker: Callable[[], str]) -> None:
+    def _post_world_map_task_progress(self, message: str) -> None:
+        self.world_map_task_queue.put(('progress', True, message))
+
+    def _start_world_map_task(
+        self,
+        task_label: str,
+        worker: Callable[[], str],
+        *,
+        on_finished: Callable[[bool, str], None] | None = None,
+    ) -> None:
         if self.world_map_task_running:
             self._set_world_map_status_text('World map task already running.')
             return
 
         self.world_map_task_running = True
+        self.world_map_task_completion_callback = on_finished
         self._set_world_map_status_text(f'{task_label}...')
 
         def run_worker() -> None:
             try:
                 message = worker()
             except Exception as exc:
-                self.world_map_task_queue.put((False, f'{task_label} failed.\n{exc}'))
+                self.world_map_task_queue.put(('done', False, f'{task_label} failed.\n{exc}'))
                 return
-            self.world_map_task_queue.put((True, message))
+            self.world_map_task_queue.put(('done', True, message))
 
         threading.Thread(target=run_worker, daemon=True).start()
         self.root.after(200, self._poll_world_map_task)
 
     def _poll_world_map_task(self) -> None:
         try:
-            succeeded, message = self.world_map_task_queue.get_nowait()
+            message_kind, succeeded, message = self.world_map_task_queue.get_nowait()
         except queue.Empty:
             if self.world_map_task_running:
                 self.root.after(200, self._poll_world_map_task)
             return
 
+        if message_kind == 'progress':
+            if self.world_map_auto_fill_stop_requested:
+                message = (
+                    f'{message.rstrip()}\n\n'
+                    'Stop requested. The current step will finish, then Auto Fill will stop.'
+                )
+            self._set_world_map_status_text(message)
+            if self.world_map_task_running:
+                self.root.after(200, self._poll_world_map_task)
+            return
+
         self.world_map_task_running = False
+        completion_callback = self.world_map_task_completion_callback
+        self.world_map_task_completion_callback = None
         self._set_world_map_status_text(message)
         if succeeded:
             self._set_world_map_status_text(f'{message}\n\n{_world_map_cached_status_text()}')
             self.redraw()
+        if completion_callback is not None:
+            completion_callback(succeeded, message)
 
     def _refresh_world_map_live_status(self) -> None:
         self._start_world_map_task('Refreshing world map status', _world_map_live_status_text)
@@ -5119,8 +5217,72 @@ class MetroMapViewer:
     def _render_world_map(self) -> None:
         self._start_world_map_task('Rendering world map', _world_map_render_text)
 
-    def _auto_fill_world_map_step(self) -> None:
-        self._start_world_map_task('Auto filling world map', _world_map_auto_fill_step_text)
+    def _set_world_map_auto_fill_button(self, state: Literal['idle', 'running', 'stopping']) -> None:
+        if not hasattr(self, 'world_map_auto_fill_button'):
+            return
+
+        if state == 'idle':
+            self._configure_sidebar_button(
+                self.world_map_auto_fill_button,
+                text='Start Auto Fill',
+                command=self._start_auto_fill_world_map,
+            )
+            return
+
+        if state == 'running':
+            self._configure_sidebar_button(
+                self.world_map_auto_fill_button,
+                text='Stop Auto Fill',
+                command=self._request_stop_auto_fill_world_map,
+            )
+            return
+
+        self._configure_sidebar_button(
+            self.world_map_auto_fill_button,
+            text='Stopping...',
+            command=lambda: None,
+        )
+
+    def _start_auto_fill_world_map(self) -> None:
+        if self.world_map_task_running:
+            self._set_world_map_status_text('World map task already running.')
+            return
+
+        stop_event = threading.Event()
+        self.world_map_auto_fill_stop_event = stop_event
+        self.world_map_auto_fill_running = True
+        self.world_map_auto_fill_stop_requested = False
+        self._set_world_map_auto_fill_button('running')
+
+        self._start_world_map_task(
+            'Auto filling world map',
+            lambda: _world_map_auto_fill_until_stopped_text(
+                stop_event,
+                progress_callback=self._post_world_map_task_progress,
+            ),
+            on_finished=self._finish_auto_fill_world_map,
+        )
+
+    def _request_stop_auto_fill_world_map(self) -> None:
+        if self.world_map_auto_fill_stop_event is None or not self.world_map_auto_fill_running:
+            return
+
+        self.world_map_auto_fill_stop_event.set()
+        if self.world_map_auto_fill_stop_requested:
+            return
+
+        self.world_map_auto_fill_stop_requested = True
+        self._set_world_map_auto_fill_button('stopping')
+        current_status = self.world_map_status_var.get().rstrip()
+        self._set_world_map_status_text(
+            f'{current_status}\n\nStop requested. The current step will finish, then Auto Fill will stop.'
+        )
+
+    def _finish_auto_fill_world_map(self, _succeeded: bool, _message: str) -> None:
+        self.world_map_auto_fill_stop_event = None
+        self.world_map_auto_fill_running = False
+        self.world_map_auto_fill_stop_requested = False
+        self._set_world_map_auto_fill_button('idle')
 
     def _stop_world_map_world(self) -> None:
         self._start_world_map_task('Stopping Bedrock worldgen container', _world_map_stop_world_text)

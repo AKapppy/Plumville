@@ -49,6 +49,7 @@ class HeadlessLoaderConfig:
     teleport_retry_seconds: int
     teleport_attempts: int
     chunk_radius: int
+    target_outset_blocks: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,6 +172,7 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
             4,
         ),
         chunk_radius=_optional_positive_int(headless_loader_table, 'chunk_radius') or 12,
+        target_outset_blocks=_optional_nonnegative_int(headless_loader_table, 'target_outset_blocks') or 0,
     )
 
     storage = StorageConfig(

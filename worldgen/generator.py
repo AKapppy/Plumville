@@ -167,6 +167,12 @@ class BedrockWorldGenerator:
                 self.write_cache(world_path)
                 self.write_render_plan(world_path)
                 return world_path
+            if logs_output and not self.is_service_running():
+                tail = _tail_lines(logs_output, 25)
+                raise RuntimeError(
+                    'Bedrock server exited before startup completed.\n'
+                    f'Last logs:\n{tail}'
+                )
             time.sleep(poll_seconds)
 
         tail = _tail_lines(last_output, 25)
@@ -304,6 +310,7 @@ class BedrockWorldGenerator:
         *,
         wait_seconds: int | None = None,
         stop_after: bool = True,
+        restart_existing: bool = True,
     ) -> HeadlessChunkLoadResult:
         loader_config = self.config.headless_loader
         effective_wait_seconds = wait_seconds or loader_config.wait_seconds
@@ -330,7 +337,7 @@ class BedrockWorldGenerator:
 
         attempts: list[_HeadlessChunkLoadAttempt] = []
         for attempt_number in range(1, HEADLESS_LOADER_MAX_ATTEMPTS + 1):
-            if self.is_service_running():
+            if restart_existing and self.is_service_running():
                 self.stop(
                     grace_seconds=HEADLESS_LOADER_STOP_GRACE_SECONDS,
                     command_timeout_seconds=HEADLESS_LOADER_STOP_COMMAND_TIMEOUT_SECONDS,
@@ -784,6 +791,7 @@ def _headless_loader_progress_signature(config: WorldgenConfig, target_count: in
         'center_z': config.render.center_z,
         'render_radius': config.render.radius,
         'chunk_radius': config.headless_loader.chunk_radius,
+        'target_outset_blocks': config.headless_loader.target_outset_blocks,
         'teleport_y': config.headless_loader.teleport_y,
         'target_count': target_count,
     }
@@ -867,7 +875,29 @@ def _render_area_teleport_points(
             step,
         )
     ]
+    points = [_outset_teleport_point(config, point) for point in points]
     return _progressive_box_teleport_points(config, points, step)
+
+
+def _outset_teleport_point(
+    config: WorldgenConfig,
+    point: tuple[int, int],
+) -> tuple[int, int]:
+    outset = config.headless_loader.target_outset_blocks
+    if outset <= 0:
+        return point
+
+    delta_x = point[0] - config.render.center_x
+    delta_z = point[1] - config.render.center_z
+    distance = math.hypot(delta_x, delta_z)
+    if distance == 0:
+        return point
+
+    scale = (distance + outset) / distance
+    return (
+        round(config.render.center_x + (delta_x * scale)),
+        round(config.render.center_z + (delta_z * scale)),
+    )
 
 def _progressive_box_teleport_points(
     config: WorldgenConfig,
@@ -1031,10 +1061,10 @@ def _teleport_target_world_bounds(
     min_chunk_z = center_chunk_z - radius
     max_chunk_z = center_chunk_z + radius
     return (
-        max(config.render.min_x, min_chunk_x * 16),
-        min(config.render.max_x, (max_chunk_x * 16) + 15),
-        max(config.render.min_z, min_chunk_z * 16),
-        min(config.render.max_z, (max_chunk_z * 16) + 15),
+        min_chunk_x * 16,
+        (max_chunk_x * 16) + 15,
+        min_chunk_z * 16,
+        (max_chunk_z * 16) + 15,
     )
 
 

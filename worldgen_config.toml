@@ -4,7 +4,7 @@ compose_file = "docker-compose.worldgen.yml"
 
 [world]
 image = "itzg/minecraft-bedrock-server:2025.11.0"
-server_version = "LATEST"
+server_version = "1.26.10.4"
 seed = "437241185583693582"
 level_name = "metro_map_world_boxfill"
 eula = "TRUE"
@@ -30,6 +30,7 @@ teleport_delay_seconds = 8
 teleport_retry_seconds = 4
 teleport_attempts = 1
 chunk_radius = 16
+target_outset_blocks = 64
 
 [storage]
 data_dir = "worldgen_data/bedrock-data"

@@ -244,35 +244,36 @@ def _iter_leveldb_subchunk_records(
     max_chunk_z: int,
     record_source: str = 'leveldb',
 ) -> Iterator[SubchunkRecord]:
-    db = plyvel.DB(str(db_path), create_if_missing=False)
+    db = None
     try:
-        try:
-            for key, payload in db:
-                key_parts = _parse_subchunk_key(key)
-                if key_parts is None:
-                    continue
-                chunk_x, chunk_z, dimension_id, subchunk_y = key_parts
-                if not (min_chunk_x <= chunk_x <= max_chunk_x):
-                    continue
-                if not (min_chunk_z <= chunk_z <= max_chunk_z):
-                    continue
-                yield SubchunkRecord(
-                    chunk_x=chunk_x,
-                    chunk_z=chunk_z,
-                    subchunk_y=subchunk_y,
-                    payload=bytes(payload),
-                    raw_key=bytes(key),
-                    dimension_id=dimension_id,
-                    record_source=record_source,
-                )
-        except Exception as exc:
-            raise LevelDbReadError(
-                'Could not read Bedrock LevelDB chunk data. If the Bedrock server is stopped '
-                'and this started after loading chunks, run `python3 -m worldgen repair-db` '
-                'to back up and repair the LevelDB folder, then render again.'
-            ) from exc
+        db = plyvel.DB(str(db_path), create_if_missing=False)
+        for key, payload in db:
+            key_parts = _parse_subchunk_key(key)
+            if key_parts is None:
+                continue
+            chunk_x, chunk_z, dimension_id, subchunk_y = key_parts
+            if not (min_chunk_x <= chunk_x <= max_chunk_x):
+                continue
+            if not (min_chunk_z <= chunk_z <= max_chunk_z):
+                continue
+            yield SubchunkRecord(
+                chunk_x=chunk_x,
+                chunk_z=chunk_z,
+                subchunk_y=subchunk_y,
+                payload=bytes(payload),
+                raw_key=bytes(key),
+                dimension_id=dimension_id,
+                record_source=record_source,
+            )
+    except Exception as exc:
+        raise LevelDbReadError(
+            'Could not read Bedrock LevelDB chunk data. If the Bedrock server is stopped '
+            'and this started after loading chunks, run `python3 -m worldgen repair-db` '
+            'to back up and repair the LevelDB folder, then render again.'
+        ) from exc
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
 
 def _iter_repaired_lost_subchunk_records(
