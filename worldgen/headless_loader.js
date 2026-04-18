@@ -31,9 +31,59 @@ let spawned = false
 let finished = false
 let client = null
 let startGameMetadataWritten = false
+const warnedFileOperations = new Set()
+const retryableFsErrorCodes = new Set(['EAGAIN', 'EDEADLK', 'EBUSY', 'UNKNOWN'])
+
+function isRetryableFsError (err) {
+  if (!err) return false
+  return retryableFsErrorCodes.has(err.code) || err.errno === -35 || err.errno === 11 || err.errno === -11
+}
+
+function sleepSync (ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
+function retrySync (operation, attempts = 6, delayMs = 150) {
+  let lastError = null
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return operation()
+    } catch (err) {
+      lastError = err
+      if (!isRetryableFsError(err) || attempt === attempts - 1) {
+        throw err
+      }
+      sleepSync(delayMs * (attempt + 1))
+    }
+  }
+  throw lastError
+}
+
+function ensureOutputDir (filePath) {
+  retrySync(() => fs.mkdirSync(path.dirname(filePath), { recursive: true }))
+}
+
+function writeFileWithRetry (filePath, text) {
+  ensureOutputDir(filePath)
+  retrySync(() => fs.writeFileSync(filePath, text))
+}
+
+function appendFileWithRetry (filePath, text) {
+  ensureOutputDir(filePath)
+  retrySync(() => fs.appendFileSync(filePath, text))
+}
 
 function log (message) {
   console.log(`[headless-loader] ${message}`)
+}
+
+function warnFileOperationOnce (label, filePath, err) {
+  const key = `${label}:${filePath}`
+  if (warnedFileOperations.has(key)) return
+  warnedFileOperations.add(key)
+  console.error(
+    `[headless-loader] warning: could not ${label} ${filePath}: ${err && err.message ? err.message : String(err)}`
+  )
 }
 
 function writeResult (reason, exitCode) {
@@ -57,8 +107,11 @@ function writeResult (reason, exitCode) {
     unique_chunk_columns: chunkColumns.size,
     subchunks_received: subChunksReceived
   }
-  fs.mkdirSync(require('path').dirname(resultFile), { recursive: true })
-  fs.writeFileSync(resultFile, JSON.stringify(payload, null, 2) + '\n')
+  try {
+    writeFileWithRetry(resultFile, JSON.stringify(payload, null, 2) + '\n')
+  } catch (err) {
+    warnFileOperationOnce('write result file', resultFile, err)
+  }
 }
 
 function appendChunkPacket (record) {
@@ -69,8 +122,11 @@ function appendChunkPacket (record) {
   delete outputRecord.payload
   outputRecord.generated_at = new Date().toISOString()
   outputRecord.payload_base64 = payload.toString('base64')
-  fs.mkdirSync(require('path').dirname(chunkPacketFile), { recursive: true })
-  fs.appendFileSync(chunkPacketFile, JSON.stringify(outputRecord) + '\n')
+  try {
+    appendFileWithRetry(chunkPacketFile, JSON.stringify(outputRecord) + '\n')
+  } catch (err) {
+    warnFileOperationOnce('append chunk packet', chunkPacketFile, err)
+  }
 }
 
 function normalizeBlockName (name) {
@@ -97,9 +153,12 @@ function writeStartGameMetadata (packet) {
     block_properties_count: Array.isArray(packet.block_properties) ? packet.block_properties.length : 0,
     unique_block_names: Array.from(blockNames).sort(),
   }
-  fs.mkdirSync(path.dirname(startGameMetadataFile), { recursive: true })
-  fs.writeFileSync(startGameMetadataFile, JSON.stringify(payload, null, 2) + '\n')
-  startGameMetadataWritten = true
+  try {
+    writeFileWithRetry(startGameMetadataFile, JSON.stringify(payload, null, 2) + '\n')
+    startGameMetadataWritten = true
+  } catch (err) {
+    warnFileOperationOnce('write start-game metadata', startGameMetadataFile, err)
+  }
 }
 
 function cacheLevelChunkPacket (packet) {

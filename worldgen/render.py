@@ -3,7 +3,10 @@ from __future__ import annotations
 import base64
 import binascii
 from collections import Counter
+import errno
 import json
+import os
+import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Final
@@ -704,6 +707,8 @@ class RenderResult:
     unknown_block_occurrences_csv_path: str | None = None
     unknown_block_summary_path: str | None = None
     unknown_block_persistent_candidates_path: str | None = None
+    render_style: str = 'surface'
+    fixed_y: int | None = None
 
 
 def build_render_plan(config: WorldgenConfig, world_path: Path | None = None) -> RenderPlan:
@@ -734,12 +739,18 @@ def save_render_plan(path: Path, plan: RenderPlan) -> None:
 
 def render_topdown_map(
     config: WorldgenConfig,
-    world_path: Path,
+    world_path: Path | None,
     *,
     image_path: Path,
     metadata_path: Path,
     diagnose_unknown_blocks: bool = False,
     prefer_persistent_bedrock: bool = False,
+    packet_cache_path: Path | None = None,
+    packet_cache_paths: tuple[Path, ...] | None = None,
+    read_persistent_bedrock: bool = True,
+    read_packet_cache: bool = True,
+    preserve_existing_image: bool = False,
+    fixed_y: int | None = None,
 ) -> RenderResult:
     try:
         from PIL import Image
@@ -747,6 +758,7 @@ def render_topdown_map(
         raise RuntimeError(
             'Rendering PNG output requires Pillow. Install it with `python3 -m pip install Pillow`.'
         ) from exc
+    Image.MAX_IMAGE_PIXELS = None
 
     render = config.render
     generated_at = utc_now_iso()
@@ -763,24 +775,45 @@ def render_topdown_map(
 
     top_blocks: dict[tuple[int, int], TopBlock] = {}
     uncolored_blocks: dict[str, UncoloredBlockStats] = {}
-    persistent_records = tuple(
-        iter_subchunk_records(
-            world_path,
-            min_chunk_x=min_chunk_x,
-            max_chunk_x=max_chunk_x,
-            min_chunk_z=min_chunk_z,
-            max_chunk_z=max_chunk_z,
+    persistent_records = ()
+    if read_persistent_bedrock and world_path is not None:
+        persistent_records = tuple(
+            iter_subchunk_records(
+                world_path,
+                min_chunk_x=min_chunk_x,
+                max_chunk_x=max_chunk_x,
+                min_chunk_z=min_chunk_z,
+                max_chunk_z=max_chunk_z,
+            )
         )
+    packet_cache_paths = packet_cache_paths or (
+        packet_cache_path or config.storage.cache_dir / HEADLESS_CHUNK_PACKET_FILE_NAME,
     )
-    packet_cache_path = config.storage.cache_dir / HEADLESS_CHUNK_PACKET_FILE_NAME
-    packet_records = _iter_cached_packet_subchunk_records(
-        packet_cache_path,
-        min_chunk_x=min_chunk_x,
-        max_chunk_x=max_chunk_x,
-        min_chunk_z=min_chunk_z,
-        max_chunk_z=max_chunk_z,
-    )
-    _compact_cached_packet_subchunk_records(packet_cache_path, packet_records)
+    source_path = world_path or packet_cache_paths[-1]
+    packet_records = ()
+    if read_packet_cache:
+        packet_record_by_key: dict[tuple[int | None, int, int, int, bool], SubchunkRecord] = {}
+        for active_packet_cache_path in packet_cache_paths:
+            active_packet_records = _iter_cached_packet_subchunk_records(
+                active_packet_cache_path,
+                min_chunk_x=min_chunk_x,
+                max_chunk_x=max_chunk_x,
+                min_chunk_z=min_chunk_z,
+                max_chunk_z=max_chunk_z,
+            )
+            if active_packet_cache_path == packet_cache_paths[-1]:
+                _compact_cached_packet_subchunk_records(active_packet_cache_path, active_packet_records)
+            for packet_record in active_packet_records:
+                packet_record_by_key[
+                    (
+                        packet_record.dimension_id,
+                        packet_record.chunk_x,
+                        packet_record.chunk_z,
+                        packet_record.subchunk_y,
+                        packet_record.uses_runtime_palette,
+                    )
+                ] = packet_record
+        packet_records = tuple(packet_record_by_key.values())
     packet_records = _filter_packet_records_against_persistent_columns(
         packet_records,
         persistent_records=persistent_records,
@@ -804,6 +837,8 @@ def render_topdown_map(
 
     unknown_diagnostics = None
     if diagnose_unknown_blocks:
+        if world_path is None:
+            raise RuntimeError('Unknown block diagnostics require a Bedrock world folder.')
         unknown_diagnostics = UnknownBlockDiagnostics(
             world_path=world_path,
             generated_at=generated_at,
@@ -828,15 +863,18 @@ def render_topdown_map(
     for record in records:
         chunk_columns_read.add((record.chunk_x, record.chunk_z))
         subchunk: DecodedSubchunk | None = None
-        could_improve_top_blocks = _subchunk_could_improve_top_blocks(
-            top_blocks,
-            record,
-            min_x=render.min_x,
-            max_x=render.max_x,
-            min_z=render.min_z,
-            max_z=render.max_z,
-            sample_step=render.sample_step,
-        )
+        if fixed_y is None:
+            could_improve_top_blocks = _subchunk_could_improve_top_blocks(
+                top_blocks,
+                record,
+                min_x=render.min_x,
+                max_x=render.max_x,
+                min_z=render.min_z,
+                max_z=render.max_z,
+                sample_step=render.sample_step,
+            )
+        else:
+            could_improve_top_blocks = record.subchunk_y == fixed_y // 16
 
         if unknown_diagnostics is not None:
             try:
@@ -859,33 +897,76 @@ def render_topdown_map(
                 subchunk_decode_errors += 1
                 continue
             subchunks_read += 1
-        _collect_subchunk_top_blocks(
-            top_blocks,
-            subchunk,
-            uncolored_blocks,
-            min_x=render.min_x,
-            max_x=render.max_x,
-            min_z=render.min_z,
-            max_z=render.max_z,
-            sample_step=render.sample_step,
-        )
+        if fixed_y is None:
+            _collect_subchunk_top_blocks(
+                top_blocks,
+                subchunk,
+                uncolored_blocks,
+                min_x=render.min_x,
+                max_x=render.max_x,
+                min_z=render.min_z,
+                max_z=render.max_z,
+                sample_step=render.sample_step,
+            )
+        else:
+            _collect_subchunk_fixed_y_blocks(
+                top_blocks,
+                subchunk,
+                uncolored_blocks,
+                fixed_y=fixed_y,
+                min_x=render.min_x,
+                max_x=render.max_x,
+                min_z=render.min_z,
+                max_z=render.max_z,
+                sample_step=render.sample_step,
+            )
 
-    image = Image.new('RGBA', (width, height), (*RENDER_BACKGROUND_COLOR, 0))
+    image = None
+    if preserve_existing_image and image_path.exists():
+        try:
+            existing_image = Image.open(image_path).convert('RGBA')
+            if existing_image.size == (width, height):
+                image = existing_image
+        except OSError:
+            image = None
+    if image is None:
+        image = Image.new('RGBA', (width, height), (*RENDER_BACKGROUND_COLOR, 0))
     for (pixel_x, pixel_z), top_block in top_blocks.items():
         block_color = _block_color(top_block.block_name)
         if block_color is not None:
             image.putpixel((pixel_x, pixel_z), (*block_color, 255))
-    if not top_blocks:
+    visible_pixel_count, colored_min_x, colored_max_x, colored_min_z, colored_max_z = (
+        _visible_image_world_bounds(
+            image,
+            min_x=render.min_x,
+            min_z=render.min_z,
+            sample_step=render.sample_step,
+        )
+    )
+    if visible_pixel_count == 0:
         _draw_no_chunks_message(image)
+        visible_pixel_count, colored_min_x, colored_max_x, colored_min_z, colored_max_z = (
+            _visible_image_world_bounds(
+                image,
+                min_x=render.min_x,
+                min_z=render.min_z,
+                sample_step=render.sample_step,
+            )
+        )
 
     image_path.parent.mkdir(parents=True, exist_ok=True)
     image.save(image_path)
-    uncolored_blocks_report_path = image_path.with_name('uncolored_blocks_report.txt')
+    if image_path.name == 'blackport_topdown.png':
+        uncolored_blocks_report_path = image_path.with_name('uncolored_blocks_report.txt')
+    else:
+        uncolored_blocks_report_path = image_path.with_name(
+            f'{image_path.stem}_uncolored_blocks_report.txt'
+        )
     _write_uncolored_blocks_report(
         uncolored_blocks_report_path,
         uncolored_blocks,
         generated_at=utc_now_iso(),
-        world_path=world_path,
+        world_path=source_path,
         render_min_x=render.min_x,
         render_max_x=render.max_x,
         render_min_z=render.min_z,
@@ -922,17 +1003,11 @@ def render_topdown_map(
             }
         ).most_common(MAX_METADATA_BLOCK_COUNTS)
     )
-    colored_min_x, colored_max_x, colored_min_z, colored_max_z = _top_block_world_bounds(
-        top_blocks,
-        min_x=render.min_x,
-        min_z=render.min_z,
-        sample_step=render.sample_step,
-    )
     result = RenderResult(
         generated_at=generated_at,
         image_path=str(image_path.resolve()),
         metadata_path=str(metadata_path.resolve()),
-        world_path=str(world_path.resolve()),
+        world_path=str(source_path.resolve()),
         width=width,
         height=height,
         min_x=render.min_x,
@@ -947,7 +1022,7 @@ def render_topdown_map(
         subchunks_skipped_below_surface=subchunks_skipped_below_surface,
         subchunk_decode_errors=subchunk_decode_errors,
         total_pixels=width * height,
-        colored_pixels=len(top_blocks),
+        colored_pixels=visible_pixel_count,
         colored_min_x=colored_min_x,
         colored_max_x=colored_max_x,
         colored_min_z=colored_min_z,
@@ -976,6 +1051,8 @@ def render_topdown_map(
             if unknown_block_persistent_candidates_path is not None
             else None
         ),
+        render_style='fixed_y' if fixed_y is not None else 'surface',
+        fixed_y=fixed_y,
     )
     save_render_result(metadata_path, result)
     return result
@@ -1158,8 +1235,39 @@ def _cached_packet_record_from_line(
 
 
 def save_render_result(path: Path, result: RenderResult) -> None:
+    _write_text_atomically_with_retry(
+        path,
+        json.dumps(asdict(result), indent=2, sort_keys=True) + '\n',
+    )
+
+
+def _write_text_atomically_with_retry(
+    path: Path,
+    text: str,
+    *,
+    attempts: int = 5,
+    retry_delay_seconds: float = 0.2,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(asdict(result), indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    retryable_errnos = {errno.EDEADLK, errno.EAGAIN}
+    last_error: OSError | None = None
+    for attempt in range(attempts):
+        temporary_path = path.with_name(f'.{path.name}.{os.getpid()}.{attempt}.tmp')
+        try:
+            temporary_path.write_text(text, encoding='utf-8')
+            temporary_path.replace(path)
+            return
+        except OSError as exc:
+            last_error = exc
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+            if exc.errno not in retryable_errnos or attempt == attempts - 1:
+                raise
+            time.sleep(retry_delay_seconds * (attempt + 1))
+    if last_error is not None:
+        raise last_error
 
 
 def _write_uncolored_blocks_report(
@@ -1197,7 +1305,7 @@ def _write_uncolored_blocks_report(
 
     if not uncolored_blocks:
         lines.extend(['', 'No uncolored blocks were encountered.'])
-        path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+        _write_text_atomically_with_retry(path, '\n'.join(lines) + '\n')
         return
 
     for stats in sorted(uncolored_blocks.values(), key=lambda item: (-item.count, item.block_name)):
@@ -1229,7 +1337,7 @@ def _write_uncolored_blocks_report(
                 )
             )
 
-    path.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    _write_text_atomically_with_retry(path, '\n'.join(lines) + '\n')
 
 
 def _format_optional_int(value: int | None) -> str:
@@ -1269,6 +1377,29 @@ def _top_block_world_bounds(
         min_x + (max(pixel_x_values) * sample_step),
         min_z + (min(pixel_z_values) * sample_step),
         min_z + (max(pixel_z_values) * sample_step),
+    )
+
+
+def _visible_image_world_bounds(
+    image: Any,
+    *,
+    min_x: int,
+    min_z: int,
+    sample_step: int,
+) -> tuple[int, int | None, int | None, int | None, int | None]:
+    alpha = image.getchannel('A')
+    visible_pixel_count = sum(alpha.histogram()[1:])
+    bounds = alpha.getbbox()
+    if bounds is None:
+        return (0, None, None, None, None)
+
+    left, top, right, bottom = bounds
+    return (
+        visible_pixel_count,
+        min_x + (left * sample_step),
+        min_x + ((right - 1) * sample_step),
+        min_z + (top * sample_step),
+        min_z + ((bottom - 1) * sample_step),
     )
 
 
@@ -1325,6 +1456,59 @@ def _collect_subchunk_top_blocks(
                 if current_top_block is None or block_y > current_top_block.y:
                     top_blocks[pixel_key] = TopBlock(y=block_y, block_name=block_name)
                 break
+
+
+def _collect_subchunk_fixed_y_blocks(
+    top_blocks: dict[tuple[int, int], TopBlock],
+    subchunk: DecodedSubchunk,
+    uncolored_blocks: dict[str, UncoloredBlockStats],
+    *,
+    fixed_y: int,
+    min_x: int,
+    max_x: int,
+    min_z: int,
+    max_z: int,
+    sample_step: int,
+) -> None:
+    if not subchunk.min_y <= fixed_y <= subchunk.max_y:
+        return
+
+    local_y = fixed_y - subchunk.min_y
+    for local_z in range(16):
+        world_z = (subchunk.chunk_z * 16) + local_z
+        pixel_z = _sample_pixel(world_z, min_z, max_z, sample_step)
+        if pixel_z is None:
+            continue
+        for local_x in range(16):
+            world_x = (subchunk.chunk_x * 16) + local_x
+            pixel_x = _sample_pixel(world_x, min_x, max_x, sample_step)
+            if pixel_x is None:
+                continue
+
+            pixel_key = (pixel_x, pixel_z)
+            if pixel_key in top_blocks:
+                continue
+
+            block_info = subchunk.visible_block_info(local_x, local_y, local_z)
+            if block_info is None:
+                continue
+            block_name = _resolve_block_name_for_render(block_info.name)
+            if _is_non_rendering_block(block_name):
+                continue
+            if _block_color(block_name) is None:
+                _record_uncolored_block(
+                    uncolored_blocks,
+                    subchunk,
+                    block_info,
+                    world_x=world_x,
+                    world_y=fixed_y,
+                    world_z=world_z,
+                    local_x=local_x,
+                    local_y=local_y,
+                    local_z=local_z,
+                )
+                continue
+            top_blocks[pixel_key] = TopBlock(y=fixed_y, block_name=block_name)
 
 
 def _record_uncolored_block(

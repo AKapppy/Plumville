@@ -8,6 +8,7 @@ from pathlib import Path
 
 from .config import load_config
 from .generator import BedrockWorldGenerator
+from .modes import WORLDGEN_MODES, worldgen_mode
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -45,9 +46,11 @@ def main(argv: list[str] | None = None) -> int:
             print(render_plan_path)
             return 0
         if args.command == 'render':
+            mode = worldgen_mode(args.mode)
             result = generator.render_map(
                 diagnose_unknown_blocks=args.diagnose_unknown_blocks or args.prefer_persistent_bedrock,
                 prefer_persistent_bedrock=args.prefer_persistent_bedrock,
+                mode_key=mode.key,
             )
             print(f'Rendered map: {result.image_path}')
             print(f'Render metadata: {result.metadata_path}')
@@ -63,6 +66,7 @@ def main(argv: list[str] | None = None) -> int:
                     'Unknown block persistent candidates: '
                     f'{result.unknown_block_persistent_candidates_path}'
                 )
+            print(_yellow_box_completion_text(result.colored_pixels, result.total_pixels))
             print(f'Colored pixels: {result.colored_pixels}/{result.total_pixels}')
             print(f'Uncolored block occurrences: {result.uncolored_block_occurrences}')
             print(f'Chunk columns read: {result.chunk_columns_read}/{result.chunk_columns_requested}')
@@ -79,9 +83,14 @@ def main(argv: list[str] | None = None) -> int:
             print(f'Repaired copy written: {result.repaired_copy_path}')
             return 0
         if args.command == 'load-chunks':
-            result = generator.load_chunks_headless(
-                wait_seconds=args.seconds,
-                stop_after=not args.keep_running,
+            mode = worldgen_mode(args.mode)
+            result = (
+                generator.load_lan_chunks_headless(mode.key, wait_seconds=args.seconds)
+                if mode.is_lan
+                else generator.load_chunks_headless(
+                    wait_seconds=args.seconds,
+                    stop_after=not args.keep_running,
+                )
             )
             print('Headless chunk loader finished.')
             print(f'World: {result.world_path}')
@@ -89,12 +98,16 @@ def main(argv: list[str] | None = None) -> int:
             print(f'Chunks received: {result.chunks_received}')
             print(f'Chunk columns received: {result.unique_chunk_columns}')
             print(f'Load attempts: {result.load_attempts}')
-            print(f'Teleport commands sent: {result.teleport_commands_sent}')
-            print(f'Teleport targets this pass: {", ".join(result.teleport_targets) or "none"}')
-            print(
-                f'Next teleport target: {result.teleport_next_index + 1}/{result.teleport_target_count}'
-            )
-            print(f'Server stopped: {result.server_stopped}')
+            if mode.is_lan:
+                print('LAN client path: no server console commands sent.')
+            else:
+                print(f'Teleport commands sent: {result.teleport_commands_sent}')
+                print(f'Teleport targets this pass: {", ".join(result.teleport_targets) or "none"}')
+                print(
+                    f'Next teleport target: '
+                    f'{result.teleport_next_index + 1}/{result.teleport_target_count}'
+                )
+                print(f'Server stopped: {result.server_stopped}')
             if result.output:
                 print('Loader output:')
                 print(result.output)
@@ -134,6 +147,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help='Render generated Bedrock chunks into a first-pass top-down PNG.',
     )
     render_parser.add_argument(
+        '--mode',
+        choices=tuple(WORLDGEN_MODES),
+        default='local_seed_surface',
+        help='Render mode/source to use.',
+    )
+    render_parser.add_argument(
         '--diagnose-unknown-blocks',
         '--dump-unknown-bedrock',
         action='store_true',
@@ -160,6 +179,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help='Optional bot wait time override in seconds.',
     )
     load_chunks_parser.add_argument(
+        '--mode',
+        choices=tuple(WORLDGEN_MODES),
+        default='local_seed_surface',
+        help='Chunk source to load.',
+    )
+    load_chunks_parser.add_argument(
         '--keep-running',
         action='store_true',
         help='Leave the Bedrock server running after the bot exits.',
@@ -184,6 +209,7 @@ def _handle_status(generator: BedrockWorldGenerator) -> int:
         'cached_world_exists': status.cached_world_exists,
         'render_area': asdict(config.render),
         'headless_loader': asdict(config.headless_loader),
+        'lan': asdict(config.lan),
         'render_image_file': str(status.render_image_path),
         'render_image_exists': status.render_image_exists,
         'docs_render_image_file': str(status.docs_render_image_path),
@@ -193,6 +219,13 @@ def _handle_status(generator: BedrockWorldGenerator) -> int:
     }
     print(json.dumps(payload, indent=2, sort_keys=True))
     return 0
+
+
+def _yellow_box_completion_text(colored_pixels: int, total_pixels: int) -> str:
+    if total_pixels <= 0:
+        return 'Yellow box completed: unknown'
+    completed_percent = (colored_pixels / total_pixels) * 100
+    return f'Yellow box completed: {completed_percent:.2f}%'
 
 
 if __name__ == '__main__':

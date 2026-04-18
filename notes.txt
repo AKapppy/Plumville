@@ -2,39 +2,19 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-   [x] can we make sure that the renderer outputs the map after every step so i can see progress throughout? the blue rectangle moves, but nothing else updates. that way i know where to stop it if im trying to reach a certain point
-   [x] everything seems to load very slowly (initial load, zooming). i have a hunch it has to do with the map. can we try to figure out a way to make it need to process less on the UI side so it runs smoother? maybe its just a lot of processes happening at once, and moving some processes to the background may help? unsure what the culrpit is
-   [x] see sorting notes below:
-      Sidebar order:
-         #all sections should be collapsable. A + means start expanded and a - means start collapsed. Whether it starts collapsed or expanded should be a simple boolean so I can change that later
-         1. Checklist (named, façades, stations, connected, …) +
-         1a. Priority List -
-         2. Search (one-liner - no collapsing needed, always open)
-         3. Show/hide (no collapsing needed, always open)
-         4. World map +
-         5. Railway finishing +
-         6. Directions -
-         7. Pathing -
-
-      Show/Hide order:
-         #+ means default to true, - means default false
-         1. World Map (move from the world map section to the show/hide section) +
-         2. World map rectangle borders (new, hiding the yellow and blue rectangles from the viewer) +
-         3. Connected area -
-         4. Planning radius -
-         5. Alignment ellipses -
-         6. Frontier highlights -
-         7. Station labels +
+   [] it opens really slowly. i know this is because of the immense image size, but is there a way to speed this up?
+   [] each step takes so long to finish. i waited over 10 minutes before force canceling the 1st step
+   [] can the displayed yellow box (we can change the color it doesn't matter) be the borders of the rendered map still? the percentage should be based on that box not the full full box
+   [] if it's possible and won't add too much time to the process, i would like it to show pixels as they are processed, so i can see more continuous progress. honestly, we can do the whole thing on a pixel-by-pixel basis. just scan the box for blank pixels based radially around blackport, following the path of a spiral. it should scan to see if the pixel is accounted for. if it is, no need to do anything. just a super quick check-and-skip. if it's empty, then it uses the renderer to find what that pixel is, display it, then move onto the next pixel. i hope this might make the process smoother and make it go quicker. this would eliminate the entire concept of the blue square
 
 #App (Web Version)
-   [x] can we do something similar with the orders of the sidebar and the show/hide that we did for the python version (i'm keeping the note there for easy access), but obviously disregard portions that are not included in the web version
 
 #World Map
    [] this should be a completely virtual experience. no minecraft world will be opened at anytime to generate the terrain. it should just be based off the seed and the seed alone. if docker desktop is looking for an open or saved minecraft file, it will never find one. we should reroute it if this is the case
    [] keep filling the rectangle with repeated Auto Fill Step clicks.
       - reset backup: `worldgen_data/reset_backups/20260416_094729`
       - active generated world folder: `metro_map_world_boxfill`
-      - render area is centered on Blackport at x=294, z=390, radius=2000
+      - render area is centered on Blackport at x=294, z=390
       - Auto Fill now starts at Blackport/world spawn only; no teleport targets are sent
       - latest fresh Blackport-only load cached 545 chunk columns
       - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels

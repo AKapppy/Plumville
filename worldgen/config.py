@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tomllib
 from dataclasses import dataclass
 from pathlib import Path
@@ -24,6 +25,7 @@ from .paths import (
 class WorldConfig:
     image: str
     server_version: str
+    direct_download_url: str
     seed: str
     level_name: str
     eula: str
@@ -56,6 +58,20 @@ class HeadlessLoaderConfig:
 
 
 @dataclass(frozen=True, slots=True)
+class LanConfig:
+    enabled: bool
+    world_name: str
+    host: str
+    port: int
+    username: str
+    client_version: str
+    raknet_backend: str
+    wait_seconds: int
+    chunk_radius: int
+    connect_timeout_ms: int
+
+
+@dataclass(frozen=True, slots=True)
 class StorageConfig:
     data_dir: Path
     cache_dir: Path
@@ -69,22 +85,26 @@ class RenderAreaConfig:
     center_z: int
     radius: int
     sample_step: int
+    bounds_min_x: int | None = None
+    bounds_max_x: int | None = None
+    bounds_min_z: int | None = None
+    bounds_max_z: int | None = None
 
     @property
     def min_x(self) -> int:
-        return self.center_x - self.radius
+        return self.bounds_min_x if self.bounds_min_x is not None else self.center_x - self.radius
 
     @property
     def max_x(self) -> int:
-        return self.center_x + self.radius
+        return self.bounds_max_x if self.bounds_max_x is not None else self.center_x + self.radius
 
     @property
     def min_z(self) -> int:
-        return self.center_z - self.radius
+        return self.bounds_min_z if self.bounds_min_z is not None else self.center_z - self.radius
 
     @property
     def max_z(self) -> int:
-        return self.center_z + self.radius
+        return self.bounds_max_z if self.bounds_max_z is not None else self.center_z + self.radius
 
 
 @dataclass(frozen=True, slots=True)
@@ -94,6 +114,7 @@ class WorldgenConfig:
     compose_path: Path
     world: WorldConfig
     headless_loader: HeadlessLoaderConfig
+    lan: LanConfig
     storage: StorageConfig
     render: RenderAreaConfig
 
@@ -131,6 +152,7 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
     project_table = _require_table(config_data, 'project')
     world_table = _require_table(config_data, 'world')
     headless_loader_table = _optional_table(config_data, 'headless_loader')
+    lan_table = _optional_table(config_data, 'lan')
     storage_table = _require_table(config_data, 'storage')
     render_table = _require_table(config_data, 'render')
 
@@ -140,6 +162,7 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
     world = WorldConfig(
         image=_require_str(world_table, 'image'),
         server_version=_optional_str(world_table, 'server_version') or 'LATEST',
+        direct_download_url=_optional_str(world_table, 'direct_download_url') or '',
         seed=_require_str(world_table, 'seed'),
         level_name=_require_str(world_table, 'level_name'),
         eula=_require_str(world_table, 'eula'),
@@ -188,11 +211,44 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
         ),
     )
 
+    lan = LanConfig(
+        enabled=_optional_bool(lan_table, 'enabled', False),
+        world_name=_optional_str(lan_table, 'world_name') or 'Plumville',
+        host=_optional_str(lan_table, 'host') or 'host.docker.internal',
+        port=_optional_positive_int(lan_table, 'port') or 19132,
+        username=_optional_str(lan_table, 'username') or 'PlumvilleMapper',
+        client_version=_optional_str(lan_table, 'client_version') or headless_loader.client_version,
+        raknet_backend=_optional_str(lan_table, 'raknet_backend') or headless_loader.raknet_backend,
+        wait_seconds=_optional_positive_int(lan_table, 'wait_seconds') or headless_loader.wait_seconds,
+        chunk_radius=_optional_positive_int(lan_table, 'chunk_radius') or headless_loader.chunk_radius,
+        connect_timeout_ms=_optional_positive_int(lan_table, 'connect_timeout_ms') or 20000,
+    )
+
     storage = StorageConfig(
         data_dir=resolve_repo_path(base_dir, _require_str(storage_table, 'data_dir')),
         cache_dir=resolve_repo_path(base_dir, _require_str(storage_table, 'cache_dir')),
         output_dir=resolve_repo_path(base_dir, _require_str(storage_table, 'output_dir')),
     )
+
+    bounds_min_x = _optional_int(render_table, 'min_x')
+    bounds_max_x = _optional_int(render_table, 'max_x')
+    bounds_min_z = _optional_int(render_table, 'min_z')
+    bounds_max_z = _optional_int(render_table, 'max_z')
+    explicit_bounds = (bounds_min_x, bounds_max_x, bounds_min_z, bounds_max_z)
+    if any(value is not None for value in explicit_bounds) and not all(
+        value is not None for value in explicit_bounds
+    ):
+        raise ValueError(
+            '[render] min_x, max_x, min_z, and max_z must be provided together.'
+        )
+    if all(value is None for value in explicit_bounds):
+        village_margin = _optional_int_default(
+            _optional_nonnegative_int(render_table, 'village_margin'),
+            0,
+        )
+        village_bounds = _load_village_render_bounds(base_dir, village_margin)
+        if village_bounds is not None:
+            bounds_min_x, bounds_max_x, bounds_min_z, bounds_max_z = village_bounds
 
     render = RenderAreaConfig(
         center_label=_require_str(render_table, 'center_label'),
@@ -200,7 +256,15 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
         center_z=_require_int(render_table, 'center_z'),
         radius=_require_positive_int(render_table, 'radius'),
         sample_step=_require_positive_int(render_table, 'sample_step'),
+        bounds_min_x=bounds_min_x,
+        bounds_max_x=bounds_max_x,
+        bounds_min_z=bounds_min_z,
+        bounds_max_z=bounds_max_z,
     )
+    if render.min_x > render.max_x:
+        raise ValueError('[render] min_x must be less than or equal to max_x.')
+    if render.min_z > render.max_z:
+        raise ValueError('[render] min_z must be less than or equal to max_z.')
 
     return WorldgenConfig(
         config_path=resolved_config_path,
@@ -208,6 +272,7 @@ def load_config(config_path: Path | None = None) -> WorldgenConfig:
         compose_path=compose_path,
         world=world,
         headless_loader=headless_loader,
+        lan=lan,
         storage=storage,
         render=render,
     )
@@ -266,6 +331,21 @@ def _optional_str(data: dict[str, object], key: str) -> str | None:
     return value
 
 
+def _optional_bool(data: dict[str, object], key: str, default: bool) -> bool:
+    value = data.get(key)
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {'true', 'yes', '1', 'on'}:
+            return True
+        if normalized in {'false', 'no', '0', 'off'}:
+            return False
+    raise ValueError(f'Expected "{key}" to be a boolean.')
+
+
 def _optional_int(data: dict[str, object], key: str) -> int | None:
     value = data.get(key)
     if value is None:
@@ -289,6 +369,35 @@ def _optional_nonnegative_int(data: dict[str, object], key: str) -> int | None:
 
 def _optional_int_default(value: int | None, default: int) -> int:
     return default if value is None else value
+
+
+def _load_village_render_bounds(base_dir: Path, margin: int) -> tuple[int, int, int, int] | None:
+    network_path = base_dir / 'metro_network.json'
+    if not network_path.exists():
+        return None
+    payload = json.loads(network_path.read_text(encoding='utf-8'))
+    stops = payload.get('stops') if isinstance(payload, dict) else None
+    if not isinstance(stops, list):
+        raise ValueError('Expected metro_network.json to contain a "stops" list.')
+
+    coordinates: list[tuple[int, int]] = []
+    for index, stop in enumerate(stops):
+        if not isinstance(stop, dict):
+            raise ValueError(f'Expected stop {index} in metro_network.json to be an object.')
+        x = stop.get('x')
+        y = stop.get('y')
+        if not isinstance(x, int) or isinstance(x, bool):
+            raise ValueError(f'Expected stop {index} in metro_network.json to have an integer "x".')
+        if not isinstance(y, int) or isinstance(y, bool):
+            raise ValueError(f'Expected stop {index} in metro_network.json to have an integer "y".')
+        coordinates.append((x, y))
+
+    if not coordinates:
+        return None
+
+    xs = [x for x, _ in coordinates]
+    ys = [y for _, y in coordinates]
+    return min(xs) - margin, max(xs) + margin, min(ys) - margin, max(ys) + margin
 
 
 def _server_bool_property(value: str | None, default: str) -> str:

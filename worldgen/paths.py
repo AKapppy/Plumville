@@ -57,7 +57,7 @@ def default_compose_path() -> Path:
 
 
 def resolve_repo_path(base_dir: Path, raw_path: str | Path) -> Path:
-    path = Path(raw_path)
+    path = Path(raw_path).expanduser()
     if path.is_absolute():
         return path.resolve()
     return (base_dir / path).resolve()

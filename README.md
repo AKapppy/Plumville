@@ -39,6 +39,10 @@ Edit `worldgen_config.toml` to change the seed, level name, storage folders, or 
 
 The default config turns Bedrock `online_mode` off for the local Docker server so the headless loader can connect without an Xbox login. It also enables cheats/operator defaults so the loader can be teleported to Blackport from the server console.
 
+The Bedrock server is pinned to the matching headless-loader protocol. If the Docker image cannot look up that exact server package from Minecraft's download page, `direct_download_url` supplies the known BDS zip URL directly.
+
+The Bedrock Docker `/data` folder defaults to `~/Library/Application Support/Plumville/worldgen/bedrock-data` instead of this repo. The repo lives in iCloud Drive, and Docker can hit filesystem read/write errors when Bedrock's live server files are bind-mounted from a cloud-synced folder.
+
 The default starter render area is centered on Blackport:
 
 - `center_x = 294`
@@ -54,7 +58,8 @@ The default starter render area is centered on Blackport:
 Generated local state is kept out of git:
 
 - `.worldgen/`: generated env file for Compose
-- `worldgen_data/`: Bedrock data plus cache files
+- `~/Library/Application Support/Plumville/worldgen/bedrock-data`: Bedrock server data
+- `worldgen_data/`: cache files
 - `worldgen_output/`: future render output
 - `node_modules/`: local Node dependencies if installed on the host
 

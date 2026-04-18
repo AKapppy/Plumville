@@ -5,6 +5,7 @@ compose_file = "docker-compose.worldgen.yml"
 [world]
 image = "itzg/minecraft-bedrock-server:2025.11.0"
 server_version = "1.26.10.4"
+direct_download_url = "https://www.minecraft.net/bedrockdedicatedserver/bin-linux/bedrock-server-1.26.10.4.zip"
 seed = "437241185583693582"
 level_name = "metro_map_world_boxfill"
 eula = "TRUE"
@@ -33,8 +34,20 @@ chunk_radius = 16
 target_outset_blocks = 0
 target_overlap_blocks = 0
 
+[lan]
+enabled = true
+world_name = "Plumville"
+host = "192.168.1.168"
+port = 19132
+username = "PlumvilleMapper"
+client_version = "26.10"
+raknet_backend = "raknet-native"
+wait_seconds = 75
+chunk_radius = 16
+connect_timeout_ms = 20000
+
 [storage]
-data_dir = "worldgen_data/bedrock-data"
+data_dir = "~/Library/Application Support/Plumville/worldgen/bedrock-data"
 cache_dir = "worldgen_data/cache"
 output_dir = "worldgen_output"
 
@@ -43,4 +56,5 @@ center_label = "Blackport"
 center_x = 294
 center_z = 390
 radius = 2000
+village_margin = 100
 sample_step = 1

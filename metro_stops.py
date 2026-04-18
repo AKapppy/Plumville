@@ -16,6 +16,8 @@ from typing import Any, Callable, Final, Literal, NotRequired, Sequence, TypedDi
 
 from PIL import Image, ImageDraw, ImageTk
 
+Image.MAX_IMAGE_PIXELS = None
+
 
 BLACKPORT_LBL: Final[str] = 'Blackport'
 BLACKPORT_VAR: Final[str] = 'P_ABCDE'
@@ -1876,20 +1878,65 @@ def _route_step_color(step: RouteStep) -> str:
     return ROUTE_HIGHLIGHT_OUTLINE
 
 
-def _world_map_cached_status_text() -> str:
+def _world_map_mode_labels() -> list[str]:
+    try:
+        from worldgen.modes import WORLDGEN_MODES
+    except Exception:
+        return ['Local Worldgen', 'LAN Surface', 'LAN Y=40']
+    return [mode.label for mode in WORLDGEN_MODES.values()]
+
+
+def _world_map_mode_label(mode_key: str | None) -> str:
+    try:
+        from worldgen.modes import worldgen_mode
+    except Exception:
+        return 'Local Worldgen'
+    return worldgen_mode(mode_key).label
+
+
+def _world_map_mode_key_for_label(label: str | None) -> str:
+    try:
+        from worldgen.modes import worldgen_mode_key_for_label
+    except Exception:
+        return 'local_seed_surface'
+    return worldgen_mode_key_for_label(label)
+
+
+def _world_map_cached_status_text(mode_key: str | None = None) -> str:
     try:
         from worldgen.cache import load_world_cache
         from worldgen.config import load_config
+        from worldgen.generator import BedrockWorldGenerator
+        from worldgen.modes import worldgen_mode
     except Exception as exc:
         return f'World map backend unavailable.\n{exc}'
 
     try:
         config = load_config()
+        mode = worldgen_mode(mode_key)
+        generator = BedrockWorldGenerator(config)
+        mode_paths = generator.paths_for_mode(mode.key)
         cache_record = load_world_cache(config.paths.world_cache_path)
     except Exception as exc:
         return f'World map status unavailable.\n{exc}'
 
-    lines = ['World map cache']
+    lines = [f'World map cache - {mode.label}']
+    if mode.is_lan:
+        lines.append(f'LAN: {"enabled" if config.lan.enabled else "disabled"}')
+        lines.append(f'World: {config.lan.world_name}')
+        lines.append(f'Server: {config.lan.host}:{config.lan.port}')
+        packet_cache_status = 'ready' if mode_paths.headless_chunk_packet_path.exists() else 'not loaded yet'
+        lines.append(f'Packet cache: {packet_cache_status}')
+        render_plan_status = 'ready' if mode_paths.render_plan_path.exists() else 'not written yet'
+        lines.append(f'Render plan: {render_plan_status}')
+        render_image_status = 'ready' if mode_paths.render_image_path.exists() else 'not rendered yet'
+        lines.append(f'Rendered map: {render_image_status}')
+        render_summary = _world_map_render_cache_summary_text(mode_paths.render_cache_path)
+        if render_summary:
+            lines.extend(render_summary)
+        lines.append('Load and render run only when clicked.')
+        return '\n'.join(lines)
+
     if cache_record is None:
         lines.append('No cached world yet.')
     else:
@@ -1904,29 +1951,49 @@ def _world_map_cached_status_text() -> str:
         lines.append(f'Prepared: {cache_record.prepared_at}')
         lines.append(f'World: {world_path}')
 
-    render_plan_path = config.paths.render_plan_path
+    render_plan_path = mode_paths.render_plan_path
     render_plan_status = 'ready' if render_plan_path.exists() else 'not written yet'
     lines.append(f'Render plan: {render_plan_status}')
-    render_image_status = 'ready' if config.paths.render_image_path.exists() else 'not rendered yet'
+    render_image_status = 'ready' if mode_paths.render_image_path.exists() else 'not rendered yet'
     lines.append(f'Rendered map: {render_image_status}')
-    render_summary = _world_map_render_cache_summary_text(config.paths.render_cache_path)
+    render_summary = _world_map_render_cache_summary_text(mode_paths.render_cache_path)
     if render_summary:
         lines.extend(render_summary)
     lines.append('Generate and render run only when clicked.')
     return '\n'.join(lines)
 
 
-def _world_map_live_status_text() -> str:
+def _world_map_live_status_text(mode_key: str | None = None) -> str:
     from worldgen.cache import load_world_cache
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
+    from worldgen.modes import worldgen_mode
 
     config = load_config()
+    mode = worldgen_mode(mode_key)
     generator = BedrockWorldGenerator(config)
+    mode_paths = generator.paths_for_mode(mode.key)
+
+    if mode.is_lan:
+        lines = [
+            f'World map status - {mode.label}',
+            f'Docker: {"available" if generator.status().docker_available else "not found"}',
+            f'LAN: {"enabled" if config.lan.enabled else "disabled"}',
+            f'World: {config.lan.world_name}',
+            f'Server: {config.lan.host}:{config.lan.port}',
+            f'Packet cache: {"exists" if mode_paths.headless_chunk_packet_path.exists() else "not loaded yet"}',
+            f'Render plan: {"exists" if mode_paths.render_plan_path.exists() else "not written yet"}',
+            f'Rendered map: {"exists" if mode_paths.render_image_path.exists() else "not rendered yet"}',
+        ]
+        render_summary = _world_map_render_cache_summary_text(mode_paths.render_cache_path)
+        if render_summary:
+            lines.extend(render_summary)
+        return '\n'.join(lines)
+
     status = generator.status()
     cache_record = load_world_cache(config.paths.world_cache_path)
     lines = [
-        'World map status',
+        f'World map status - {mode.label}',
         f'Docker: {"available" if status.docker_available else "not found"}',
         f'Container: {_world_map_service_status_label(status.service_running)}',
         f'Expected world: {"exists" if status.expected_world_exists else "not found"}',
@@ -1943,9 +2010,9 @@ def _world_map_live_status_text() -> str:
         lines.append(f'Cached world: {cached_status}')
         if cache_record is not None:
             lines.append(f'Prepared: {cache_record.prepared_at}')
-    lines.append(f'Render plan: {"exists" if status.render_plan_path.exists() else "not written yet"}')
-    lines.append(f'Rendered map: {"exists" if status.render_image_exists else "not rendered yet"}')
-    render_summary = _world_map_render_cache_summary_text(status.render_cache_path)
+    lines.append(f'Render plan: {"exists" if mode_paths.render_plan_path.exists() else "not written yet"}')
+    lines.append(f'Rendered map: {"exists" if mode_paths.render_image_path.exists() else "not rendered yet"}')
+    render_summary = _world_map_render_cache_summary_text(mode_paths.render_cache_path)
     if render_summary:
         lines.extend(render_summary)
     return '\n'.join(lines)
@@ -1967,10 +2034,15 @@ def _world_map_render_cache_summary_text(render_cache_path: Path) -> list[str]:
     colored_min_z = payload.get('colored_min_z')
     colored_max_z = payload.get('colored_max_z')
     generated_at = payload.get('generated_at')
+    render_style = payload.get('render_style')
+    fixed_y = payload.get('fixed_y')
     lines = []
     if generated_at:
         lines.append(f'Rendered: {generated_at}')
+    if render_style == 'fixed_y' and isinstance(fixed_y, int):
+        lines.append(f'Render style: y={fixed_y}')
     if isinstance(colored_pixels, int) and isinstance(total_pixels, int):
+        lines.append(_world_map_yellow_box_completion_text(colored_pixels, total_pixels))
         lines.append(f'Colored pixels: {colored_pixels}/{total_pixels}')
     if isinstance(chunk_columns_read, int) and isinstance(chunk_columns_requested, int):
         lines.append(f'Chunk columns: {chunk_columns_read}/{chunk_columns_requested}')
@@ -1983,6 +2055,13 @@ def _world_map_render_cache_summary_text(render_cache_path: Path) -> list[str]:
             f'z {colored_min_z}..{colored_max_z}'
         )
     return lines
+
+
+def _world_map_yellow_box_completion_text(colored_pixels: int, total_pixels: int) -> str:
+    if total_pixels <= 0:
+        return 'Yellow box completed: unknown'
+    completed_percent = (colored_pixels / total_pixels) * 100
+    return f'Yellow box completed: {completed_percent:.2f}%'
 
 
 def _render_cache_int(payload: dict[str, object], key: str) -> int:
@@ -2021,51 +2100,71 @@ def _world_map_generate_world_text() -> str:
     )
 
 
-def _world_map_load_chunks_text() -> str:
+def _world_map_load_chunks_text(mode_key: str | None = None) -> str:
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
+    from worldgen.modes import worldgen_mode
 
     config = load_config()
+    mode = worldgen_mode(mode_key)
     generator = BedrockWorldGenerator(config)
-    result = generator.load_chunks_headless()
+    result = (
+        generator.load_lan_chunks_headless(mode.key)
+        if mode.is_lan
+        else generator.load_chunks_headless()
+    )
+    return _world_map_load_chunks_result_text(mode, result)
+
+
+def _world_map_load_chunks_result_text(mode: Any, result: Any) -> str:
     lines = [
-        'Headless chunk loading finished.',
+        f'{mode.label} chunk loading finished.',
         f'World: {result.world_path}',
         f'Metadata: {result.result_path}',
         f'Chunks received: {result.chunks_received}',
         f'Chunk columns received: {result.unique_chunk_columns}',
         f'Load attempts: {result.load_attempts}',
-        f'Teleport commands sent: {result.teleport_commands_sent}',
-        f'Teleport targets this pass: {", ".join(result.teleport_targets) or "none"}',
-        (
-            f'Next teleport target: {result.teleport_next_index + 1}/{result.teleport_target_count}'
-            if result.teleport_target_count > 0
-            else 'Next teleport target: none'
-        ),
-        f'Server stopped: {"yes" if result.server_stopped else "no"}',
     ]
+    if mode.is_lan:
+        lines.append('LAN path used client packet data only; no server console commands were sent.')
+    else:
+        lines.extend(
+            (
+                f'Teleport commands sent: {result.teleport_commands_sent}',
+                f'Teleport targets this pass: {", ".join(result.teleport_targets) or "none"}',
+                (
+                    f'Next teleport target: {result.teleport_next_index + 1}/{result.teleport_target_count}'
+                    if result.teleport_target_count > 0
+                    else 'Next teleport target: none'
+                ),
+                f'Server stopped: {"yes" if result.server_stopped else "no"}',
+            )
+        )
     if result.returncode != 0:
         lines.append(f'Loader exited with code {result.returncode}.')
     if result.output:
         lines.append('')
         lines.append(result.output)
     lines.append('')
-    lines.append('Use Render Map next to draw the saved chunks.')
+    lines.append(f'Use Render Map next to draw {mode.label}.')
     return '\n'.join(lines)
 
 
-def _world_map_render_text() -> str:
+def _world_map_render_text(mode_key: str | None = None) -> str:
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
+    from worldgen.modes import worldgen_mode
 
     config = load_config()
+    mode = worldgen_mode(mode_key)
     generator = BedrockWorldGenerator(config)
-    result = generator.render_map()
+    result = generator.render_map(mode_key=mode.key)
     lines = [
-        'Rendered world map.',
+        f'Rendered {mode.label}.',
         f'Image: {result.image_path}',
         f'Metadata: {result.metadata_path}',
         f'Uncolored block report: {result.uncolored_blocks_report_path}',
+        _world_map_yellow_box_completion_text(result.colored_pixels, result.total_pixels),
         f'Colored pixels: {result.colored_pixels}/{result.total_pixels}',
         f'Uncolored block occurrences: {result.uncolored_block_occurrences}',
         f'Chunk columns read: {result.chunk_columns_read}/{result.chunk_columns_requested}',
@@ -2077,10 +2176,36 @@ def _world_map_render_text() -> str:
         )
     if result.chunk_columns_read == 0:
         lines.append('No generated chunk columns were found in the requested render area yet.')
-        lines.append('Use Load Chunks, then render again.')
+        lines.append(f'Use Load Chunks for {mode.label}, then render again.')
     if result.subchunk_decode_errors:
         lines.append(f'Subchunk decode errors: {result.subchunk_decode_errors}')
     return '\n'.join(lines)
+
+
+def _world_map_load_and_render_text(mode_key: str) -> str:
+    from worldgen.config import load_config
+    from worldgen.generator import BedrockWorldGenerator
+    from worldgen.modes import worldgen_mode
+
+    config = load_config()
+    mode = worldgen_mode(mode_key)
+    generator = BedrockWorldGenerator(config)
+    result = (
+        generator.load_lan_chunks_headless(mode.key)
+        if mode.is_lan
+        else generator.load_chunks_headless()
+    )
+    load_message = _world_map_load_chunks_result_text(mode, result)
+    if result.returncode != 0 or result.unique_chunk_columns == 0:
+        return '\n'.join(
+            (
+                load_message,
+                '',
+                f'Render skipped because {mode.label} did not load any chunk columns.',
+            )
+        )
+    render_message = _world_map_render_text(mode_key)
+    return f'{load_message}\n\n{render_message}'
 
 
 def _world_map_auto_fill_step_text_for_generator(
@@ -2104,7 +2229,7 @@ def _world_map_auto_fill_step_text_for_generator(
             (
                 f'Pass {index}: {load_result.chunks_received} chunks, '
                 f'{load_result.unique_chunk_columns} chunk columns',
-                f'Pass {index} target pool: {load_result.teleport_target_count} blank-space targets',
+                f'Pass {index} target pool: {load_result.teleport_target_count} blank-pixel targets',
                 f'Pass {index} targets: {", ".join(load_result.teleport_targets) or "none"}',
             )
         )
@@ -2118,6 +2243,10 @@ def _world_map_auto_fill_step_text_for_generator(
             'Rendered world map.',
             f'Image: {render_result.image_path}',
             f'Uncolored block report: {render_result.uncolored_blocks_report_path}',
+            _world_map_yellow_box_completion_text(
+                render_result.colored_pixels,
+                render_result.total_pixels,
+            ),
             f'Colored pixels: {render_result.colored_pixels}/{render_result.total_pixels}',
             f'Uncolored block occurrences: {render_result.uncolored_block_occurrences}',
             (
@@ -2859,8 +2988,27 @@ def _station_progress_summary_text() -> str:
             f'Finished Railway: {finished_railway_count}/{connected_station_count}',
             f'Signs: {signs_count}/{connected_station_count}',
             f'Chimes: {completed_chime_count}/{required_chime_count}',
+            _world_map_checklist_completion_text(),
         )
     )
+
+
+def _world_map_checklist_completion_text() -> str:
+    try:
+        from worldgen.config import load_config
+        from worldgen.generator import BedrockWorldGenerator
+
+        config = load_config()
+        mode_paths = BedrockWorldGenerator(config).paths_for_mode()
+        payload = json.loads(mode_paths.render_cache_path.read_text(encoding='utf-8'))
+    except Exception:
+        return 'Map Completed: --.--%'
+
+    colored_pixels = payload.get('colored_pixels')
+    total_pixels = payload.get('total_pixels')
+    if not isinstance(colored_pixels, int) or not isinstance(total_pixels, int) or total_pixels <= 0:
+        return 'Map Completed: --.--%'
+    return f'Map Completed: {(colored_pixels / total_pixels) * 100:.2f}%'
 
 
 def _line_anchor_index_map(line_name: str) -> dict[str, int]:
@@ -4259,7 +4407,7 @@ class MetroMapViewer:
         self.world_map_render_image_path: Path | None = None
         self.world_map_render_payload: dict[str, object] | None = None
         self.world_map_render_source_image: Image.Image | None = None
-        self.world_map_next_target_cache_key: tuple[FileStatKey | None, ...] | None = None
+        self.world_map_next_target_cache_key: tuple[object, ...] | None = None
         self.world_map_next_target_preview: Any | None = None
         self.overlay_image_refs: list[ImageTk.PhotoImage] = []
         self.hover_canvas_point: tuple[float, float] | None = None
@@ -4318,8 +4466,15 @@ class MetroMapViewer:
         self.railway_finish_coordinates_var = tk.StringVar(master=self.root)
         self.railway_finish_status_var = tk.StringVar(master=self.root, value='Choose a connected line.')
         self.railway_finish_progress_var = tk.StringVar(master=self.root, value='Loading railway progress...')
-        self.world_map_status_var = tk.StringVar(master=self.root, value=_world_map_cached_status_text())
+        self.world_map_mode_var = tk.StringVar(master=self.root, value=_world_map_mode_labels()[0])
+        self.world_map_status_var = tk.StringVar(
+            master=self.root,
+            value=_world_map_cached_status_text(
+                _world_map_mode_key_for_label(self.world_map_mode_var.get())
+            ),
+        )
         self.search_var.trace_add('write', self._on_search_changed)
+        self.world_map_mode_var.trace_add('write', self._on_world_map_mode_changed)
 
         self.sidebar_container = tk.Frame(
             self.root,
@@ -4525,10 +4680,28 @@ class MetroMapViewer:
         labels_toggle.pack(anchor='w', padx=16, pady=(0, 12))
 
         world_map_section = self._make_collapsible_sidebar_section('World Map', expanded=True)
+        mode_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
+        mode_row.pack(fill='x', padx=16, pady=(4, 6))
+        tk.Label(
+            mode_row,
+            text='Mode',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            width=5,
+            anchor='w',
+        ).pack(side='left')
+        world_map_mode_menu = self._make_sidebar_option_menu(mode_row, self.world_map_mode_var)
+        world_map_mode_menu.pack(side='left', fill='x', expand=True)
+        self._populate_option_menu(
+            world_map_mode_menu,
+            self.world_map_mode_var,
+            _world_map_mode_labels(),
+        )
         self._make_sidebar_hint(
-            'Auto Fill grows outward from Blackport, choosing the nearest blank map space and the target that covers the most remaining blanks.',
+            'Auto Fill checks tangent target squares in radial order around Blackport, skipping squares with no blank pixels.',
             parent=world_map_section,
-        ).pack(anchor='w', padx=16, pady=(4, 6))
+        ).pack(anchor='w', padx=16, pady=(0, 6))
         self.world_map_status_text = tk.Text(
             world_map_section,
             bg=INFO_BOX_BACKGROUND,
@@ -5235,6 +5408,17 @@ class MetroMapViewer:
         message_kind: Literal['progress', 'rendered'] = 'rendered' if rendered_map else 'progress'
         self.world_map_task_queue.put((message_kind, True, message))
 
+    def _selected_world_map_mode_key(self) -> str:
+        return _world_map_mode_key_for_label(self.world_map_mode_var.get())
+
+    def _on_world_map_mode_changed(self, *_args: object) -> None:
+        self._invalidate_world_map_render_cache()
+        self._set_world_map_auto_fill_button('idle')
+        self._set_world_map_status_text(
+            _world_map_cached_status_text(self._selected_world_map_mode_key())
+        )
+        self.redraw()
+
     def _start_world_map_task(
         self,
         task_label: str,
@@ -5278,6 +5462,7 @@ class MetroMapViewer:
             self._set_world_map_status_text(message)
             if message_kind == 'rendered':
                 self._invalidate_world_map_render_cache()
+                self.stats_dirty = True
                 self.redraw()
             if self.world_map_task_running:
                 self.root.after(200, self._poll_world_map_task)
@@ -5289,31 +5474,49 @@ class MetroMapViewer:
         self._set_world_map_status_text(message)
         if succeeded:
             self._invalidate_world_map_render_cache()
-            self._set_world_map_status_text(f'{message}\n\n{_world_map_cached_status_text()}')
+            self.stats_dirty = True
+            self._set_world_map_status_text(
+                f'{message}\n\n'
+                f'{_world_map_cached_status_text(self._selected_world_map_mode_key())}'
+            )
             self.redraw()
         if completion_callback is not None:
             completion_callback(succeeded, message)
 
     def _refresh_world_map_live_status(self) -> None:
-        self._start_world_map_task('Refreshing world map status', _world_map_live_status_text)
+        mode_key = self._selected_world_map_mode_key()
+        self._start_world_map_task(
+            'Refreshing world map status',
+            lambda: _world_map_live_status_text(mode_key),
+        )
 
     def _generate_world_map_world(self) -> None:
         self._start_world_map_task('Generating Bedrock world', _world_map_generate_world_text)
 
     def _load_world_map_chunks(self) -> None:
-        self._start_world_map_task('Loading chunks without Minecraft', _world_map_load_chunks_text)
+        mode_key = self._selected_world_map_mode_key()
+        self._start_world_map_task(
+            f'Loading {_world_map_mode_label(mode_key)} chunks',
+            lambda: _world_map_load_chunks_text(mode_key),
+        )
 
     def _render_world_map(self) -> None:
-        self._start_world_map_task('Rendering world map', _world_map_render_text)
+        mode_key = self._selected_world_map_mode_key()
+        self._start_world_map_task(
+            f'Rendering {_world_map_mode_label(mode_key)}',
+            lambda: _world_map_render_text(mode_key),
+        )
 
     def _set_world_map_auto_fill_button(self, state: Literal['idle', 'running', 'stopping']) -> None:
         if not hasattr(self, 'world_map_auto_fill_button'):
             return
 
         if state == 'idle':
+            mode_key = self._selected_world_map_mode_key()
+            button_text = 'Start Auto Fill' if mode_key == 'local_seed_surface' else 'Load + Render'
             self._configure_sidebar_button(
                 self.world_map_auto_fill_button,
-                text='Start Auto Fill',
+                text=button_text,
                 command=self._start_auto_fill_world_map,
             )
             return
@@ -5335,6 +5538,14 @@ class MetroMapViewer:
     def _start_auto_fill_world_map(self) -> None:
         if self.world_map_task_running:
             self._set_world_map_status_text('World map task already running.')
+            return
+
+        mode_key = self._selected_world_map_mode_key()
+        if mode_key != 'local_seed_surface':
+            self._start_world_map_task(
+                f'Loading and rendering {_world_map_mode_label(mode_key)}',
+                lambda: _world_map_load_and_render_text(mode_key),
+            )
             return
 
         stop_event = threading.Event()
@@ -7575,13 +7786,17 @@ class MetroMapViewer:
     def _current_world_map_render_underlay(self) -> tuple[dict[str, object], Image.Image] | None:
         try:
             from worldgen.config import load_config
+            from worldgen.generator import BedrockWorldGenerator
 
             config = load_config()
+            mode_paths = BedrockWorldGenerator(config).paths_for_mode(
+                self._selected_world_map_mode_key()
+            )
         except Exception:
             self._invalidate_world_map_render_cache()
             return None
 
-        render_cache_path = config.paths.render_cache_path
+        render_cache_path = mode_paths.render_cache_path
         render_cache_stat = _file_stat_key(render_cache_path)
         if render_cache_stat is None:
             self._invalidate_world_map_render_cache()
@@ -7606,17 +7821,38 @@ class MetroMapViewer:
             self._invalidate_world_map_render_cache()
             return None
 
-        image_path = Path(str(payload.get('image_path', '')))
-        if not image_path.exists():
-            image_path = config.paths.render_image_path
-        image_stat = _file_stat_key(image_path)
-        if image_stat is None:
-            self._invalidate_world_map_render_cache()
-            return None
+        image_candidates: list[Path] = [mode_paths.docs_render_image_path]
+        payload_image_path = payload.get('image_path')
+        if isinstance(payload_image_path, str) and payload_image_path:
+            image_candidates.append(Path(payload_image_path))
+        image_candidates.append(mode_paths.render_image_path)
 
-        try:
-            source_image = Image.open(image_path).convert('RGBA')
-        except OSError:
+        image_path: Path | None = None
+        image_stat: FileStatKey | None = None
+        source_image: Image.Image | None = None
+        seen_image_paths: set[Path] = set()
+        for candidate_image_path in image_candidates:
+            try:
+                resolved_candidate = candidate_image_path.resolve()
+            except OSError:
+                resolved_candidate = candidate_image_path
+            if resolved_candidate in seen_image_paths:
+                continue
+            seen_image_paths.add(resolved_candidate)
+
+            candidate_image_stat = _file_stat_key(candidate_image_path)
+            if candidate_image_stat is None:
+                continue
+            try:
+                candidate_source_image = Image.open(candidate_image_path).convert('RGBA')
+            except OSError:
+                continue
+            image_path = candidate_image_path
+            image_stat = candidate_image_stat
+            source_image = candidate_source_image
+            break
+
+        if image_path is None or image_stat is None or source_image is None:
             self._invalidate_world_map_render_cache()
             return None
 
@@ -7636,16 +7872,25 @@ class MetroMapViewer:
             )
 
             config = load_config()
+            mode_key = self._selected_world_map_mode_key()
+            if mode_key != 'local_seed_surface':
+                self.world_map_next_target_cache_key = None
+                self.world_map_next_target_preview = None
+                return None
+            generator = BedrockWorldGenerator(config)
+            mode_paths = generator.paths_for_mode(mode_key)
             progress_path = config.paths.cache_dir / HEADLESS_LOADER_PROGRESS_FILE_NAME
             cache_key = (
+                mode_key,
                 _file_stat_key(config.config_path),
-                _file_stat_key(config.paths.render_cache_path),
+                _file_stat_key(mode_paths.render_cache_path),
+                _file_stat_key(mode_paths.render_image_path),
                 _file_stat_key(progress_path),
             )
             if cache_key == self.world_map_next_target_cache_key:
                 return self.world_map_next_target_preview
 
-            preview = BedrockWorldGenerator(config).next_headless_loader_target_preview()
+            preview = generator.next_headless_loader_target_preview()
         except Exception:
             self.world_map_next_target_cache_key = None
             self.world_map_next_target_preview = None
@@ -7716,18 +7961,18 @@ class MetroMapViewer:
 
     def _draw_world_map_render_bounds(self, payload: dict[str, object]) -> None:
         try:
-            colored_min_x = _render_cache_int(payload, 'colored_min_x')
-            colored_max_x = _render_cache_int(payload, 'colored_max_x')
-            colored_min_z = _render_cache_int(payload, 'colored_min_z')
-            colored_max_z = _render_cache_int(payload, 'colored_max_z')
+            render_min_x = _render_cache_int(payload, 'min_x')
+            render_max_x = _render_cache_int(payload, 'max_x')
+            render_min_z = _render_cache_int(payload, 'min_z')
+            render_max_z = _render_cache_int(payload, 'max_z')
         except (KeyError, TypeError, ValueError):
             return
 
-        if colored_min_x > colored_max_x or colored_min_z > colored_max_z:
+        if render_min_x > render_max_x or render_min_z > render_max_z:
             return
 
-        top_left_x, top_left_y = self.world_to_canvas((colored_min_x, -colored_min_z))
-        bottom_right_x, bottom_right_y = self.world_to_canvas((colored_max_x, -colored_max_z))
+        top_left_x, top_left_y = self.world_to_canvas((render_min_x, -render_min_z))
+        bottom_right_x, bottom_right_y = self.world_to_canvas((render_max_x, -render_max_z))
         left = min(top_left_x, bottom_right_x)
         right = max(top_left_x, bottom_right_x)
         top = min(top_left_y, bottom_right_y)
@@ -8190,9 +8435,13 @@ class MetroMapViewer:
     def show_world_map_render_view(self) -> None:
         try:
             from worldgen.config import load_config
+            from worldgen.generator import BedrockWorldGenerator
 
             config = load_config()
-            payload = json.loads(config.paths.render_cache_path.read_text(encoding='utf-8'))
+            mode_paths = BedrockWorldGenerator(config).paths_for_mode(
+                self._selected_world_map_mode_key()
+            )
+            payload = json.loads(mode_paths.render_cache_path.read_text(encoding='utf-8'))
             colored_min_x = int(payload['colored_min_x'])
             colored_max_x = int(payload['colored_max_x'])
             colored_min_z = int(payload['colored_min_z'])
