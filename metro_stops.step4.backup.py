@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import legacy_core as base
-import ui_extensions as _extensions
+import plumville_legacy_core as base
+import plumville_ui_extensions as _extensions
 
 
 _EXTENSIONS_APPLIED = False

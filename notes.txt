@@ -2,13 +2,13 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-[] once the yellow area matches the outer bounds of the world and the completeness level is ≥ 90%, we should start keeping track of all unfinished points (or groups of points to eliminate hyperfiles). This will help us keep track of points that were missed internally
-[] lets get rid of the “drag second square” thing and just have it go through the algorithm. Im liking what its doing now
-[] map completed should now reflect percentage of the entire map. Yellow box no longer needs to exist, just dotted blue box (and maybe a progress bar inside it so I know how far along the step is?)
+[] eventually, i want to add an option to "view suggested walking paths", which in theory, connect existing paths to each other using dotted, temporary lines that connect. there should be paths to every village. if there are no nodes at a village, just use the metro station until nodes are placed. when a node is placed, it should adjust as needed
+[] can nodes just appear as dots that don't get too big? they clutter up the space when we zoom out. also, lets add a toggle to "hide nodes" when paths are shown
 [] ability to export svg of the map with full block-by-block resolution
 [] when user is zoomed in to an acceptable level, switch map resolution to block-by-block so we can see exactly what’s going on. This should mirror what satellite maps do when you zoom in, but only when that high of a resolution is going to matter
 
 #App (Web Version)
+[] map looks squished horizontally. can we make sure that the bounds for the image match the bounds for the world
 
 #World Map
    [] this should be a completely virtual experience. no minecraft world will be opened at anytime to generate the terrain. it should just be based off the seed and the seed alone. if docker desktop is looking for an open or saved minecraft file, it will never find one. we should reroute it if this is the case
