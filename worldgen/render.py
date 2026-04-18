@@ -9,7 +9,7 @@ import os
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Callable, Final
 
 from .bedrock_chunks import (
     BlockInfo,
@@ -30,6 +30,7 @@ RENDER_BACKGROUND_COLOR: Final[tuple[int, int, int]] = (12, 16, 20)
 MAX_METADATA_BLOCK_COUNTS: Final[int] = 60
 HEADLESS_CHUNK_PACKET_FILE_NAME: Final[str] = 'headless_chunk_packets.jsonl'
 CHUNK_TOUCH_MARKER_Y: Final[int] = -64
+UNFINISHED_POINTS_COMPLETION_THRESHOLD: Final[float] = 90.0
 CHUNK_TOUCH_MARKER_BLOCKS: Final[frozenset[str]] = frozenset((
     'bedrock',
     'minecraft:bedrock',
@@ -699,6 +700,10 @@ class RenderResult:
     colored_max_x: int | None
     colored_min_z: int | None
     colored_max_z: int | None
+    map_completion_percent: float
+    unfinished_points_path: str
+    unfinished_point_count: int
+    unfinished_group_count: int
     block_counts: dict[str, int]
     uncolored_blocks_report_path: str
     uncolored_block_occurrences: int
@@ -733,8 +738,10 @@ def build_render_plan(config: WorldgenConfig, world_path: Path | None = None) ->
 
 
 def save_render_plan(path: Path, plan: RenderPlan) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(asdict(plan), indent=2, sort_keys=True) + '\n', encoding='utf-8')
+    _write_text_atomically_with_retry(
+        path,
+        json.dumps(asdict(plan), indent=2, sort_keys=True) + '\n',
+    )
 
 
 def render_topdown_map(
@@ -751,6 +758,11 @@ def render_topdown_map(
     read_packet_cache: bool = True,
     preserve_existing_image: bool = False,
     fixed_y: int | None = None,
+    pixel_keys: set[tuple[int, int]] | None = None,
+    compact_packet_cache: bool = True,
+    image_progress_callback: Callable[[int], None] | None = None,
+    image_progress_interval: int = 0,
+    image_progress_min_seconds: float = 0.75,
 ) -> RenderResult:
     try:
         from PIL import Image
@@ -768,6 +780,25 @@ def render_topdown_map(
     max_chunk_x = render.max_x // 16
     min_chunk_z = render.min_z // 16
     max_chunk_z = render.max_z // 16
+    record_min_chunk_x = min_chunk_x
+    record_max_chunk_x = max_chunk_x
+    record_min_chunk_z = min_chunk_z
+    record_max_chunk_z = max_chunk_z
+    if pixel_keys is not None:
+        if not pixel_keys:
+            raise ValueError('pixel_keys must be None or a non-empty set.')
+        target_chunk_x_values = {
+            (render.min_x + (pixel_x * render.sample_step)) // 16
+            for pixel_x, _pixel_z in pixel_keys
+        }
+        target_chunk_z_values = {
+            (render.min_z + (pixel_z * render.sample_step)) // 16
+            for _pixel_x, pixel_z in pixel_keys
+        }
+        record_min_chunk_x = max(min_chunk_x, min(target_chunk_x_values))
+        record_max_chunk_x = min(max_chunk_x, max(target_chunk_x_values))
+        record_min_chunk_z = max(min_chunk_z, min(target_chunk_z_values))
+        record_max_chunk_z = min(max_chunk_z, max(target_chunk_z_values))
     chunk_columns_requested = (
         (max_chunk_x - min_chunk_x + 1)
         * (max_chunk_z - min_chunk_z + 1)
@@ -780,10 +811,10 @@ def render_topdown_map(
         persistent_records = tuple(
             iter_subchunk_records(
                 world_path,
-                min_chunk_x=min_chunk_x,
-                max_chunk_x=max_chunk_x,
-                min_chunk_z=min_chunk_z,
-                max_chunk_z=max_chunk_z,
+                min_chunk_x=record_min_chunk_x,
+                max_chunk_x=record_max_chunk_x,
+                min_chunk_z=record_min_chunk_z,
+                max_chunk_z=record_max_chunk_z,
             )
         )
     packet_cache_paths = packet_cache_paths or (
@@ -796,12 +827,12 @@ def render_topdown_map(
         for active_packet_cache_path in packet_cache_paths:
             active_packet_records = _iter_cached_packet_subchunk_records(
                 active_packet_cache_path,
-                min_chunk_x=min_chunk_x,
-                max_chunk_x=max_chunk_x,
-                min_chunk_z=min_chunk_z,
-                max_chunk_z=max_chunk_z,
+                min_chunk_x=record_min_chunk_x,
+                max_chunk_x=record_max_chunk_x,
+                min_chunk_z=record_min_chunk_z,
+                max_chunk_z=record_max_chunk_z,
             )
-            if active_packet_cache_path == packet_cache_paths[-1]:
+            if compact_packet_cache and active_packet_cache_path == packet_cache_paths[-1]:
                 _compact_cached_packet_subchunk_records(active_packet_cache_path, active_packet_records)
             for packet_record in active_packet_records:
                 packet_record_by_key[
@@ -872,6 +903,7 @@ def render_topdown_map(
                 min_z=render.min_z,
                 max_z=render.max_z,
                 sample_step=render.sample_step,
+                pixel_keys=pixel_keys,
             )
         else:
             could_improve_top_blocks = record.subchunk_y == fixed_y // 16
@@ -907,6 +939,7 @@ def render_topdown_map(
                 min_z=render.min_z,
                 max_z=render.max_z,
                 sample_step=render.sample_step,
+                pixel_keys=pixel_keys,
             )
         else:
             _collect_subchunk_fixed_y_blocks(
@@ -919,6 +952,7 @@ def render_topdown_map(
                 min_z=render.min_z,
                 max_z=render.max_z,
                 sample_step=render.sample_step,
+                pixel_keys=pixel_keys,
             )
 
     image = None
@@ -931,10 +965,34 @@ def render_topdown_map(
             image = None
     if image is None:
         image = Image.new('RGBA', (width, height), (*RENDER_BACKGROUND_COLOR, 0))
+    pixels = image.load()
+    if pixels is None:
+        raise RuntimeError('Could not access rendered map pixels.')
+    newly_colored_pixels = 0
+    next_progress_pixels = image_progress_interval
+    last_progress_at = 0.0
     for (pixel_x, pixel_z), top_block in top_blocks.items():
         block_color = _block_color(top_block.block_name)
         if block_color is not None:
-            image.putpixel((pixel_x, pixel_z), (*block_color, 255))
+            previous_pixel = pixels[pixel_x, pixel_z]
+            pixels[pixel_x, pixel_z] = (*block_color, 255)
+            previous_alpha = (
+                previous_pixel[3]
+                if isinstance(previous_pixel, tuple) and len(previous_pixel) >= 4
+                else 255
+            )
+            if previous_alpha == 0:
+                newly_colored_pixels += 1
+                if (
+                    image_progress_callback is not None
+                    and image_progress_interval > 0
+                    and newly_colored_pixels >= next_progress_pixels
+                ):
+                    now = time.monotonic()
+                    if last_progress_at == 0.0 or now - last_progress_at >= image_progress_min_seconds:
+                        image_progress_callback(newly_colored_pixels)
+                        last_progress_at = now
+                    next_progress_pixels = newly_colored_pixels + image_progress_interval
     visible_pixel_count, colored_min_x, colored_max_x, colored_min_z, colored_max_z = (
         _visible_image_world_bounds(
             image,
@@ -954,14 +1012,33 @@ def render_topdown_map(
             )
         )
 
-    image_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(image_path)
+    _save_image_with_retry(image, image_path)
     if image_path.name == 'blackport_topdown.png':
         uncolored_blocks_report_path = image_path.with_name('uncolored_blocks_report.txt')
     else:
         uncolored_blocks_report_path = image_path.with_name(
             f'{image_path.stem}_uncolored_blocks_report.txt'
         )
+    map_completion_percent = _map_completion_percent(visible_pixel_count, width * height)
+    unfinished_points_path = _unfinished_points_report_path(image_path)
+    unfinished_point_count, unfinished_group_count = _write_unfinished_points_report(
+        unfinished_points_path,
+        image,
+        generated_at=generated_at,
+        world_path=source_path,
+        render_min_x=render.min_x,
+        render_max_x=render.max_x,
+        render_min_z=render.min_z,
+        render_max_z=render.max_z,
+        sample_step=render.sample_step,
+        colored_pixels=visible_pixel_count,
+        total_pixels=width * height,
+        completion_percent=map_completion_percent,
+        colored_min_x=colored_min_x,
+        colored_max_x=colored_max_x,
+        colored_min_z=colored_min_z,
+        colored_max_z=colored_max_z,
+    )
     _write_uncolored_blocks_report(
         uncolored_blocks_report_path,
         uncolored_blocks,
@@ -1027,6 +1104,10 @@ def render_topdown_map(
         colored_max_x=colored_max_x,
         colored_min_z=colored_min_z,
         colored_max_z=colored_max_z,
+        map_completion_percent=map_completion_percent,
+        unfinished_points_path=str(unfinished_points_path.resolve()),
+        unfinished_point_count=unfinished_point_count,
+        unfinished_group_count=unfinished_group_count,
         block_counts=block_counts,
         uncolored_blocks_report_path=str(uncolored_blocks_report_path.resolve()),
         uncolored_block_occurrences=sum(stats.count for stats in uncolored_blocks.values()),
@@ -1249,12 +1330,41 @@ def _write_text_atomically_with_retry(
     retry_delay_seconds: float = 0.2,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    retryable_errnos = {errno.EDEADLK, errno.EAGAIN}
+    retryable_errnos = {errno.EDEADLK, errno.EAGAIN, errno.EBUSY}
     last_error: OSError | None = None
     for attempt in range(attempts):
         temporary_path = path.with_name(f'.{path.name}.{os.getpid()}.{attempt}.tmp')
         try:
             temporary_path.write_text(text, encoding='utf-8')
+            temporary_path.replace(path)
+            return
+        except OSError as exc:
+            last_error = exc
+            try:
+                temporary_path.unlink()
+            except OSError:
+                pass
+            if exc.errno not in retryable_errnos or attempt == attempts - 1:
+                raise
+            time.sleep(retry_delay_seconds * (attempt + 1))
+    if last_error is not None:
+        raise last_error
+
+
+def _save_image_with_retry(
+    image: Any,
+    path: Path,
+    *,
+    attempts: int = 5,
+    retry_delay_seconds: float = 0.2,
+) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    retryable_errnos = {errno.EDEADLK, errno.EAGAIN, errno.EBUSY}
+    last_error: OSError | None = None
+    for attempt in range(attempts):
+        temporary_path = path.with_name(f'.{path.stem}.{os.getpid()}.{attempt}{path.suffix}')
+        try:
+            image.save(temporary_path)
             temporary_path.replace(path)
             return
         except OSError as exc:
@@ -1403,6 +1513,172 @@ def _visible_image_world_bounds(
     )
 
 
+def _map_completion_percent(colored_pixels: int, total_pixels: int) -> float:
+    if total_pixels <= 0:
+        return 0.0
+    return round((colored_pixels / total_pixels) * 100, 6)
+
+
+def _unfinished_points_report_path(image_path: Path) -> Path:
+    if image_path.name == 'blackport_topdown.png':
+        return image_path.with_name('unfinished_points.json')
+    return image_path.with_name(f'{image_path.stem}_unfinished_points.json')
+
+
+def _write_unfinished_points_report(
+    path: Path,
+    image: Any,
+    *,
+    generated_at: str,
+    world_path: Path,
+    render_min_x: int,
+    render_max_x: int,
+    render_min_z: int,
+    render_max_z: int,
+    sample_step: int,
+    colored_pixels: int,
+    total_pixels: int,
+    completion_percent: float,
+    colored_min_x: int | None,
+    colored_max_x: int | None,
+    colored_min_z: int | None,
+    colored_max_z: int | None,
+) -> tuple[int, int]:
+    outer_bounds_reached = (
+        colored_min_x == render_min_x
+        and colored_max_x == render_max_x
+        and colored_min_z == render_min_z
+        and colored_max_z == render_max_z
+    )
+    enabled = (
+        outer_bounds_reached
+        and completion_percent >= UNFINISHED_POINTS_COMPLETION_THRESHOLD
+    )
+    reason = None
+    if not outer_bounds_reached:
+        reason = 'Rendered pixels do not reach the outer render bounds yet.'
+    elif completion_percent < UNFINISHED_POINTS_COMPLETION_THRESHOLD:
+        reason = (
+            f'Map completion is below {UNFINISHED_POINTS_COMPLETION_THRESHOLD:.0f}%.'
+        )
+
+    groups: list[dict[str, int]] = []
+    unfinished_point_count = 0
+    if enabled:
+        groups, unfinished_point_count = _unfinished_point_row_groups(
+            image,
+            min_x=render_min_x,
+            min_z=render_min_z,
+            sample_step=sample_step,
+        )
+
+    payload = {
+        'generated_at': generated_at,
+        'enabled': enabled,
+        'reason': reason,
+        'completion_threshold_percent': UNFINISHED_POINTS_COMPLETION_THRESHOLD,
+        'completion_percent': completion_percent,
+        'outer_bounds_reached': outer_bounds_reached,
+        'world_path': str(world_path.resolve()),
+        'render_bounds': {
+            'min_x': render_min_x,
+            'max_x': render_max_x,
+            'min_z': render_min_z,
+            'max_z': render_max_z,
+        },
+        'colored_bounds': {
+            'min_x': colored_min_x,
+            'max_x': colored_max_x,
+            'min_z': colored_min_z,
+            'max_z': colored_max_z,
+        },
+        'sample_step': sample_step,
+        'total_pixels': total_pixels,
+        'colored_pixels': colored_pixels,
+        'unfinished_point_count': unfinished_point_count,
+        'unfinished_group_count': len(groups),
+        'group_format': 'row z with inclusive x_min/x_max runs',
+        'groups': groups,
+    }
+    _write_text_atomically_with_retry(
+        path,
+        json.dumps(payload, indent=2, sort_keys=True) + '\n',
+    )
+    return unfinished_point_count, len(groups)
+
+
+def _unfinished_point_row_groups(
+    image: Any,
+    *,
+    min_x: int,
+    min_z: int,
+    sample_step: int,
+) -> tuple[list[dict[str, int]], int]:
+    alpha = image.getchannel('A')
+    pixels = alpha.load()
+    if pixels is None:
+        return ([], 0)
+
+    width, height = alpha.size
+    groups: list[dict[str, int]] = []
+    unfinished_point_count = 0
+    for pixel_z in range(height):
+        run_start_x: int | None = None
+        for pixel_x in range(width):
+            is_unfinished = pixels[pixel_x, pixel_z] == 0
+            if is_unfinished and run_start_x is None:
+                run_start_x = pixel_x
+            elif not is_unfinished and run_start_x is not None:
+                run_count = pixel_x - run_start_x
+                groups.append(
+                    _unfinished_point_group(
+                        pixel_z,
+                        run_start_x,
+                        pixel_x - 1,
+                        count=run_count,
+                        min_x=min_x,
+                        min_z=min_z,
+                        sample_step=sample_step,
+                    )
+                )
+                unfinished_point_count += run_count
+                run_start_x = None
+        if run_start_x is not None:
+            run_count = width - run_start_x
+            groups.append(
+                _unfinished_point_group(
+                    pixel_z,
+                    run_start_x,
+                    width - 1,
+                    count=run_count,
+                    min_x=min_x,
+                    min_z=min_z,
+                    sample_step=sample_step,
+                )
+            )
+            unfinished_point_count += run_count
+
+    return groups, unfinished_point_count
+
+
+def _unfinished_point_group(
+    pixel_z: int,
+    start_pixel_x: int,
+    end_pixel_x: int,
+    *,
+    count: int,
+    min_x: int,
+    min_z: int,
+    sample_step: int,
+) -> dict[str, int]:
+    return {
+        'z': min_z + (pixel_z * sample_step),
+        'x_min': min_x + (start_pixel_x * sample_step),
+        'x_max': min_x + (end_pixel_x * sample_step),
+        'count': count,
+    }
+
+
 def _collect_subchunk_top_blocks(
     top_blocks: dict[tuple[int, int], TopBlock],
     subchunk: DecodedSubchunk,
@@ -1413,6 +1689,7 @@ def _collect_subchunk_top_blocks(
     min_z: int,
     max_z: int,
     sample_step: int,
+    pixel_keys: set[tuple[int, int]] | None = None,
 ) -> None:
     for local_z in range(16):
         world_z = (subchunk.chunk_z * 16) + local_z
@@ -1426,6 +1703,8 @@ def _collect_subchunk_top_blocks(
                 continue
 
             pixel_key = (pixel_x, pixel_z)
+            if pixel_keys is not None and pixel_key not in pixel_keys:
+                continue
             current_top_block = top_blocks.get(pixel_key)
             if current_top_block is not None and current_top_block.y >= subchunk.max_y:
                 continue
@@ -1469,6 +1748,7 @@ def _collect_subchunk_fixed_y_blocks(
     min_z: int,
     max_z: int,
     sample_step: int,
+    pixel_keys: set[tuple[int, int]] | None = None,
 ) -> None:
     if not subchunk.min_y <= fixed_y <= subchunk.max_y:
         return
@@ -1486,6 +1766,8 @@ def _collect_subchunk_fixed_y_blocks(
                 continue
 
             pixel_key = (pixel_x, pixel_z)
+            if pixel_keys is not None and pixel_key not in pixel_keys:
+                continue
             if pixel_key in top_blocks:
                 continue
 
@@ -1570,6 +1852,7 @@ def _subchunk_could_improve_top_blocks(
     min_z: int,
     max_z: int,
     sample_step: int,
+    pixel_keys: set[tuple[int, int]] | None = None,
 ) -> bool:
     subchunk_max_y = (record.subchunk_y * 16) + 15
     for local_z in range(16):
@@ -1583,7 +1866,10 @@ def _subchunk_could_improve_top_blocks(
             if pixel_x is None:
                 continue
 
-            current_top_block = top_blocks.get((pixel_x, pixel_z))
+            pixel_key = (pixel_x, pixel_z)
+            if pixel_keys is not None and pixel_key not in pixel_keys:
+                continue
+            current_top_block = top_blocks.get(pixel_key)
             if current_top_block is None or current_top_block.y < subchunk_max_y:
                 return True
     return False

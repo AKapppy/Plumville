@@ -10,6 +10,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .bedrock_chunks import iter_subchunk_records
 from .cache import WorldCacheRecord, load_world_cache, save_world_cache, utc_now_iso
@@ -24,6 +25,9 @@ HEADLESS_LOADER_RESULT_FILE_NAME = 'headless_loader_result.json'
 HEADLESS_LOADER_CHUNK_PACKET_FILE_NAME = 'headless_chunk_packets.jsonl'
 HEADLESS_LOADER_RECENT_CHUNK_PACKET_FILE_NAME = 'headless_chunk_packets_recent.jsonl'
 HEADLESS_LOADER_PROGRESS_FILE_NAME = 'headless_loader_progress.json'
+HEADLESS_LOADER_STALLED_TARGETS_FILE_NAME = 'headless_loader_stalled_targets.json'
+HEADLESS_LOADER_MANUAL_TARGET_FILE_NAME = 'headless_loader_manual_target.json'
+SPIRAL_CHECK_PREVIEW_FILE_NAME = 'spiral_check_preview.json'
 HEADLESS_LOADER_MAX_ATTEMPTS = 3
 HEADLESS_LOADER_RETRY_DELAY_SECONDS = 5
 HEADLESS_LOADER_STARTUP_TIMEOUT_SECONDS = 300
@@ -33,10 +37,14 @@ HEADLESS_LOADER_CONNECT_SETTLE_SECONDS = 4.0
 HEADLESS_LOADER_FIRST_TELEPORT_DELAY_SECONDS = 1.0
 HEADLESS_LOADER_SETTLE_AFTER_LAST_TELEPORT_SECONDS = 12.0
 TELEPORT_TARGET_COVERAGE_THRESHOLD = 0.85
-TELEPORT_TARGET_PLANNER_VERSION = 'blank-pixel-radial-tangent-v1'
+TELEPORT_TARGET_PLANNER_VERSION = 'blank-pixel-nearest-complete-v4'
+TELEPORT_TARGET_MIN_ACTIONABLE_BLANK_PIXELS = 2_048
+TELEPORT_TARGET_STALL_SKIP_COUNT = 1
 CHUNK_TOUCH_BLOCK = 'bedrock'
 CHUNK_TOUCH_Y = -64
 CHUNK_TOUCH_MAX_BLOCKS = 30_000
+INCREMENTAL_RENDER_BATCH_PIXELS = 25_000
+INCREMENTAL_RENDER_MAX_SCAN_PIXELS = 5_000_000
 TARGET_LOAD_MIN_X = -8000
 TARGET_LOAD_MAX_X = 8000
 TARGET_LOAD_MIN_Z = -6000
@@ -110,6 +118,24 @@ class LevelDbRepairResult:
     db_path: Path
     repaired_copy_path: Path
     backup_path: Path
+
+
+@dataclass(frozen=True, slots=True)
+class CachedPixelRenderResult:
+    render_result: RenderResult
+    scanned_pixels: int
+    blank_pixels_selected: int
+    colored_pixels_added: int
+
+
+@dataclass(frozen=True, slots=True)
+class _BlankPixelSpiralBatch:
+    pixel_keys: set[tuple[int, int]]
+    scanned_pixels: int
+    center_pixel_x: int
+    center_pixel_z: int
+    last_pixel_x: int
+    last_pixel_z: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,9 +227,13 @@ class BedrockWorldGenerator:
             f'BEDROCK_LOADER_RAKNET_BACKEND={self.config.headless_loader.raknet_backend}',
             f'BEDROCK_LOADER_WAIT_MS={self.config.headless_loader.wait_seconds * 1000}',
             f'BEDROCK_LOADER_CHUNK_RADIUS={self.config.headless_loader.chunk_radius}',
-            'BEDROCK_LOADER_RESULT_FILE=/app/worldgen_data/cache/headless_loader_result.json',
+            f'BEDROCK_CACHE_DIR={self.paths.cache_dir}',
+            (
+                'BEDROCK_LOADER_RESULT_FILE='
+                f'{_container_worldgen_path(self.config, self.paths.cache_dir / HEADLESS_LOADER_RESULT_FILE_NAME)}'
+            ),
         ]
-        self.paths.env_file.write_text('\n'.join(env_lines) + '\n', encoding='utf-8')
+        _write_text_atomically_with_retry(self.paths.env_file, '\n'.join(env_lines) + '\n')
         return self.paths.env_file
 
     def start(self) -> None:
@@ -393,6 +423,7 @@ class BedrockWorldGenerator:
             world_path=coverage_world_path,
             blank_coverage=blank_coverage,
         )
+        teleport_points = self._filter_stalled_teleport_points(teleport_points)
         if not teleport_points:
             result_path.parent.mkdir(parents=True, exist_ok=True)
             output = (
@@ -432,10 +463,10 @@ class BedrockWorldGenerator:
         result_path.parent.mkdir(parents=True, exist_ok=True)
         if chunk_packet_path.exists():
             chunk_packet_path.unlink()
-        container_result_path = _container_repo_path(self.config.repo_root, result_path)
-        container_chunk_packet_path = _container_repo_path(self.config.repo_root, chunk_packet_path)
-        container_start_game_path = _container_repo_path(
-            self.config.repo_root,
+        container_result_path = _container_worldgen_path(self.config, result_path)
+        container_chunk_packet_path = _container_worldgen_path(self.config, chunk_packet_path)
+        container_start_game_path = _container_worldgen_path(
+            self.config,
             self.paths.cache_dir / 'headless_start_game.json',
         )
 
@@ -540,9 +571,9 @@ class BedrockWorldGenerator:
         if result_path.exists():
             result_path.unlink()
 
-        container_result_path = _container_repo_path(self.config.repo_root, result_path)
-        container_chunk_packet_path = _container_repo_path(self.config.repo_root, chunk_packet_path)
-        container_start_game_path = _container_repo_path(self.config.repo_root, start_game_path)
+        container_result_path = _container_worldgen_path(self.config, result_path)
+        container_chunk_packet_path = _container_worldgen_path(self.config, chunk_packet_path)
+        container_start_game_path = _container_worldgen_path(self.config, start_game_path)
         effective_wait_seconds = wait_seconds or lan_config.wait_seconds
 
         command = build_compose_command(
@@ -696,10 +727,7 @@ class BedrockWorldGenerator:
             blank_coverage=blank_coverage,
         )
         per_target_teleport_count = len(_target_square_loader_points(self.config, teleport_points[0]))
-        target_squares_to_load = max(
-            1,
-            loader_config.teleport_attempts // max(1, per_target_teleport_count),
-        )
+        target_squares_to_load = 1
         teleport_command_budget = target_squares_to_load * per_target_teleport_count
         last_teleport_sent_at: float | None = None
         kicked_after_target_batch = False
@@ -829,6 +857,9 @@ class BedrockWorldGenerator:
         diagnose_unknown_blocks: bool = False,
         prefer_persistent_bedrock: bool = False,
         mode_key: str | None = None,
+        image_progress_callback: Callable[[int], None] | None = None,
+        image_progress_interval: int = 0,
+        pixel_keys: set[tuple[int, int]] | None = None,
     ) -> RenderResult:
         mode = worldgen_mode(mode_key)
         if mode.is_lan:
@@ -844,14 +875,33 @@ class BedrockWorldGenerator:
             metadata_path=self.paths.render_cache_path,
             diagnose_unknown_blocks=diagnose_unknown_blocks,
             prefer_persistent_bedrock=prefer_persistent_bedrock,
-            packet_cache_paths=(
-                self.paths.cache_dir / HEADLESS_LOADER_CHUNK_PACKET_FILE_NAME,
-                self.paths.cache_dir / HEADLESS_LOADER_RECENT_CHUNK_PACKET_FILE_NAME,
-            ),
+            packet_cache_paths=self._local_render_packet_cache_paths(),
             preserve_existing_image=True,
+            image_progress_callback=image_progress_callback,
+            image_progress_interval=image_progress_interval,
+            pixel_keys=pixel_keys,
         )
-        shutil.copy2(self.paths.render_image_path, self.paths.docs_render_image_path)
+        _copy_file_best_effort(self.paths.render_image_path, self.paths.docs_render_image_path)
         return result
+
+    def render_loaded_target_map(
+        self,
+        target: tuple[int, int],
+        *,
+        image_progress_callback: Callable[[int], None] | None = None,
+        image_progress_interval: int = 0,
+    ) -> RenderResult:
+        pixel_keys = _teleport_target_pixel_keys(self.config, target)
+        if not pixel_keys:
+            return self.render_map(
+                image_progress_callback=image_progress_callback,
+                image_progress_interval=image_progress_interval,
+            )
+        return self.render_map(
+            image_progress_callback=image_progress_callback,
+            image_progress_interval=image_progress_interval,
+            pixel_keys=pixel_keys,
+        )
 
     def render_lan_map(self, mode_key: str) -> RenderResult:
         mode = worldgen_mode(mode_key)
@@ -871,8 +921,228 @@ class BedrockWorldGenerator:
             read_persistent_bedrock=False,
             fixed_y=mode.fixed_y,
         )
-        shutil.copy2(mode_paths.render_image_path, mode_paths.docs_render_image_path)
+        _copy_file_best_effort(mode_paths.render_image_path, mode_paths.docs_render_image_path)
         return result
+
+    def render_cached_blank_pixel_batch(
+        self,
+        *,
+        batch_size: int = INCREMENTAL_RENDER_BATCH_PIXELS,
+    ) -> CachedPixelRenderResult | None:
+        if not self.paths.render_image_path.exists():
+            return None
+
+        spiral_batch = _blank_pixel_spiral_batch(
+            self.config,
+            self.paths.render_image_path,
+            batch_size=batch_size,
+            max_scan_pixels=INCREMENTAL_RENDER_MAX_SCAN_PIXELS,
+        )
+        self._write_spiral_check_preview(spiral_batch)
+        pixel_keys = spiral_batch.pixel_keys
+        if not pixel_keys:
+            return None
+        packet_cache_paths = self._incremental_render_packet_cache_paths()
+        if not packet_cache_paths:
+            return None
+
+        before_colored_pixels = _cached_colored_pixel_count(self.paths.render_cache_path)
+        try:
+            previous_metadata_text = self.paths.render_cache_path.read_text(encoding='utf-8')
+        except OSError:
+            previous_metadata_text = None
+        self.paths.ensure_runtime_dirs()
+        world_path = self._resolve_existing_world_folder()
+        self.write_render_plan(world_path)
+        result = render_topdown_map(
+            self.config,
+            world_path,
+            image_path=self.paths.render_image_path,
+            metadata_path=self.paths.render_cache_path,
+            packet_cache_paths=packet_cache_paths,
+            preserve_existing_image=True,
+            pixel_keys=pixel_keys,
+            compact_packet_cache=False,
+        )
+        colored_pixels_added = max(0, result.colored_pixels - before_colored_pixels)
+        if colored_pixels_added == 0 and previous_metadata_text is not None:
+            _write_text_atomically_with_retry(self.paths.render_cache_path, previous_metadata_text)
+        return CachedPixelRenderResult(
+            render_result=result,
+            scanned_pixels=spiral_batch.scanned_pixels,
+            blank_pixels_selected=len(pixel_keys),
+            colored_pixels_added=colored_pixels_added,
+        )
+
+    def _local_render_packet_cache_paths(self) -> tuple[Path, ...]:
+        historical_packet_path = self.paths.cache_dir / HEADLESS_LOADER_CHUNK_PACKET_FILE_NAME
+        recent_packet_path = self.paths.cache_dir / HEADLESS_LOADER_RECENT_CHUNK_PACKET_FILE_NAME
+        if (
+            self.paths.render_image_path.exists()
+            and self.paths.render_cache_path.exists()
+            and recent_packet_path.exists()
+        ):
+            return (recent_packet_path,)
+        return (historical_packet_path, recent_packet_path)
+
+    def _incremental_render_packet_cache_paths(self) -> tuple[Path, ...]:
+        recent_packet_path = self.paths.cache_dir / HEADLESS_LOADER_RECENT_CHUNK_PACKET_FILE_NAME
+        if recent_packet_path.exists():
+            return (recent_packet_path,)
+        return ()
+
+    def cached_colored_pixel_count(self) -> int:
+        return _cached_colored_pixel_count(self.paths.render_cache_path)
+
+    def manual_headless_loader_target_preview(self) -> HeadlessLoaderTargetPreview | None:
+        target = self.load_manual_headless_loader_target()
+        if target is None:
+            return None
+        return self.headless_loader_target_preview_for_point(target)
+
+    def headless_loader_target_preview_for_point(
+        self,
+        point: tuple[int, int],
+    ) -> HeadlessLoaderTargetPreview:
+        target = _manual_target_from_world_point(self.config, point)
+        min_x, max_x, min_z, max_z = _teleport_target_world_bounds(self.config, target)
+        coverage = None
+        blank_coverage = _load_blank_render_coverage(self.config, self.paths.render_image_path)
+        if blank_coverage is not None:
+            coverage = _teleport_point_pixel_coverage(self.config, target, blank_coverage)
+        else:
+            world_path = self._world_folder_for_coverage_scan()
+            if world_path is not None and world_path.exists():
+                saved_columns = _saved_render_chunk_columns(self.config, world_path)
+                coverage = _teleport_point_chunk_coverage(self.config, target, saved_columns)
+        return HeadlessLoaderTargetPreview(
+            target_x=target[0],
+            target_z=target[1],
+            target_index=0,
+            target_count=1,
+            min_x=min_x,
+            max_x=max_x,
+            min_z=min_z,
+            max_z=max_z,
+            coverage=coverage,
+        )
+
+    def load_manual_headless_loader_target(self) -> tuple[int, int] | None:
+        path = self.paths.cache_dir / HEADLESS_LOADER_MANUAL_TARGET_FILE_NAME
+        if not path.exists():
+            return None
+        try:
+            payload = json.loads(_read_text_with_retry(path))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(payload, dict):
+            return None
+        target_x = payload.get('target_x')
+        target_z = payload.get('target_z')
+        if not isinstance(target_x, int) or not isinstance(target_z, int):
+            return None
+        return _manual_target_from_world_point(self.config, (target_x, target_z))
+
+    def save_manual_headless_loader_target(self, point: tuple[int, int]) -> HeadlessLoaderTargetPreview:
+        target = _manual_target_from_world_point(self.config, point)
+        payload = {
+            'generated_at': utc_now_iso(),
+            'target_x': target[0],
+            'target_z': target[1],
+        }
+        _write_text_atomically_with_retry(
+            self.paths.cache_dir / HEADLESS_LOADER_MANUAL_TARGET_FILE_NAME,
+            json.dumps(payload, indent=2, sort_keys=True) + '\n',
+        )
+        return self.headless_loader_target_preview_for_point(target)
+
+    def clear_manual_headless_loader_target(self) -> None:
+        _unlink_file_with_retry(self.paths.cache_dir / HEADLESS_LOADER_MANUAL_TARGET_FILE_NAME)
+
+    def mark_headless_loader_target_progress(
+        self,
+        target: tuple[int, int],
+        *,
+        pixels_added: int,
+    ) -> None:
+        stalls_path = self.paths.cache_dir / HEADLESS_LOADER_STALLED_TARGETS_FILE_NAME
+        stalls = _load_stalled_targets(stalls_path)
+        target_key = _target_stall_key(target)
+        if pixels_added > 0:
+            if target_key in stalls:
+                del stalls[target_key]
+                _save_stalled_targets(stalls_path, stalls)
+            return
+        stalls[target_key] = stalls.get(target_key, 0) + 1
+        _save_stalled_targets(stalls_path, stalls)
+
+    def _filter_stalled_teleport_points(
+        self,
+        teleport_points: tuple[tuple[int, int], ...],
+    ) -> tuple[tuple[int, int], ...]:
+        if not teleport_points:
+            return teleport_points
+        stalls = _load_stalled_targets(
+            self.paths.cache_dir / HEADLESS_LOADER_STALLED_TARGETS_FILE_NAME
+        )
+        if not stalls:
+            return teleport_points
+        filtered_points = tuple(
+            point
+            for point in teleport_points
+            if stalls.get(_target_stall_key(point), 0) < TELEPORT_TARGET_STALL_SKIP_COUNT
+        )
+        return filtered_points or teleport_points
+
+    def _write_spiral_check_preview(self, spiral_batch: _BlankPixelSpiralBatch) -> None:
+        path = self.paths.cache_dir / SPIRAL_CHECK_PREVIEW_FILE_NAME
+        render = self.config.render
+        center_world_x = render.min_x + (spiral_batch.center_pixel_x * render.sample_step)
+        center_world_z = render.min_z + (spiral_batch.center_pixel_z * render.sample_step)
+        last_world_x = render.min_x + (spiral_batch.last_pixel_x * render.sample_step)
+        last_world_z = render.min_z + (spiral_batch.last_pixel_z * render.sample_step)
+        scan_radius_pixels = max(
+            abs(spiral_batch.last_pixel_x - spiral_batch.center_pixel_x),
+            abs(spiral_batch.last_pixel_z - spiral_batch.center_pixel_z),
+        )
+        scan_min_pixel_x = max(0, spiral_batch.center_pixel_x - scan_radius_pixels)
+        scan_max_pixel_x = min(
+            _sampled_axis_size(render.min_x, render.max_x, render.sample_step) - 1,
+            spiral_batch.center_pixel_x + scan_radius_pixels,
+        )
+        scan_min_pixel_z = max(0, spiral_batch.center_pixel_z - scan_radius_pixels)
+        scan_max_pixel_z = min(
+            _sampled_axis_size(render.min_z, render.max_z, render.sample_step) - 1,
+            spiral_batch.center_pixel_z + scan_radius_pixels,
+        )
+        payload: dict[str, object] = {
+            'generated_at': utc_now_iso(),
+            'scanned_pixels': spiral_batch.scanned_pixels,
+            'blank_pixels_selected': len(spiral_batch.pixel_keys),
+            'center_x': center_world_x,
+            'center_z': center_world_z,
+            'last_checked_x': last_world_x,
+            'last_checked_z': last_world_z,
+            'scan_min_x': render.min_x + (scan_min_pixel_x * render.sample_step),
+            'scan_max_x': render.min_x + (scan_max_pixel_x * render.sample_step),
+            'scan_min_z': render.min_z + (scan_min_pixel_z * render.sample_step),
+            'scan_max_z': render.min_z + (scan_max_pixel_z * render.sample_step),
+        }
+        if spiral_batch.pixel_keys:
+            blank_x_values = [pixel_x for pixel_x, _pixel_z in spiral_batch.pixel_keys]
+            blank_z_values = [pixel_z for _pixel_x, pixel_z in spiral_batch.pixel_keys]
+            payload.update(
+                {
+                    'blank_min_x': render.min_x + (min(blank_x_values) * render.sample_step),
+                    'blank_max_x': render.min_x + (max(blank_x_values) * render.sample_step),
+                    'blank_min_z': render.min_z + (min(blank_z_values) * render.sample_step),
+                    'blank_max_z': render.min_z + (max(blank_z_values) * render.sample_step),
+                }
+            )
+        _write_text_atomically_with_retry(
+            path,
+            json.dumps(payload, indent=2, sort_keys=True) + '\n',
+        )
 
     def _prepare_db_for_headless_loader(self) -> None:
         return
@@ -959,7 +1229,11 @@ class BedrockWorldGenerator:
         except FileNotFoundError:
             return None
 
-    def next_headless_loader_target_preview(self) -> HeadlessLoaderTargetPreview | None:
+    def next_headless_loader_target_preview(
+        self,
+        *,
+        include_manual_target: bool = False,
+    ) -> HeadlessLoaderTargetPreview | None:
         progress_path = self.paths.cache_dir / HEADLESS_LOADER_PROGRESS_FILE_NAME
         world_path = self._world_folder_for_coverage_scan()
         blank_coverage = _load_blank_render_coverage(self.config, self.paths.render_image_path)
@@ -968,6 +1242,7 @@ class BedrockWorldGenerator:
             world_path=world_path,
             blank_coverage=blank_coverage,
         )
+        teleport_points = self._filter_stalled_teleport_points(teleport_points)
         if not teleport_points:
             return None
         progress_index = _load_headless_loader_progress(
@@ -995,6 +1270,83 @@ class BedrockWorldGenerator:
             target_x=target[0],
             target_z=target[1],
             target_index=target_index,
+            target_count=len(teleport_points),
+            min_x=min_x,
+            max_x=max_x,
+            min_z=min_z,
+            max_z=max_z,
+            coverage=coverage,
+        )
+
+    def automatic_headless_loader_target_preview_after(
+        self,
+        target: tuple[int, int],
+    ) -> HeadlessLoaderTargetPreview | None:
+        world_path = self._world_folder_for_coverage_scan()
+        blank_coverage = _load_blank_render_coverage(self.config, self.paths.render_image_path)
+        teleport_points = _render_area_teleport_points(
+            self.config,
+            world_path=world_path,
+            blank_coverage=blank_coverage,
+        )
+        teleport_points = self._filter_stalled_teleport_points(teleport_points)
+        if not teleport_points:
+            return None
+
+        normalized_target = _manual_target_from_world_point(self.config, target)
+        try:
+            target_index = teleport_points.index(normalized_target)
+        except ValueError:
+            target_index = _next_undercovered_teleport_index(
+                self.config,
+                teleport_points,
+                start_index=0,
+                world_path=world_path,
+                blank_coverage=blank_coverage,
+            )
+        start_index = (target_index + 1) % len(teleport_points)
+        next_index = _next_undercovered_teleport_index(
+            self.config,
+            teleport_points,
+            start_index=start_index,
+            world_path=world_path,
+            blank_coverage=blank_coverage,
+        )
+        if len(teleport_points) > 1 and teleport_points[next_index] == normalized_target:
+            for offset in range(len(teleport_points)):
+                candidate_index = (start_index + offset) % len(teleport_points)
+                candidate_target = teleport_points[candidate_index]
+                if candidate_target == normalized_target:
+                    continue
+                if blank_coverage is not None:
+                    if _teleport_point_missing_pixel_count(
+                        self.config,
+                        candidate_target,
+                        blank_coverage,
+                    ) <= 0:
+                        continue
+                elif world_path is not None and world_path.exists():
+                    saved_columns = _saved_render_chunk_columns(self.config, world_path)
+                    if _teleport_point_chunk_coverage(
+                        self.config,
+                        candidate_target,
+                        saved_columns,
+                    ) >= TELEPORT_TARGET_COVERAGE_THRESHOLD:
+                        continue
+                next_index = candidate_index
+                break
+        next_target = teleport_points[next_index]
+        coverage = None
+        if blank_coverage is not None:
+            coverage = _teleport_point_pixel_coverage(self.config, next_target, blank_coverage)
+        elif world_path is not None and world_path.exists():
+            saved_columns = _saved_render_chunk_columns(self.config, world_path)
+            coverage = _teleport_point_chunk_coverage(self.config, next_target, saved_columns)
+        min_x, max_x, min_z, max_z = _teleport_target_world_bounds(self.config, next_target)
+        return HeadlessLoaderTargetPreview(
+            target_x=next_target[0],
+            target_z=next_target[1],
+            target_index=next_index,
             target_count=len(teleport_points),
             min_x=min_x,
             max_x=max_x,
@@ -1066,12 +1418,14 @@ def _next_undercovered_teleport_index(
 
     normalized_start_index = start_index % len(teleport_points)
     if blank_coverage is not None:
-        for offset in range(len(teleport_points)):
-            index = (normalized_start_index + offset) % len(teleport_points)
-            point = teleport_points[index]
-            if _teleport_point_missing_pixel_count(config, point, blank_coverage) > 0:
+        fallback_index: int | None = None
+        for index, point in enumerate(teleport_points):
+            missing_pixels = _teleport_point_missing_pixel_count(config, point, blank_coverage)
+            if missing_pixels > TELEPORT_TARGET_MIN_ACTIONABLE_BLANK_PIXELS:
                 return index
-        return normalized_start_index
+            if missing_pixels > 0 and fallback_index is None:
+                fallback_index = index
+        return fallback_index or 0
 
     if world_path is None or not world_path.exists():
         return start_index % len(teleport_points)
@@ -1154,7 +1508,7 @@ def _read_text_with_retry(
     attempts: int = 5,
     retry_delay_seconds: float = 0.2,
 ) -> str:
-    retryable_errnos = {errno.EDEADLK, errno.EAGAIN}
+    retryable_errnos = {errno.EDEADLK, errno.EAGAIN, errno.EBUSY}
     last_error: OSError | None = None
     for attempt in range(attempts):
         try:
@@ -1177,7 +1531,7 @@ def _write_text_atomically_with_retry(
     retry_delay_seconds: float = 0.25,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    retryable_errnos = {errno.EDEADLK, errno.EAGAIN}
+    retryable_errnos = {errno.EDEADLK, errno.EAGAIN, errno.EBUSY}
     last_error: OSError | None = None
     for attempt in range(attempts):
         temporary_path = path.with_name(f'.{path.name}.{os.getpid()}.{attempt}.tmp')
@@ -1191,6 +1545,57 @@ def _write_text_atomically_with_retry(
                 temporary_path.unlink()
             except OSError:
                 pass
+            if exc.errno not in retryable_errnos or attempt == attempts - 1:
+                raise
+            time.sleep(retry_delay_seconds * (attempt + 1))
+    if last_error is not None:
+        raise last_error
+
+
+def _copy_file_with_retry(
+    source_path: Path,
+    destination_path: Path,
+    *,
+    attempts: int = 5,
+    retry_delay_seconds: float = 0.2,
+) -> None:
+    destination_path.parent.mkdir(parents=True, exist_ok=True)
+    retryable_errnos = {errno.EDEADLK, errno.EAGAIN, errno.EBUSY}
+    last_error: OSError | None = None
+    for attempt in range(attempts):
+        try:
+            shutil.copy2(source_path, destination_path)
+            return
+        except OSError as exc:
+            last_error = exc
+            if exc.errno not in retryable_errnos or attempt == attempts - 1:
+                raise
+            time.sleep(retry_delay_seconds * (attempt + 1))
+    if last_error is not None:
+        raise last_error
+
+
+def _copy_file_best_effort(source_path: Path, destination_path: Path) -> None:
+    try:
+        _copy_file_with_retry(source_path, destination_path)
+    except OSError:
+        return
+
+
+def _unlink_file_with_retry(
+    path: Path,
+    *,
+    attempts: int = 5,
+    retry_delay_seconds: float = 0.2,
+) -> None:
+    retryable_errnos = {errno.EDEADLK, errno.EAGAIN, errno.EBUSY}
+    last_error: OSError | None = None
+    for attempt in range(attempts):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except OSError as exc:
+            last_error = exc
             if exc.errno not in retryable_errnos or attempt == attempts - 1:
                 raise
             time.sleep(retry_delay_seconds * (attempt + 1))
@@ -1376,6 +1781,184 @@ def _load_blank_render_coverage(
     )
 
 
+def _blank_pixel_spiral_batch(
+    config: WorldgenConfig,
+    image_path: Path,
+    *,
+    batch_size: int,
+    max_scan_pixels: int,
+) -> _BlankPixelSpiralBatch:
+    if batch_size <= 0 or max_scan_pixels <= 0:
+        return _empty_blank_pixel_spiral_batch(config)
+
+    try:
+        from PIL import Image
+    except ImportError:
+        return _empty_blank_pixel_spiral_batch(config)
+    Image.MAX_IMAGE_PIXELS = None
+
+    render = config.render
+    expected_width = _sampled_axis_size(render.min_x, render.max_x, render.sample_step)
+    expected_height = _sampled_axis_size(render.min_z, render.max_z, render.sample_step)
+    try:
+        with Image.open(image_path) as source_image:
+            alpha = source_image.convert('RGBA').getchannel('A')
+    except OSError:
+        return _empty_blank_pixel_spiral_batch(config)
+    if alpha.size != (expected_width, expected_height):
+        return _empty_blank_pixel_spiral_batch(config)
+
+    center_pixel_x = _clamp_int(
+        round((render.center_x - render.min_x) / render.sample_step),
+        0,
+        expected_width - 1,
+    )
+    center_pixel_z = _clamp_int(
+        round((render.center_z - render.min_z) / render.sample_step),
+        0,
+        expected_height - 1,
+    )
+    alpha_pixels = alpha.load()
+    if alpha_pixels is None:
+        return _empty_blank_pixel_spiral_batch(config)
+    blank_pixels: set[tuple[int, int]] = set()
+    scanned_pixels = 0
+    last_pixel_x = center_pixel_x
+    last_pixel_z = center_pixel_z
+    for pixel_x, pixel_z in _spiral_pixels(
+        expected_width,
+        expected_height,
+        center_pixel_x,
+        center_pixel_z,
+    ):
+        scanned_pixels += 1
+        last_pixel_x = pixel_x
+        last_pixel_z = pixel_z
+        if alpha_pixels[pixel_x, pixel_z] == 0:
+            blank_pixels.add((pixel_x, pixel_z))
+            if len(blank_pixels) >= batch_size:
+                break
+        if scanned_pixels >= max_scan_pixels:
+            break
+    return _BlankPixelSpiralBatch(
+        pixel_keys=blank_pixels,
+        scanned_pixels=scanned_pixels,
+        center_pixel_x=center_pixel_x,
+        center_pixel_z=center_pixel_z,
+        last_pixel_x=last_pixel_x,
+        last_pixel_z=last_pixel_z,
+    )
+
+
+def _empty_blank_pixel_spiral_batch(config: WorldgenConfig) -> _BlankPixelSpiralBatch:
+    render = config.render
+    center_pixel_x = max(0, round((render.center_x - render.min_x) / render.sample_step))
+    center_pixel_z = max(0, round((render.center_z - render.min_z) / render.sample_step))
+    return _BlankPixelSpiralBatch(
+        pixel_keys=set(),
+        scanned_pixels=0,
+        center_pixel_x=center_pixel_x,
+        center_pixel_z=center_pixel_z,
+        last_pixel_x=center_pixel_x,
+        last_pixel_z=center_pixel_z,
+    )
+
+
+def _spiral_pixels(
+    width: int,
+    height: int,
+    center_x: int,
+    center_z: int,
+):
+    if width <= 0 or height <= 0:
+        return
+
+    yielded = 0
+    total_pixels = width * height
+    x = center_x
+    z = center_z
+    if 0 <= x < width and 0 <= z < height:
+        yielded += 1
+        yield (x, z)
+
+    step_length = 1
+    directions = ((1, 0), (0, 1), (-1, 0), (0, -1))
+    while yielded < total_pixels:
+        for direction_index, (delta_x, delta_z) in enumerate(directions):
+            for _step in range(step_length):
+                x += delta_x
+                z += delta_z
+                if 0 <= x < width and 0 <= z < height:
+                    yielded += 1
+                    yield (x, z)
+                    if yielded >= total_pixels:
+                        return
+            if direction_index % 2 == 1:
+                step_length += 1
+
+
+def _cached_colored_pixel_count(metadata_path: Path) -> int:
+    try:
+        payload = json.loads(metadata_path.read_text(encoding='utf-8'))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    if not isinstance(payload, dict):
+        return 0
+    colored_pixels = payload.get('colored_pixels')
+    return colored_pixels if isinstance(colored_pixels, int) else 0
+
+
+def _target_stall_key(target: tuple[int, int]) -> str:
+    return f'{target[0]},{target[1]}'
+
+
+def _manual_target_from_world_point(
+    config: WorldgenConfig,
+    point: tuple[int, int],
+) -> tuple[int, int]:
+    render = config.render
+    clamped_x = _clamp_int(point[0], render.min_x, render.max_x)
+    clamped_z = _clamp_int(point[1], render.min_z, render.max_z)
+    center_chunk_x = clamped_x // 16
+    center_chunk_z = clamped_z // 16
+    target_x, target_z = _chunk_center_world_pair((center_chunk_x, center_chunk_z))
+    return (
+        _clamp_int(target_x, render.min_x, render.max_x),
+        _clamp_int(target_z, render.min_z, render.max_z),
+    )
+
+
+def _load_stalled_targets(path: Path) -> dict[str, int]:
+    if not path.exists():
+        return {}
+    try:
+        payload = json.loads(_read_text_with_retry(path))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    if not isinstance(payload, dict):
+        return {}
+    targets = payload.get('targets')
+    if not isinstance(targets, dict):
+        return {}
+    return {
+        key: value
+        for key, value in targets.items()
+        if isinstance(key, str) and isinstance(value, int) and value > 0
+    }
+
+
+def _save_stalled_targets(path: Path, stalls: dict[str, int]) -> None:
+    payload = {
+        'generated_at': utc_now_iso(),
+        'skip_count': TELEPORT_TARGET_STALL_SKIP_COUNT,
+        'targets': dict(sorted(stalls.items())),
+    }
+    _write_text_atomically_with_retry(
+        path,
+        json.dumps(payload, indent=2, sort_keys=True) + '\n',
+    )
+
+
 def _file_stat_tuple(path: Path) -> tuple[str, int, int] | None:
     try:
         stat_result = path.stat()
@@ -1403,15 +1986,28 @@ def _blank_pixel_fill_teleport_points(
     config: WorldgenConfig,
     blank_pixels_by_chunk: dict[tuple[int, int], int],
 ) -> tuple[tuple[int, int], ...]:
-    return tuple(
-        _chunk_center_world_pair(center_chunk)
-        for center_chunk in _radial_tangent_target_center_chunks(config)
-        if _teleport_center_blank_pixel_count(
+    center_chunk_x = config.render.center_x // 16
+    center_chunk_z = config.render.center_z // 16
+    candidates: list[tuple[float, int, tuple[int, int]]] = []
+    for center_chunk in _radial_tangent_target_center_chunks(config):
+        blank_pixel_count = _teleport_center_blank_pixel_count(
             config,
             center_chunk[0],
             center_chunk[1],
             blank_pixels_by_chunk,
-        ) > 0
+        )
+        if blank_pixel_count <= 0:
+            continue
+        distance_from_center = math.hypot(
+            center_chunk[0] - center_chunk_x,
+            center_chunk[1] - center_chunk_z,
+        )
+        candidates.append((distance_from_center, -blank_pixel_count, center_chunk))
+
+    candidates.sort()
+    return tuple(
+        _chunk_center_world_pair(center_chunk)
+        for _distance_from_center, _negative_blank_pixel_count, center_chunk in candidates
     )
 
 
@@ -1553,32 +2149,22 @@ def _target_square_loader_points(
     point: tuple[int, int],
 ) -> tuple[tuple[int, int], ...]:
     radius = config.headless_loader.chunk_radius
-    if radius <= 0:
+    if radius <= 2:
         return (point,)
 
     center_chunk_x = point[0] // 16
     center_chunk_z = point[1] // 16
-    offset = max(1, math.ceil(radius / 2))
-    min_chunk_x, max_chunk_x, min_chunk_z, max_chunk_z = _target_load_chunk_bounds()
+    offset = max(1, radius // 2)
+    target_columns = _teleport_point_chunk_columns(config, point)
     loader_chunks = (
-        (
-            _clamp_int(center_chunk_x - offset, min_chunk_x, max_chunk_x),
-            _clamp_int(center_chunk_z - offset, min_chunk_z, max_chunk_z),
-        ),
-        (
-            _clamp_int(center_chunk_x + offset, min_chunk_x, max_chunk_x),
-            _clamp_int(center_chunk_z - offset, min_chunk_z, max_chunk_z),
-        ),
-        (
-            _clamp_int(center_chunk_x - offset, min_chunk_x, max_chunk_x),
-            _clamp_int(center_chunk_z + offset, min_chunk_z, max_chunk_z),
-        ),
-        (
-            _clamp_int(center_chunk_x + offset, min_chunk_x, max_chunk_x),
-            _clamp_int(center_chunk_z + offset, min_chunk_z, max_chunk_z),
-        ),
+        (center_chunk_x, center_chunk_z),
+        (center_chunk_x - offset, center_chunk_z - offset),
+        (center_chunk_x + offset, center_chunk_z - offset),
+        (center_chunk_x - offset, center_chunk_z + offset),
+        (center_chunk_x + offset, center_chunk_z + offset),
     )
-    return tuple(dict.fromkeys(_chunk_center_world_pair(chunk) for chunk in loader_chunks))
+    clipped_chunks = tuple(chunk for chunk in loader_chunks if chunk in target_columns)
+    return tuple(dict.fromkeys(_chunk_center_world_pair(chunk) for chunk in clipped_chunks)) or (point,)
 
 
 def _teleport_center_chunk_columns(
@@ -1924,11 +2510,37 @@ def _teleport_target_world_bounds(
     min_chunk_z = center_chunk_z - radius
     max_chunk_z = center_chunk_z + radius
     return (
-        max(TARGET_LOAD_MIN_X, min_chunk_x * 16),
-        min(TARGET_LOAD_MAX_X, (max_chunk_x * 16) + 15),
-        max(TARGET_LOAD_MIN_Z, min_chunk_z * 16),
-        min(TARGET_LOAD_MAX_Z, (max_chunk_z * 16) + 15),
+        max(config.render.min_x, TARGET_LOAD_MIN_X, min_chunk_x * 16),
+        min(config.render.max_x, TARGET_LOAD_MAX_X, (max_chunk_x * 16) + 15),
+        max(config.render.min_z, TARGET_LOAD_MIN_Z, min_chunk_z * 16),
+        min(config.render.max_z, TARGET_LOAD_MAX_Z, (max_chunk_z * 16) + 15),
     )
+
+
+def _teleport_target_pixel_keys(
+    config: WorldgenConfig,
+    point: tuple[int, int],
+) -> set[tuple[int, int]]:
+    min_x, max_x, min_z, max_z = _teleport_target_world_bounds(config, point)
+    render = config.render
+    sample_step = render.sample_step
+    if min_x > max_x or min_z > max_z or sample_step <= 0:
+        return set()
+
+    width = _sampled_axis_size(render.min_x, render.max_x, sample_step)
+    height = _sampled_axis_size(render.min_z, render.max_z, sample_step)
+    min_pixel_x = max(0, math.ceil((min_x - render.min_x) / sample_step))
+    max_pixel_x = min(width - 1, math.floor((max_x - render.min_x) / sample_step))
+    min_pixel_z = max(0, math.ceil((min_z - render.min_z) / sample_step))
+    max_pixel_z = min(height - 1, math.floor((max_z - render.min_z) / sample_step))
+    if min_pixel_x > max_pixel_x or min_pixel_z > max_pixel_z:
+        return set()
+
+    return {
+        (pixel_x, pixel_z)
+        for pixel_z in range(min_pixel_z, max_pixel_z + 1)
+        for pixel_x in range(min_pixel_x, max_pixel_x + 1)
+    }
 
 
 def _target_load_chunk_bounds() -> tuple[int, int, int, int]:
@@ -2024,5 +2636,18 @@ def _clamp_int(value: int, min_value: int, max_value: int) -> int:
     return max(min_value, min(value, max_value))
 
 
-def _container_repo_path(repo_root: Path, host_path: Path) -> str:
-    return '/app/' + host_path.resolve().relative_to(repo_root.resolve()).as_posix()
+def _container_worldgen_path(config: WorldgenConfig, host_path: Path) -> str:
+    resolved_path = host_path.resolve()
+    repo_root = config.repo_root.resolve()
+    try:
+        return '/app/' + resolved_path.relative_to(repo_root).as_posix()
+    except ValueError:
+        pass
+
+    cache_dir = config.paths.cache_dir.resolve()
+    try:
+        return '/worldgen-cache/' + resolved_path.relative_to(cache_dir).as_posix()
+    except ValueError as exc:
+        raise ValueError(
+            f'{host_path} is not inside the repo or the configured worldgen cache dir.'
+        ) from exc

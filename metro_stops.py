@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import base64
 import heapq
 import html
+import io
 import json
 import queue
 import re
 import threading
+import time
 import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
@@ -110,7 +113,18 @@ WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE: Final[int] = 24
 WORLD_MAP_NEXT_TARGET_COLOR: Final[str] = '#8ad4ff'
 WORLD_MAP_NEXT_TARGET_WIDTH: Final[int] = 2
 WORLD_MAP_NEXT_TARGET_DASH: Final[tuple[int, int]] = (3, 3)
+WORLD_MAP_TARGET_PROGRESS_HEIGHT: Final[int] = 5
+WORLD_MAP_TARGET_PROGRESS_BACKGROUND: Final[str] = '#102636'
 WORLD_MAP_AUTO_LOAD_PASSES: Final[int] = 1
+WORLD_MAP_RENDER_PROGRESS_PIXEL_INTERVAL: Final[int] = 5_000
+WORLD_MAP_PREVIEW_MAX_DIMENSION: Final[int] = 4096
+WORLD_MAP_PREVIEW_SUFFIX: Final[str] = '.app-preview.png'
+WORLD_MAP_FILE_POLL_MIN_SECONDS: Final[float] = 0.75
+WORLD_MAP_SPIRAL_CHECK_COLOR: Final[str] = '#ff8ad8'
+WORLD_MAP_SPIRAL_CHECK_WIDTH: Final[int] = 2
+WORLD_MAP_SPIRAL_CHECK_DASH: Final[tuple[int, int]] = (8, 4)
+WORLD_MAP_SPIRAL_BLANK_COLOR: Final[str] = '#ffffff'
+WORLD_MAP_SPIRAL_BLANK_MIN_CANVAS_SIZE: Final[int] = 18
 SIDEBAR_SCROLL_PIXELS: Final[int] = 36
 SIDEBAR_SCROLL_FRAMES: Final[int] = 3
 SIDEBAR_SCROLL_FRAME_DELAY_MS: Final[int] = 8
@@ -157,7 +171,14 @@ CHIME_DIRECTION_LABELS: Final[dict[ChimeDirection, str]] = {
     'south': 'South',
     'west': 'West',
 }
-WorldMapTaskQueueItem = tuple[Literal['progress', 'rendered', 'done'], bool, str]
+WorldMapTaskQueueItem = tuple[
+    Literal['progress', 'rendered', 'done'],
+    bool,
+    str,
+    tuple[int, int] | None,
+]
+WorldMapPreviewQueueItem = tuple[bool, str, str]
+WorldMapTargetPreviewQueueItem = tuple[tuple[object, ...], object | None]
 FileStatKey = tuple[str, int, int]
 
 
@@ -1394,6 +1415,33 @@ def _svg_rgba(rgba: tuple[int, int, int, int]) -> tuple[str, float]:
     return (f'#{red:02x}{green:02x}{blue:02x}', alpha / 255)
 
 
+@dataclass(frozen=True, slots=True)
+class SvgRasterImage:
+    data_uri: str
+    left: float
+    top: float
+    width: int
+    height: int
+
+
+@dataclass(frozen=True, slots=True)
+class SvgExportOptions:
+    include_world_map: bool
+    include_grid: bool
+    include_metro_lines: bool
+    include_stations: bool
+    include_labels: bool
+    include_path_nodes: bool
+    include_walking_paths: bool
+    include_connector_paths: bool
+    include_current_route: bool
+    include_planning_circle: bool
+    include_connected_area: bool
+    include_alignment_ellipses: bool
+    include_frontier_highlights: bool
+    include_railway_finishing: bool
+
+
 def _build_map_svg(
     *,
     width: int,
@@ -1403,12 +1451,8 @@ def _build_map_svg(
     pan_x: float,
     pan_y: float,
     visible_line_names: set[str],
-    show_planning_circle: bool,
-    show_connected_area: bool,
-    show_alignment_reminders: bool,
-    show_frontier_highlights: bool,
-    show_railway_finishing: bool,
-    show_labels: bool,
+    export_options: SvgExportOptions,
+    world_map_image: SvgRasterImage | None,
     current_route: RouteResult | None,
 ) -> str:
     min_x, max_x, min_y, max_y, scale = _plot_transform(width=width, height=height, padding=padding)
@@ -1416,7 +1460,11 @@ def _build_map_svg(
     label_growth = label_font_size - BASE_LABEL_FONT_SIZE
     label_offset_x = LABEL_OFFSET_X + label_growth
     label_offset_y = LABEL_OFFSET_Y + label_growth
-    frontier_label_stop_vars = _frontier_highlight_stop_vars() if show_frontier_highlights else frozenset()
+    frontier_label_stop_vars = (
+        _frontier_highlight_stop_vars()
+        if export_options.include_frontier_highlights
+        else frozenset()
+    )
 
     def world_to_canvas(point: tuple[float, float]) -> tuple[float, float]:
         return _apply_viewport_to_canvas(
@@ -1438,7 +1486,16 @@ def _build_map_svg(
         f'  <rect width="{width}" height="{height}" fill="{BACKGROUND_COLOR}" />',
     ]
 
-    if min_x <= 0 <= max_x:
+    if export_options.include_world_map and world_map_image is not None:
+        svg_lines.append(
+            (
+                f'  <image x="{world_map_image.left:.2f}" y="{world_map_image.top:.2f}" '
+                f'width="{world_map_image.width}" height="{world_map_image.height}" '
+                f'href="{world_map_image.data_uri}" preserveAspectRatio="none" />'
+            )
+        )
+
+    if export_options.include_grid and min_x <= 0 <= max_x:
         zero_x = world_to_canvas((0, min_y))[0]
         zero_top = world_to_canvas((0, max_y))[1]
         zero_bottom = world_to_canvas((0, min_y))[1]
@@ -1449,7 +1506,7 @@ def _build_map_svg(
                 f'stroke-dasharray="{_svg_dasharray((4, 4))}" />'
             )
         )
-    if min_y <= 0 <= max_y:
+    if export_options.include_grid and min_y <= 0 <= max_y:
         zero_left = world_to_canvas((min_x, 0))[0]
         zero_right = world_to_canvas((max_x, 0))[0]
         zero_y = world_to_canvas((min_x, 0))[1]
@@ -1461,7 +1518,7 @@ def _build_map_svg(
             )
         )
 
-    if show_planning_circle:
+    if export_options.include_planning_circle:
         planning_radius = _planning_radius_distance()
         if planning_radius > 0:
             center_stop = _blackport_stop()
@@ -1476,7 +1533,7 @@ def _build_map_svg(
                     )
                 )
 
-    if show_connected_area:
+    if export_options.include_connected_area:
         area_loops = _connected_route_area_world_loops()
         if area_loops:
             area_fill, area_opacity = _svg_rgba(AREA_OVERLAY_RGBA)
@@ -1491,25 +1548,30 @@ def _build_map_svg(
                     )
                 )
 
-    for segment in _all_metro_segments():
-        if segment.line_name not in visible_line_names:
-            continue
-        canvas_points = [world_to_canvas(point) for point in segment.plot_points]
-        if len(canvas_points) < 2:
-            continue
-        stroke_width, dash = _metro_segment_style(segment)
-        dash_markup = ''
-        if dash is not None:
-            dash_markup = f' stroke-dasharray="{_svg_dasharray(dash)}"'
-        svg_lines.append(
-            (
-                f'  <polyline points="{_svg_points(canvas_points)}" fill="none" '
-                f'stroke="{LINE_COLORS[segment.line_name]}" stroke-width="{stroke_width}" '
-                f'stroke-linecap="round" stroke-linejoin="round"{dash_markup} />'
+    if export_options.include_metro_lines:
+        for segment in _all_metro_segments():
+            if segment.line_name not in visible_line_names:
+                continue
+            canvas_points = [world_to_canvas(point) for point in segment.plot_points]
+            if len(canvas_points) < 2:
+                continue
+            stroke_width, dash = _metro_segment_style(segment)
+            dash_markup = ''
+            if dash is not None:
+                dash_markup = f' stroke-dasharray="{_svg_dasharray(dash)}"'
+            svg_lines.append(
+                (
+                    f'  <polyline points="{_svg_points(canvas_points)}" fill="none" '
+                    f'stroke="{LINE_COLORS[segment.line_name]}" stroke-width="{stroke_width}" '
+                    f'stroke-linecap="round" stroke-linejoin="round"{dash_markup} />'
+                )
             )
-        )
 
     for extra_edge in EXTRA_EDGES:
+        if extra_edge.kind == 'walk' and not export_options.include_walking_paths:
+            continue
+        if extra_edge.kind == 'connector' and not export_options.include_connector_paths:
+            continue
         canvas_points = [world_to_canvas(point) for point in extra_edge.plot_points]
         if len(canvas_points) < 2:
             continue
@@ -1524,29 +1586,30 @@ def _build_map_svg(
             )
         )
 
-    for path_node in _all_path_nodes():
-        canvas_x, canvas_y = world_to_canvas(path_node.plot_coordinates)
-        svg_lines.append(
-            (
-                f'  <rect x="{(canvas_x - PATH_NODE_RADIUS):.2f}" y="{(canvas_y - PATH_NODE_RADIUS):.2f}" '
-                f'width="{(PATH_NODE_RADIUS * 2):.2f}" height="{(PATH_NODE_RADIUS * 2):.2f}" '
-                f'fill="{PATH_NODE_FILL}" stroke="{PATH_NODE_OUTLINE}" stroke-width="1" />'
-            )
-        )
-        if show_labels and path_node.label:
-            label_x = canvas_x + label_offset_x
-            label_y = canvas_y - label_offset_y
+    if export_options.include_path_nodes:
+        for path_node in _all_path_nodes():
+            canvas_x, canvas_y = world_to_canvas(path_node.plot_coordinates)
             svg_lines.append(
                 (
-                    f'  <text x="{label_x:.2f}" y="{label_y:.2f}" fill="{PATH_NODE_LABEL_COLOR}" '
-                    f'font-family="Helvetica, Arial, sans-serif" font-size="{max(10, label_font_size - 1)}" '
-                    f'text-anchor="start" dominant-baseline="alphabetic" '
-                    f'transform="rotate(-{LABEL_ANGLE:.2f} {label_x:.2f} {label_y:.2f})">'
-                    f'{_svg_escape(path_node.label)}</text>'
+                    f'  <rect x="{(canvas_x - PATH_NODE_RADIUS):.2f}" y="{(canvas_y - PATH_NODE_RADIUS):.2f}" '
+                    f'width="{(PATH_NODE_RADIUS * 2):.2f}" height="{(PATH_NODE_RADIUS * 2):.2f}" '
+                    f'fill="{PATH_NODE_FILL}" stroke="{PATH_NODE_OUTLINE}" stroke-width="1" />'
                 )
             )
+            if export_options.include_labels and path_node.label:
+                label_x = canvas_x + label_offset_x
+                label_y = canvas_y - label_offset_y
+                svg_lines.append(
+                    (
+                        f'  <text x="{label_x:.2f}" y="{label_y:.2f}" fill="{PATH_NODE_LABEL_COLOR}" '
+                        f'font-family="Helvetica, Arial, sans-serif" font-size="{max(10, label_font_size - 1)}" '
+                        f'text-anchor="start" dominant-baseline="alphabetic" '
+                        f'transform="rotate(-{LABEL_ANGLE:.2f} {label_x:.2f} {label_y:.2f})">'
+                        f'{_svg_escape(path_node.label)}</text>'
+                    )
+                )
 
-    if current_route is not None:
+    if export_options.include_current_route and current_route is not None:
         for step in current_route.steps:
             if not step.path_points:
                 continue
@@ -1568,7 +1631,7 @@ def _build_map_svg(
                 )
             )
 
-    if show_railway_finishing:
+    if export_options.include_railway_finishing:
         for line_name in _railway_finish_line_names():
             if line_name not in visible_line_names:
                 continue
@@ -1597,7 +1660,7 @@ def _build_map_svg(
                     )
                 )
 
-    if show_frontier_highlights and not show_railway_finishing:
+    if export_options.include_frontier_highlights and not export_options.include_railway_finishing:
         for line_name, frontier_var, target_var in _frontier_highlight_segments():
             if line_name not in visible_line_names:
                 continue
@@ -1624,7 +1687,7 @@ def _build_map_svg(
                 )
             )
 
-    if show_alignment_reminders:
+    if export_options.include_alignment_ellipses:
         for reminder in ALIGNMENT_REMINDERS:
             if reminder.is_aligned:
                 continue
@@ -1654,35 +1717,36 @@ def _build_map_svg(
                 )
             )
 
-    for stop in METRO_STOPS:
-        stop_visible_line_names = _visible_stop_line_names(stop, visible_line_names)
-        if not stop_visible_line_names:
-            continue
-        canvas_x, canvas_y = world_to_canvas(stop.plot_coordinates)
-        stop_fill = _fill_for_visible_line_names(stop_visible_line_names)
-        svg_lines.append(
-            (
-                f'  <circle cx="{canvas_x:.2f}" cy="{canvas_y:.2f}" r="{STATION_RADIUS:.2f}" '
-                f'fill="{stop_fill}" />'
-            )
-        )
-        if show_labels:
-            label_x = canvas_x + label_offset_x
-            label_y = canvas_y - label_offset_y
-            font_weight_markup = ' font-weight="bold"' if stop.var in frontier_label_stop_vars else ''
-            label_size = label_font_size + (
-                FRONTIER_LABEL_SIZE_BOOST if stop.var in frontier_label_stop_vars else 0
-            )
+    if export_options.include_stations:
+        for stop in METRO_STOPS:
+            stop_visible_line_names = _visible_stop_line_names(stop, visible_line_names)
+            if not stop_visible_line_names:
+                continue
+            canvas_x, canvas_y = world_to_canvas(stop.plot_coordinates)
+            stop_fill = _fill_for_visible_line_names(stop_visible_line_names)
             svg_lines.append(
                 (
-                    f'  <text x="{label_x:.2f}" y="{label_y:.2f}" fill="{stop_fill}" '
-                    f'font-family="Helvetica, Arial, sans-serif" font-size="{label_size}"'
-                    f'{font_weight_markup} '
-                    f'text-anchor="start" dominant-baseline="alphabetic" '
-                    f'transform="rotate(-{LABEL_ANGLE:.2f} {label_x:.2f} {label_y:.2f})">'
-                    f'{_svg_escape(_display_label(stop.lbl))}</text>'
+                    f'  <circle cx="{canvas_x:.2f}" cy="{canvas_y:.2f}" r="{STATION_RADIUS:.2f}" '
+                    f'fill="{stop_fill}" />'
                 )
             )
+            if export_options.include_labels:
+                label_x = canvas_x + label_offset_x
+                label_y = canvas_y - label_offset_y
+                font_weight_markup = ' font-weight="bold"' if stop.var in frontier_label_stop_vars else ''
+                label_size = label_font_size + (
+                    FRONTIER_LABEL_SIZE_BOOST if stop.var in frontier_label_stop_vars else 0
+                )
+                svg_lines.append(
+                    (
+                        f'  <text x="{label_x:.2f}" y="{label_y:.2f}" fill="{stop_fill}" '
+                        f'font-family="Helvetica, Arial, sans-serif" font-size="{label_size}"'
+                        f'{font_weight_markup} '
+                        f'text-anchor="start" dominant-baseline="alphabetic" '
+                        f'transform="rotate(-{LABEL_ANGLE:.2f} {label_x:.2f} {label_y:.2f})">'
+                        f'{_svg_escape(_display_label(stop.lbl))}</text>'
+                    )
+                )
 
     svg_lines.append('</svg>')
     return '\n'.join(svg_lines) + '\n'
@@ -2036,14 +2100,22 @@ def _world_map_render_cache_summary_text(render_cache_path: Path) -> list[str]:
     generated_at = payload.get('generated_at')
     render_style = payload.get('render_style')
     fixed_y = payload.get('fixed_y')
+    unfinished_point_count = payload.get('unfinished_point_count')
+    unfinished_group_count = payload.get('unfinished_group_count')
+    unfinished_points_path = payload.get('unfinished_points_path')
     lines = []
     if generated_at:
         lines.append(f'Rendered: {generated_at}')
     if render_style == 'fixed_y' and isinstance(fixed_y, int):
         lines.append(f'Render style: y={fixed_y}')
     if isinstance(colored_pixels, int) and isinstance(total_pixels, int):
-        lines.append(_world_map_yellow_box_completion_text(colored_pixels, total_pixels))
+        lines.append(_world_map_completion_text_from_payload(payload))
         lines.append(f'Colored pixels: {colored_pixels}/{total_pixels}')
+    if isinstance(unfinished_point_count, int) and isinstance(unfinished_group_count, int):
+        lines.append(f'Unfinished points: {unfinished_point_count}')
+        lines.append(f'Unfinished point groups: {unfinished_group_count}')
+    if isinstance(unfinished_points_path, str) and unfinished_points_path:
+        lines.append(f'Unfinished point report: {unfinished_points_path}')
     if isinstance(chunk_columns_read, int) and isinstance(chunk_columns_requested, int):
         lines.append(f'Chunk columns: {chunk_columns_read}/{chunk_columns_requested}')
     if all(
@@ -2057,11 +2129,88 @@ def _world_map_render_cache_summary_text(render_cache_path: Path) -> list[str]:
     return lines
 
 
-def _world_map_yellow_box_completion_text(colored_pixels: int, total_pixels: int) -> str:
+def _world_map_completion_text(
+    colored_pixels: int,
+    total_pixels: int,
+) -> str:
     if total_pixels <= 0:
-        return 'Yellow box completed: unknown'
+        return 'Map completed: unknown'
     completed_percent = (colored_pixels / total_pixels) * 100
-    return f'Yellow box completed: {completed_percent:.2f}%'
+    return f'Map completed: {completed_percent:.2f}%'
+
+
+def _world_map_completion_text_from_payload(payload: dict[str, object]) -> str:
+    colored_pixels = payload.get('colored_pixels')
+    total_pixels = payload.get('total_pixels')
+    if not isinstance(colored_pixels, int) or not isinstance(total_pixels, int):
+        return 'Map completed: unknown'
+    return _world_map_completion_text(colored_pixels, total_pixels)
+
+
+def _world_map_visible_render_bounds_from_payload(
+    payload: dict[str, object],
+) -> tuple[int, int, int, int] | None:
+    colored_min_x_value = payload.get('colored_min_x')
+    colored_max_x_value = payload.get('colored_max_x')
+    colored_min_z_value = payload.get('colored_min_z')
+    colored_max_z_value = payload.get('colored_max_z')
+    if (
+        isinstance(colored_min_x_value, int)
+        and isinstance(colored_max_x_value, int)
+        and isinstance(colored_min_z_value, int)
+        and isinstance(colored_max_z_value, int)
+        and colored_min_x_value <= colored_max_x_value
+        and colored_min_z_value <= colored_max_z_value
+    ):
+        return (
+            colored_min_x_value,
+            colored_max_x_value,
+            colored_min_z_value,
+            colored_max_z_value,
+        )
+
+    try:
+        return (
+            _render_cache_int(payload, 'min_x'),
+            _render_cache_int(payload, 'max_x'),
+            _render_cache_int(payload, 'min_z'),
+            _render_cache_int(payload, 'max_z'),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _world_map_preview_bounds(
+    payload: dict[str, object],
+    prefix: str,
+) -> tuple[int, int, int, int] | None:
+    min_x_value = payload.get(f'{prefix}_min_x')
+    max_x_value = payload.get(f'{prefix}_max_x')
+    min_z_value = payload.get(f'{prefix}_min_z')
+    max_z_value = payload.get(f'{prefix}_max_z')
+    if not isinstance(min_x_value, int):
+        return None
+    if not isinstance(max_x_value, int):
+        return None
+    if not isinstance(min_z_value, int):
+        return None
+    if not isinstance(max_z_value, int):
+        return None
+    min_x = min_x_value
+    max_x = max_x_value
+    min_z = min_z_value
+    max_z = max_z_value
+    if min_x > max_x or min_z > max_z:
+        return None
+    return (min_x, max_x, min_z, max_z)
+
+
+def _world_map_completion_text_from_result(result: Any) -> str:
+    payload = {
+        'colored_pixels': result.colored_pixels,
+        'total_pixels': result.total_pixels,
+    }
+    return _world_map_completion_text_from_payload(payload)
 
 
 def _render_cache_int(payload: dict[str, object], key: str) -> int:
@@ -2164,8 +2313,11 @@ def _world_map_render_text(mode_key: str | None = None) -> str:
         f'Image: {result.image_path}',
         f'Metadata: {result.metadata_path}',
         f'Uncolored block report: {result.uncolored_blocks_report_path}',
-        _world_map_yellow_box_completion_text(result.colored_pixels, result.total_pixels),
+        _world_map_completion_text_from_result(result),
         f'Colored pixels: {result.colored_pixels}/{result.total_pixels}',
+        f'Unfinished points: {result.unfinished_point_count}',
+        f'Unfinished point groups: {result.unfinished_group_count}',
+        f'Unfinished point report: {result.unfinished_points_path}',
         f'Uncolored block occurrences: {result.uncolored_block_occurrences}',
         f'Chunk columns read: {result.chunk_columns_read}/{result.chunk_columns_requested}',
     ]
@@ -2212,18 +2364,128 @@ def _world_map_auto_fill_step_text_for_generator(
     generator: Any,
     *,
     step_number: int | None = None,
+    progress_callback: Callable[[str, bool, tuple[int, int] | None], None] | None = None,
 ) -> str:
     step_label = f'Auto fill step {step_number}' if step_number is not None else 'Auto fill step'
+    cached_pixel_result = generator.render_cached_blank_pixel_batch()
+    if cached_pixel_result is not None and cached_pixel_result.colored_pixels_added > 0:
+        render_result = cached_pixel_result.render_result
+        lines = [
+            f'{step_label} finished.',
+            'Rendered cached blank pixels in a spiral around Blackport.',
+            f'World: {render_result.world_path}',
+            f'Pixels checked: {cached_pixel_result.scanned_pixels}',
+            f'Blank pixels sampled: {cached_pixel_result.blank_pixels_selected}',
+            f'Pixels filled this step: {cached_pixel_result.colored_pixels_added}',
+            f'Image: {render_result.image_path}',
+            f'Uncolored block report: {render_result.uncolored_blocks_report_path}',
+            _world_map_completion_text_from_result(render_result),
+            f'Colored pixels: {render_result.colored_pixels}/{render_result.total_pixels}',
+            f'Unfinished points: {render_result.unfinished_point_count}',
+            f'Unfinished point groups: {render_result.unfinished_group_count}',
+            f'Unfinished point report: {render_result.unfinished_points_path}',
+            f'Uncolored block occurrences: {render_result.uncolored_block_occurrences}',
+            (
+                f'Chunk columns read: '
+                f'{render_result.chunk_columns_read}/{render_result.chunk_columns_requested}'
+            ),
+        ]
+        if render_result.colored_min_x is not None:
+            lines.append(
+                f'Visible render bounds: x {render_result.colored_min_x}..{render_result.colored_max_x}, '
+                f'z {render_result.colored_min_z}..{render_result.colored_max_z}'
+            )
+        if render_result.subchunk_decode_errors:
+            lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
+        lines.append('Auto Fill can continue with the next spiral batch.')
+        return '\n'.join(lines)
+
+    if cached_pixel_result is not None and progress_callback is not None:
+        progress_callback(
+            (
+                f'{step_label} checked a spiral batch around Blackport.\n\n'
+                f'Pixels checked: {cached_pixel_result.scanned_pixels}\n'
+                f'Blank pixels sampled: {cached_pixel_result.blank_pixels_selected}\n'
+                'No cached pixels could be filled from that batch, so Auto Fill is loading more terrain.'
+            ),
+            True,
+            None,
+        )
+
+    before_load_colored_pixels = (
+        generator.cached_colored_pixel_count()
+        if hasattr(generator, 'cached_colored_pixel_count')
+        else 0
+    )
+    active_target: tuple[int, int] | None = None
+    if hasattr(generator, 'next_headless_loader_target_preview'):
+        active_preview = generator.next_headless_loader_target_preview(include_manual_target=False)
+        if active_preview is not None:
+            active_target = (active_preview.target_x, active_preview.target_z)
+    if progress_callback is not None and active_target is not None:
+        progress_callback(
+            (
+                f'{step_label} is loading the fixed dotted-blue target.\n\n'
+                f'Active target square: {active_target[0]},{active_target[1]}\n'
+                'Auto Fill will choose the next blank target after this pass.'
+            ),
+            False,
+            active_target,
+        )
     load_results = [
         generator.load_chunks_headless(stop_after=True, restart_existing=False)
         for _index in range(WORLD_MAP_AUTO_LOAD_PASSES)
     ]
-    render_result = generator.render_map()
+    render_target: tuple[int, int] | None = None
+
+    def post_render_progress(new_pixels_added: int) -> None:
+        if progress_callback is None:
+            return
+        progress_callback(
+            (
+                f'{step_label} is painting newly loaded pixels.\n\n'
+                f'Pixels filled so far in this render: {new_pixels_added}\n'
+                'The map preview will update when this render pass finishes.'
+            ),
+            False,
+            render_target,
+        )
+
+    for load_result in load_results:
+        for target_text in load_result.teleport_targets:
+            try:
+                target_x_text, target_z_text = target_text.split(',', 1)
+                render_target = (int(target_x_text), int(target_z_text))
+                break
+            except ValueError:
+                continue
+        if render_target is not None:
+            break
+
+    if render_target is not None and hasattr(generator, 'render_loaded_target_map'):
+        render_result = generator.render_loaded_target_map(
+            render_target,
+            image_progress_callback=post_render_progress,
+            image_progress_interval=WORLD_MAP_RENDER_PROGRESS_PIXEL_INTERVAL,
+        )
+    else:
+        render_result = generator.render_map(
+            image_progress_callback=post_render_progress,
+            image_progress_interval=WORLD_MAP_RENDER_PROGRESS_PIXEL_INTERVAL,
+        )
+    colored_pixels_added = max(0, render_result.colored_pixels - before_load_colored_pixels)
+    if render_target is not None and hasattr(generator, 'mark_headless_loader_target_progress'):
+        generator.mark_headless_loader_target_progress(
+            render_target,
+            pixels_added=colored_pixels_added,
+        )
     lines = [
         f'{step_label} finished.',
         f'World: {render_result.world_path}',
         f'Load passes: {len(load_results)}',
     ]
+    if render_target is not None:
+        lines.append(f'Rendered target square: {render_target[0]},{render_target[1]}')
     for index, load_result in enumerate(load_results, start=1):
         lines.extend(
             (
@@ -2243,11 +2505,12 @@ def _world_map_auto_fill_step_text_for_generator(
             'Rendered world map.',
             f'Image: {render_result.image_path}',
             f'Uncolored block report: {render_result.uncolored_blocks_report_path}',
-            _world_map_yellow_box_completion_text(
-                render_result.colored_pixels,
-                render_result.total_pixels,
-            ),
+            _world_map_completion_text_from_result(render_result),
+            f'Pixels filled this step: {colored_pixels_added}',
             f'Colored pixels: {render_result.colored_pixels}/{render_result.total_pixels}',
+            f'Unfinished points: {render_result.unfinished_point_count}',
+            f'Unfinished point groups: {render_result.unfinished_group_count}',
+            f'Unfinished point report: {render_result.unfinished_points_path}',
             f'Uncolored block occurrences: {render_result.uncolored_block_occurrences}',
             (
                 f'Chunk columns read: '
@@ -2262,6 +2525,11 @@ def _world_map_auto_fill_step_text_for_generator(
         )
     if render_result.subchunk_decode_errors:
         lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
+    if colored_pixels_added == 0 and any(load_result.chunks_received > 0 for load_result in load_results):
+        lines.append(
+            'Chunks loaded, but this target did not add newly colored pixels. '
+            'Auto Fill will mark this target as stalled and continue with the next blank target.'
+        )
     lines.append('Auto Fill can continue with the next step.')
     return '\n'.join(lines)
 
@@ -2277,7 +2545,7 @@ def _world_map_auto_fill_step_text() -> str:
 
 def _world_map_auto_fill_until_stopped_text(
     stop_event: threading.Event,
-    progress_callback: Callable[[str, bool], None] | None = None,
+    progress_callback: Callable[[str, bool, tuple[int, int] | None], None] | None = None,
 ) -> str:
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
@@ -2303,11 +2571,13 @@ def _world_map_auto_fill_until_stopped_text(
                 f'Auto filling world map...\n\n'
                 f'Running step {step_count}. Stop will happen after this step finishes.',
                 False,
+                None,
             )
 
         last_step_message = _world_map_auto_fill_step_text_for_generator(
             generator,
             step_number=step_count,
+            progress_callback=progress_callback,
         )
         if stop_event.is_set():
             break
@@ -2317,6 +2587,7 @@ def _world_map_auto_fill_until_stopped_text(
                 f'{last_step_message}\n\n'
                 'Still running. Press Stop Auto Fill to stop after the current step.',
                 True,
+                None,
             )
 
     return '\n'.join(
@@ -4397,8 +4668,14 @@ class MetroMapViewer:
         self.priority_list_frame: tk.Frame
         self.railway_finish_line_menu: tk.Menubutton
         self.world_map_task_queue: queue.SimpleQueue[WorldMapTaskQueueItem] = queue.SimpleQueue()
+        self.world_map_preview_queue: queue.SimpleQueue[WorldMapPreviewQueueItem] = queue.SimpleQueue()
+        self.world_map_target_preview_queue: queue.SimpleQueue[WorldMapTargetPreviewQueueItem] = queue.SimpleQueue()
         self.world_map_task_completion_callback: Callable[[bool, str], None] | None = None
         self.world_map_task_running = False
+        self.world_map_preview_build_key: tuple[str, FileStatKey] | None = None
+        self.world_map_preview_poll_after_id: str | None = None
+        self.world_map_target_preview_build_key: tuple[object, ...] | None = None
+        self.world_map_target_preview_poll_after_id: str | None = None
         self.world_map_auto_fill_stop_event: threading.Event | None = None
         self.world_map_auto_fill_running = False
         self.world_map_auto_fill_stop_requested = False
@@ -4407,8 +4684,13 @@ class MetroMapViewer:
         self.world_map_render_image_path: Path | None = None
         self.world_map_render_payload: dict[str, object] | None = None
         self.world_map_render_source_image: Image.Image | None = None
+        self.world_map_render_cache_checked_at = 0.0
         self.world_map_next_target_cache_key: tuple[object, ...] | None = None
         self.world_map_next_target_preview: Any | None = None
+        self.world_map_active_target: tuple[int, int] | None = None
+        self.world_map_active_target_preview: Any | None = None
+        self.world_map_spiral_check_cache_stat: FileStatKey | None = None
+        self.world_map_spiral_check_payload: dict[str, object] | None = None
         self.overlay_image_refs: list[ImageTk.PhotoImage] = []
         self.hover_canvas_point: tuple[float, float] | None = None
         self.cursor_readout_coordinates: tuple[int, int] | None = None
@@ -4460,6 +4742,20 @@ class MetroMapViewer:
         self.show_labels_var = tk.BooleanVar(master=self.root, value=True)
         self.show_world_map_render_var = tk.BooleanVar(master=self.root, value=True)
         self.show_world_map_bounds_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_world_map_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_grid_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_metro_lines_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_stations_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_labels_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_path_nodes_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_walking_paths_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_connector_paths_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_current_route_var = tk.BooleanVar(master=self.root, value=True)
+        self.export_include_planning_circle_var = tk.BooleanVar(master=self.root, value=False)
+        self.export_include_connected_area_var = tk.BooleanVar(master=self.root, value=False)
+        self.export_include_alignment_ellipses_var = tk.BooleanVar(master=self.root, value=False)
+        self.export_include_frontier_highlights_var = tk.BooleanVar(master=self.root, value=False)
+        self.export_include_railway_finishing_var = tk.BooleanVar(master=self.root, value=False)
         self.priority_summary_var = tk.StringVar(master=self.root, value='Planning radius unavailable.')
         self.railway_finish_mode_var = tk.BooleanVar(master=self.root, value=False)
         self.railway_finish_line_var = tk.StringVar(master=self.root)
@@ -4560,17 +4856,24 @@ class MetroMapViewer:
 
     def _build_route_panel(self) -> None:
         checklist_section = self._make_collapsible_sidebar_section('Checklist', expanded=True)
+        checklist_top_row = tk.Frame(checklist_section, bg=BACKGROUND_COLOR)
+        checklist_top_row.pack(fill='x', padx=16, pady=(4, 12))
         stats_label = tk.Label(
-            checklist_section,
+            checklist_top_row,
             textvariable=self.stats_summary_var,
             bg=BACKGROUND_COLOR,
             fg=TEXT_COLOR,
             font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
             anchor='w',
             justify='left',
-            wraplength=SIDEBAR_WIDTH - 32,
+            wraplength=SIDEBAR_WIDTH - 150,
         )
-        stats_label.pack(anchor='w', padx=16, pady=(4, 12))
+        stats_label.pack(side='left', fill='x', expand=True)
+        self._make_sidebar_button(
+            checklist_top_row,
+            text='Export SVG',
+            command=self._show_export_svg_options,
+        ).pack(side='right', anchor='n', padx=(10, 0))
 
         priority_section = self._make_collapsible_sidebar_section('Priority List', expanded=False)
         planning_summary_label = tk.Label(
@@ -4638,7 +4941,7 @@ class MetroMapViewer:
         show_world_map_toggle.pack(anchor='w', padx=16, pady=(4, 6))
         show_world_map_bounds_toggle = self._make_sidebar_checkbox(
             self.sidebar,
-            text='World map rectangle borders',
+            text='Auto Fill target',
             variable=self.show_world_map_bounds_var,
             command=self.redraw,
         )
@@ -4699,7 +5002,7 @@ class MetroMapViewer:
             _world_map_mode_labels(),
         )
         self._make_sidebar_hint(
-            'Auto Fill checks tangent target squares in radial order around Blackport, skipping squares with no blank pixels.',
+            'Auto Fill targets the dotted blue rectangle next, then keeps advancing through the planner.',
             parent=world_map_section,
         ).pack(anchor='w', padx=16, pady=(0, 6))
         self.world_map_status_text = tk.Text(
@@ -4898,10 +5201,6 @@ class MetroMapViewer:
         self.route_steps_text.pack(fill='x', padx=16, pady=(0, 12))
         self._set_route_steps_text('Enter or select a start and destination, then press Route.')
         self.route_steps_text.pack_forget()
-
-        utility_row = tk.Frame(directions_section, bg=BACKGROUND_COLOR)
-        utility_row.pack(fill='x', padx=16, pady=(0, 12))
-        self._make_sidebar_button(utility_row, text='Export SVG', command=self._export_current_map).pack(side='left')
 
         pathing_section = self._make_collapsible_sidebar_section('Pathing', expanded=False)
         self.path_nodes_heading = self._make_sidebar_caption('Path Nodes', parent=pathing_section)
@@ -5404,9 +5703,14 @@ class MetroMapViewer:
         else:
             self.route_steps_text.pack_forget()
 
-    def _post_world_map_task_progress(self, message: str, rendered_map: bool) -> None:
+    def _post_world_map_task_progress(
+        self,
+        message: str,
+        rendered_map: bool,
+        active_target: tuple[int, int] | None = None,
+    ) -> None:
         message_kind: Literal['progress', 'rendered'] = 'rendered' if rendered_map else 'progress'
-        self.world_map_task_queue.put((message_kind, True, message))
+        self.world_map_task_queue.put((message_kind, True, message, active_target))
 
     def _selected_world_map_mode_key(self) -> str:
         return _world_map_mode_key_for_label(self.world_map_mode_var.get())
@@ -5438,22 +5742,24 @@ class MetroMapViewer:
             try:
                 message = worker()
             except Exception as exc:
-                self.world_map_task_queue.put(('done', False, f'{task_label} failed.\n{exc}'))
+                self.world_map_task_queue.put(('done', False, f'{task_label} failed.\n{exc}', None))
                 return
-            self.world_map_task_queue.put(('done', True, message))
+            self.world_map_task_queue.put(('done', True, message, None))
 
         threading.Thread(target=run_worker, daemon=True).start()
         self.root.after(200, self._poll_world_map_task)
 
     def _poll_world_map_task(self) -> None:
         try:
-            message_kind, succeeded, message = self.world_map_task_queue.get_nowait()
+            message_kind, succeeded, message, active_target = self.world_map_task_queue.get_nowait()
         except queue.Empty:
             if self.world_map_task_running:
                 self.root.after(200, self._poll_world_map_task)
             return
 
         if message_kind in ('progress', 'rendered'):
+            if active_target is not None:
+                self._set_world_map_active_target(active_target)
             if self.world_map_auto_fill_stop_requested:
                 message = (
                     f'{message.rstrip()}\n\n'
@@ -5552,6 +5858,8 @@ class MetroMapViewer:
         self.world_map_auto_fill_stop_event = stop_event
         self.world_map_auto_fill_running = True
         self.world_map_auto_fill_stop_requested = False
+        self.world_map_active_target = None
+        self.world_map_active_target_preview = None
         self._set_world_map_auto_fill_button('running')
 
         self._start_world_map_task(
@@ -5582,7 +5890,11 @@ class MetroMapViewer:
         self.world_map_auto_fill_stop_event = None
         self.world_map_auto_fill_running = False
         self.world_map_auto_fill_stop_requested = False
+        self.world_map_active_target = None
+        self.world_map_active_target_preview = None
+        self.world_map_next_target_cache_key = None
         self._set_world_map_auto_fill_button('idle')
+        self.redraw()
 
     def _stop_world_map_world(self) -> None:
         self._start_world_map_task('Stopping Bedrock worldgen container', _world_map_stop_world_text)
@@ -7600,7 +7912,105 @@ class MetroMapViewer:
         self.stats_dirty = True
         self.redraw()
 
-    def _export_current_map(self) -> None:
+    def _current_svg_export_options(self) -> SvgExportOptions:
+        return SvgExportOptions(
+            include_world_map=self.export_include_world_map_var.get(),
+            include_grid=self.export_include_grid_var.get(),
+            include_metro_lines=self.export_include_metro_lines_var.get(),
+            include_stations=self.export_include_stations_var.get(),
+            include_labels=self.export_include_labels_var.get(),
+            include_path_nodes=self.export_include_path_nodes_var.get(),
+            include_walking_paths=self.export_include_walking_paths_var.get(),
+            include_connector_paths=self.export_include_connector_paths_var.get(),
+            include_current_route=self.export_include_current_route_var.get(),
+            include_planning_circle=self.export_include_planning_circle_var.get(),
+            include_connected_area=self.export_include_connected_area_var.get(),
+            include_alignment_ellipses=self.export_include_alignment_ellipses_var.get(),
+            include_frontier_highlights=self.export_include_frontier_highlights_var.get(),
+            include_railway_finishing=self.export_include_railway_finishing_var.get(),
+        )
+
+    def _sync_svg_export_options_to_current_view(self) -> None:
+        self.export_include_world_map_var.set(self.show_world_map_render_var.get())
+        self.export_include_labels_var.set(self.show_labels_var.get())
+        self.export_include_planning_circle_var.set(self.show_planning_circle_var.get())
+        self.export_include_connected_area_var.set(self.show_connected_area_var.get())
+        self.export_include_alignment_ellipses_var.set(self.show_alignment_reminders_var.get())
+        self.export_include_frontier_highlights_var.set(self.show_frontier_highlights_var.get())
+        self.export_include_railway_finishing_var.set(self.railway_finish_mode_var.get())
+
+    def _show_export_svg_options(self) -> None:
+        self._sync_svg_export_options_to_current_view()
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title('Export SVG')
+        dialog.configure(bg=BACKGROUND_COLOR)
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
+
+        body = tk.Frame(dialog, bg=BACKGROUND_COLOR)
+        body.pack(fill='both', expand=True, padx=16, pady=14)
+        tk.Label(
+            body,
+            text='Export SVG',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE, 'bold'),
+            anchor='w',
+        ).pack(anchor='w', pady=(0, 8))
+
+        option_rows = (
+            ('World map image', self.export_include_world_map_var),
+            ('Grid axes', self.export_include_grid_var),
+            ('Metro lines', self.export_include_metro_lines_var),
+            ('Stations', self.export_include_stations_var),
+            ('Labels', self.export_include_labels_var),
+            ('Path nodes', self.export_include_path_nodes_var),
+            ('Walking paths', self.export_include_walking_paths_var),
+            ('Connector paths', self.export_include_connector_paths_var),
+            ('Current route highlight', self.export_include_current_route_var),
+            ('Planning radius', self.export_include_planning_circle_var),
+            ('Connected area', self.export_include_connected_area_var),
+            ('Alignment ellipses', self.export_include_alignment_ellipses_var),
+            ('Frontier highlights', self.export_include_frontier_highlights_var),
+            ('Railway finishing highlights', self.export_include_railway_finishing_var),
+        )
+        for text, variable in option_rows:
+            self._make_sidebar_checkbox(
+                body,
+                text=text,
+                variable=variable,
+                command=lambda: None,
+            ).pack(anchor='w', pady=1)
+
+        button_row = tk.Frame(body, bg=BACKGROUND_COLOR)
+        button_row.pack(fill='x', pady=(12, 0))
+
+        def export_and_close() -> None:
+            dialog.destroy()
+            self._export_current_map(self._current_svg_export_options())
+
+        self._make_sidebar_button(
+            button_row,
+            text='Export',
+            command=export_and_close,
+        ).pack(side='right')
+        self._make_sidebar_button(
+            button_row,
+            text='Cancel',
+            command=dialog.destroy,
+        ).pack(side='right', padx=(0, 10))
+
+        dialog.update_idletasks()
+        root_x = self.root.winfo_rootx()
+        root_y = self.root.winfo_rooty()
+        root_width = self.root.winfo_width()
+        dialog_width = dialog.winfo_width()
+        dialog.geometry(f'+{root_x + max(20, root_width - dialog_width - 36)}+{root_y + 80}')
+        dialog.grab_set()
+        dialog.focus_set()
+
+    def _export_current_map(self, export_options: SvgExportOptions) -> None:
         from tkinter import messagebox
 
         self.root.update_idletasks()
@@ -7614,6 +8024,18 @@ class MetroMapViewer:
         self.height = canvas_height
         EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
         export_path = EXPORTS_DIR / f"metro-map-{datetime.now().strftime('%Y%m%d-%H%M%S')}.svg"
+        world_map_image = (
+            self._current_world_map_svg_image()
+            if export_options.include_world_map
+            else None
+        )
+        if export_options.include_world_map and world_map_image is None:
+            messagebox.showerror(
+                'Export Failed',
+                'The world map image is not ready to export yet. Render the world map first, or uncheck World map image.',
+                parent=self.root,
+            )
+            return
         try:
             export_path.write_text(
                 _build_map_svg(
@@ -7624,12 +8046,8 @@ class MetroMapViewer:
                     pan_x=self.pan_x,
                     pan_y=self.pan_y,
                     visible_line_names=self._visible_line_names(),
-                    show_planning_circle=self.show_planning_circle_var.get(),
-                    show_connected_area=self.show_connected_area_var.get(),
-                    show_alignment_reminders=self.show_alignment_reminders_var.get(),
-                    show_frontier_highlights=self.show_frontier_highlights_var.get(),
-                    show_railway_finishing=self.railway_finish_mode_var.get(),
-                    show_labels=self.show_labels_var.get(),
+                    export_options=export_options,
+                    world_map_image=world_map_image,
                     current_route=self.current_route,
                 ),
                 encoding='utf-8',
@@ -7643,6 +8061,66 @@ class MetroMapViewer:
             return
 
         messagebox.showinfo('Map Exported', f'Saved SVG to:\n{export_path}', parent=self.root)
+
+    def _current_world_map_svg_image(self) -> SvgRasterImage | None:
+        render_underlay = self._current_world_map_render_underlay()
+        if render_underlay is None:
+            return None
+        payload, source_image = render_underlay
+
+        try:
+            render_min_x = _render_cache_int(payload, 'min_x')
+            render_max_x = _render_cache_int(payload, 'max_x')
+            render_min_z = _render_cache_int(payload, 'min_z')
+            render_max_z = _render_cache_int(payload, 'max_z')
+        except (KeyError, TypeError, ValueError):
+            return None
+
+        top_left_x, top_left_y = self.world_to_canvas((render_min_x, -render_min_z))
+        bottom_right_x, bottom_right_y = self.world_to_canvas((render_max_x, -render_max_z))
+        left = min(top_left_x, bottom_right_x)
+        right = max(top_left_x, bottom_right_x)
+        top = min(top_left_y, bottom_right_y)
+        bottom = max(top_left_y, bottom_right_y)
+        if right <= left or bottom <= top:
+            return None
+
+        visible_left = max(0.0, left)
+        visible_top = max(0.0, top)
+        visible_right = min(float(self.width), right)
+        visible_bottom = min(float(self.height), bottom)
+        if visible_right <= visible_left or visible_bottom <= visible_top:
+            return None
+
+        image_width, image_height = source_image.size
+        source_left = floor(max(0, min(image_width, ((visible_left - left) / (right - left)) * image_width)))
+        source_right = ceil(max(0, min(image_width, ((visible_right - left) / (right - left)) * image_width)))
+        source_top = floor(max(0, min(image_height, ((visible_top - top) / (bottom - top)) * image_height)))
+        source_bottom = ceil(max(0, min(image_height, ((visible_bottom - top) / (bottom - top)) * image_height)))
+        if source_right <= source_left or source_bottom <= source_top:
+            return None
+
+        visible_width = max(1, round(visible_right - visible_left))
+        visible_height = max(1, round(visible_bottom - visible_top))
+        try:
+            resampling_filter = Image.Resampling.BILINEAR
+        except AttributeError:
+            resampling_filter = cast(Any, Image).BILINEAR
+        underlay = source_image.crop((source_left, source_top, source_right, source_bottom))
+        underlay = underlay.resize((visible_width, visible_height), resampling_filter)
+        alpha = underlay.getchannel('A').point(_limit_world_map_alpha)
+        underlay.putalpha(alpha)
+
+        buffer = io.BytesIO()
+        underlay.save(buffer, format='PNG')
+        encoded_image = base64.b64encode(buffer.getvalue()).decode('ascii')
+        return SvgRasterImage(
+            data_uri=f'data:image/png;base64,{encoded_image}',
+            left=visible_left,
+            top=visible_top,
+            width=visible_width,
+            height=visible_height,
+        )
 
     def redraw(self) -> None:
         self._clear_info_popup()
@@ -7780,10 +8258,115 @@ class MetroMapViewer:
         self.world_map_render_image_path = None
         self.world_map_render_payload = None
         self.world_map_render_source_image = None
+        self.world_map_render_cache_checked_at = 0.0
         self.world_map_next_target_cache_key = None
         self.world_map_next_target_preview = None
+        if not self.world_map_auto_fill_running:
+            self.world_map_active_target = None
+            self.world_map_active_target_preview = None
+        self.world_map_spiral_check_cache_stat = None
+        self.world_map_spiral_check_payload = None
+
+    def _world_map_preview_path_for(self, source_image_path: Path, render_cache_path: Path) -> Path:
+        return render_cache_path.with_name(f'{source_image_path.stem}{WORLD_MAP_PREVIEW_SUFFIX}')
+
+    def _world_map_display_image_path(
+        self,
+        source_image_path: Path,
+        render_cache_path: Path,
+    ) -> tuple[Path, FileStatKey] | None:
+        source_stat = _file_stat_key(source_image_path)
+        if source_stat is None:
+            return None
+
+        try:
+            with Image.open(source_image_path) as source_image:
+                source_width, source_height = source_image.size
+        except OSError:
+            return None
+
+        if max(source_width, source_height) <= WORLD_MAP_PREVIEW_MAX_DIMENSION:
+            return (source_image_path, source_stat)
+
+        preview_path = self._world_map_preview_path_for(source_image_path, render_cache_path)
+        preview_stat = _file_stat_key(preview_path)
+        if preview_stat is not None and preview_stat[1] >= source_stat[1]:
+            return (preview_path, preview_stat)
+
+        self._ensure_world_map_preview_async(source_image_path, preview_path, source_stat)
+        if preview_stat is not None:
+            return (preview_path, preview_stat)
+        return None
+
+    def _ensure_world_map_preview_async(
+        self,
+        source_image_path: Path,
+        preview_path: Path,
+        source_stat: FileStatKey,
+    ) -> None:
+        build_key = (str(source_image_path.resolve()), source_stat)
+        if self.world_map_preview_build_key == build_key:
+            return
+        self.world_map_preview_build_key = build_key
+
+        def build_preview() -> None:
+            try:
+                with Image.open(source_image_path) as source_image:
+                    preview_image = source_image.convert('RGBA')
+                try:
+                    resampling_filter = Image.Resampling.LANCZOS
+                except AttributeError:
+                    resampling_filter = cast(Any, Image).LANCZOS
+                preview_image.thumbnail(
+                    (WORLD_MAP_PREVIEW_MAX_DIMENSION, WORLD_MAP_PREVIEW_MAX_DIMENSION),
+                    resampling_filter,
+                )
+                preview_path.parent.mkdir(parents=True, exist_ok=True)
+                preview_image.save(preview_path)
+            except Exception as exc:
+                self.world_map_preview_queue.put((False, str(source_image_path), str(exc)))
+                return
+            self.world_map_preview_queue.put((True, str(source_image_path), str(preview_path)))
+
+        threading.Thread(target=build_preview, daemon=True).start()
+        self._schedule_world_map_preview_poll()
+
+    def _schedule_world_map_preview_poll(self) -> None:
+        if self.world_map_preview_poll_after_id is not None:
+            return
+        self.world_map_preview_poll_after_id = self.root.after(250, self._poll_world_map_preview_queue)
+
+    def _poll_world_map_preview_queue(self) -> None:
+        self.world_map_preview_poll_after_id = None
+        handled_message = False
+        while True:
+            try:
+                _succeeded, _source, _detail = self.world_map_preview_queue.get_nowait()
+            except queue.Empty:
+                break
+            handled_message = True
+            self.world_map_preview_build_key = None
+
+        if handled_message:
+            self._invalidate_world_map_render_cache()
+            self.redraw()
+            return
+
+        if self.world_map_preview_build_key is not None:
+            self._schedule_world_map_preview_poll()
 
     def _current_world_map_render_underlay(self) -> tuple[dict[str, object], Image.Image] | None:
+        now = time.monotonic()
+        cached_underlay: tuple[dict[str, object], Image.Image] | None = None
+        if self.world_map_render_payload is not None and self.world_map_render_source_image is not None:
+            cached_underlay = (self.world_map_render_payload, self.world_map_render_source_image)
+        if (
+            cached_underlay is not None
+            and now - self.world_map_render_cache_checked_at < WORLD_MAP_FILE_POLL_MIN_SECONDS
+        ):
+            return cached_underlay
+        self.world_map_render_cache_checked_at = now
+
         try:
             from worldgen.config import load_config
             from worldgen.generator import BedrockWorldGenerator
@@ -7793,12 +8376,27 @@ class MetroMapViewer:
                 self._selected_world_map_mode_key()
             )
         except Exception:
+            if cached_underlay is not None:
+                return cached_underlay
             self._invalidate_world_map_render_cache()
             return None
 
         render_cache_path = mode_paths.render_cache_path
         render_cache_stat = _file_stat_key(render_cache_path)
         if render_cache_stat is None:
+            legacy_cache_path = (
+                config.repo_root
+                / 'worldgen_data'
+                / 'cache'
+                / mode_paths.render_cache_path.name
+            )
+            legacy_cache_stat = _file_stat_key(legacy_cache_path)
+            if legacy_cache_stat is not None:
+                render_cache_path = legacy_cache_path
+                render_cache_stat = legacy_cache_stat
+        if render_cache_stat is None:
+            if cached_underlay is not None:
+                return cached_underlay
             self._invalidate_world_map_render_cache()
             return None
 
@@ -7815,17 +8413,26 @@ class MetroMapViewer:
         try:
             payload = json.loads(render_cache_path.read_text(encoding='utf-8'))
         except (OSError, json.JSONDecodeError):
+            if cached_underlay is not None:
+                return cached_underlay
             self._invalidate_world_map_render_cache()
             return None
         if not isinstance(payload, dict):
+            if cached_underlay is not None:
+                return cached_underlay
             self._invalidate_world_map_render_cache()
             return None
 
-        image_candidates: list[Path] = [mode_paths.docs_render_image_path]
+        image_candidates: list[Path] = []
+        image_candidates.append(mode_paths.render_image_path)
         payload_image_path = payload.get('image_path')
         if isinstance(payload_image_path, str) and payload_image_path:
             image_candidates.append(Path(payload_image_path))
-        image_candidates.append(mode_paths.render_image_path)
+        image_candidates.append(mode_paths.docs_render_image_path)
+        image_candidates.append(config.repo_root / 'worldgen_output' / mode_paths.render_image_path.name)
+        image_candidates.append(
+            config.repo_root / 'docs' / 'assets' / mode_paths.render_image_path.name
+        )
 
         image_path: Path | None = None
         image_stat: FileStatKey | None = None
@@ -7843,16 +8450,25 @@ class MetroMapViewer:
             candidate_image_stat = _file_stat_key(candidate_image_path)
             if candidate_image_stat is None:
                 continue
+            display_image = self._world_map_display_image_path(
+                candidate_image_path,
+                mode_paths.render_cache_path,
+            )
+            if display_image is None:
+                break
+            display_image_path, display_image_stat = display_image
             try:
-                candidate_source_image = Image.open(candidate_image_path).convert('RGBA')
+                candidate_source_image = Image.open(display_image_path).convert('RGBA')
             except OSError:
                 continue
-            image_path = candidate_image_path
-            image_stat = candidate_image_stat
+            image_path = display_image_path
+            image_stat = display_image_stat
             source_image = candidate_source_image
             break
 
         if image_path is None or image_stat is None or source_image is None:
+            if cached_underlay is not None:
+                return cached_underlay
             self._invalidate_world_map_render_cache()
             return None
 
@@ -7864,6 +8480,9 @@ class MetroMapViewer:
         return (payload, source_image)
 
     def _current_world_map_next_target_preview(self) -> Any | None:
+        if self.world_map_auto_fill_running and self.world_map_active_target_preview is not None:
+            return self.world_map_active_target_preview
+
         try:
             from worldgen.config import load_config
             from worldgen.generator import (
@@ -7889,16 +8508,119 @@ class MetroMapViewer:
             )
             if cache_key == self.world_map_next_target_cache_key:
                 return self.world_map_next_target_preview
-
-            preview = generator.next_headless_loader_target_preview()
         except Exception:
             self.world_map_next_target_cache_key = None
             self.world_map_next_target_preview = None
             return None
 
-        self.world_map_next_target_cache_key = cache_key
-        self.world_map_next_target_preview = preview
-        return preview
+        self._ensure_world_map_target_preview_async(cache_key)
+        return self.world_map_next_target_preview
+
+    def _ensure_world_map_target_preview_async(self, cache_key: tuple[object, ...]) -> None:
+        if self.world_map_target_preview_build_key == cache_key:
+            return
+        self.world_map_target_preview_build_key = cache_key
+
+        def build_preview() -> None:
+            try:
+                from worldgen.config import load_config
+                from worldgen.generator import BedrockWorldGenerator
+
+                preview = BedrockWorldGenerator(load_config()).next_headless_loader_target_preview(
+                    include_manual_target=False,
+                )
+            except Exception:
+                preview = None
+            self.world_map_target_preview_queue.put((cache_key, preview))
+
+        threading.Thread(target=build_preview, daemon=True).start()
+        self._schedule_world_map_target_preview_poll()
+
+    def _schedule_world_map_target_preview_poll(self) -> None:
+        if self.world_map_target_preview_poll_after_id is not None:
+            return
+        self.world_map_target_preview_poll_after_id = self.root.after(
+            250,
+            self._poll_world_map_target_preview_queue,
+        )
+
+    def _poll_world_map_target_preview_queue(self) -> None:
+        self.world_map_target_preview_poll_after_id = None
+        handled_message = False
+        while True:
+            try:
+                cache_key, preview = self.world_map_target_preview_queue.get_nowait()
+            except queue.Empty:
+                break
+            if cache_key != self.world_map_target_preview_build_key:
+                continue
+            self.world_map_target_preview_build_key = None
+            self.world_map_next_target_cache_key = cache_key
+            self.world_map_next_target_preview = preview
+            handled_message = True
+
+        if handled_message:
+            self.redraw()
+            return
+
+        if self.world_map_target_preview_build_key is not None:
+            self._schedule_world_map_target_preview_poll()
+
+    def _set_world_map_active_target(self, target: tuple[int, int]) -> None:
+        self.world_map_active_target = target
+        self.world_map_active_target_preview = self._world_map_target_preview_for_point(target)
+
+    def _world_map_target_preview_for_point(self, point: tuple[int, int]) -> Any | None:
+        try:
+            from worldgen.config import load_config
+            from worldgen.generator import BedrockWorldGenerator
+
+            return BedrockWorldGenerator(load_config()).headless_loader_target_preview_for_point(point)
+        except Exception:
+            return None
+
+    def _current_world_map_spiral_check_preview(self) -> dict[str, object] | None:
+        try:
+            from worldgen.config import load_config
+            from worldgen.generator import BedrockWorldGenerator, SPIRAL_CHECK_PREVIEW_FILE_NAME
+
+            config = load_config()
+            mode_key = self._selected_world_map_mode_key()
+            if mode_key != 'local_seed_surface':
+                self.world_map_spiral_check_cache_stat = None
+                self.world_map_spiral_check_payload = None
+                return None
+            preview_path = (
+                BedrockWorldGenerator(config).paths_for_mode(mode_key).render_cache_path
+                .with_name(SPIRAL_CHECK_PREVIEW_FILE_NAME)
+            )
+        except Exception:
+            self.world_map_spiral_check_cache_stat = None
+            self.world_map_spiral_check_payload = None
+            return None
+
+        preview_stat = _file_stat_key(preview_path)
+        if preview_stat is None:
+            self.world_map_spiral_check_cache_stat = None
+            self.world_map_spiral_check_payload = None
+            return None
+        if (
+            preview_stat == self.world_map_spiral_check_cache_stat
+            and self.world_map_spiral_check_payload is not None
+        ):
+            return self.world_map_spiral_check_payload
+
+        try:
+            payload = json.loads(preview_path.read_text(encoding='utf-8'))
+        except (OSError, json.JSONDecodeError):
+            self.world_map_spiral_check_cache_stat = None
+            self.world_map_spiral_check_payload = None
+            return None
+        if not isinstance(payload, dict):
+            return None
+        self.world_map_spiral_check_cache_stat = preview_stat
+        self.world_map_spiral_check_payload = payload
+        return payload
 
     def _draw_world_map_render_underlay(self) -> None:
         if not self.show_world_map_render_var.get():
@@ -7956,17 +8678,13 @@ class MetroMapViewer:
         self.canvas.create_image(visible_left, visible_top, anchor='nw', image=underlay_image)
         if not self.show_world_map_bounds_var.get():
             return
-        self._draw_world_map_render_bounds(payload)
         self._draw_world_map_next_target_bounds()
 
     def _draw_world_map_render_bounds(self, payload: dict[str, object]) -> None:
-        try:
-            render_min_x = _render_cache_int(payload, 'min_x')
-            render_max_x = _render_cache_int(payload, 'max_x')
-            render_min_z = _render_cache_int(payload, 'min_z')
-            render_max_z = _render_cache_int(payload, 'max_z')
-        except (KeyError, TypeError, ValueError):
+        bounds = _world_map_visible_render_bounds_from_payload(payload)
+        if bounds is None:
             return
+        render_min_x, render_max_x, render_min_z, render_max_z = bounds
 
         if render_min_x > render_max_x or render_min_z > render_max_z:
             return
@@ -7997,29 +8715,201 @@ class MetroMapViewer:
             dash=WORLD_MAP_RENDER_BOUNDS_DASH,
         )
 
+    def _draw_world_map_spiral_check_preview(self) -> None:
+        payload = self._current_world_map_spiral_check_preview()
+        if payload is None:
+            return
+
+        scan_bounds = _world_map_preview_bounds(payload, 'scan')
+        if scan_bounds is not None:
+            self._draw_world_map_preview_rectangle(
+                scan_bounds,
+                outline=WORLD_MAP_SPIRAL_CHECK_COLOR,
+                width=WORLD_MAP_SPIRAL_CHECK_WIDTH,
+                dash=WORLD_MAP_SPIRAL_CHECK_DASH,
+                min_canvas_size=WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE,
+            )
+
+        center_x = payload.get('center_x')
+        center_z = payload.get('center_z')
+        last_checked_x = payload.get('last_checked_x')
+        last_checked_z = payload.get('last_checked_z')
+        if (
+            isinstance(center_x, int)
+            and isinstance(center_z, int)
+            and isinstance(last_checked_x, int)
+            and isinstance(last_checked_z, int)
+        ):
+            start_x, start_y = self.world_to_canvas((center_x, -center_z))
+            end_x, end_y = self.world_to_canvas((last_checked_x, -last_checked_z))
+            self.canvas.create_line(
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                fill=WORLD_MAP_SPIRAL_CHECK_COLOR,
+                width=WORLD_MAP_SPIRAL_CHECK_WIDTH,
+                dash=WORLD_MAP_SPIRAL_CHECK_DASH,
+            )
+            radius = max(4, WORLD_MAP_SPIRAL_CHECK_WIDTH * 2)
+            self.canvas.create_oval(
+                end_x - radius,
+                end_y - radius,
+                end_x + radius,
+                end_y + radius,
+                outline=WORLD_MAP_SPIRAL_CHECK_COLOR,
+                width=WORLD_MAP_SPIRAL_CHECK_WIDTH,
+            )
+
+        blank_bounds = _world_map_preview_bounds(payload, 'blank')
+        if blank_bounds is None:
+            return
+        self._draw_world_map_preview_rectangle(
+            blank_bounds,
+            outline=WORLD_MAP_SPIRAL_BLANK_COLOR,
+            width=WORLD_MAP_SPIRAL_CHECK_WIDTH,
+            dash=None,
+            min_canvas_size=WORLD_MAP_SPIRAL_BLANK_MIN_CANVAS_SIZE,
+        )
+
+    def _draw_world_map_preview_rectangle(
+        self,
+        bounds: tuple[int, int, int, int],
+        *,
+        outline: str,
+        width: int,
+        dash: tuple[int, int] | None,
+        min_canvas_size: int,
+    ) -> None:
+        min_x, max_x, min_z, max_z = bounds
+        top_left_x, top_left_y = self.world_to_canvas((min_x, -min_z))
+        bottom_right_x, bottom_right_y = self.world_to_canvas((max_x, -max_z))
+        left = min(top_left_x, bottom_right_x)
+        right = max(top_left_x, bottom_right_x)
+        top = min(top_left_y, bottom_right_y)
+        bottom = max(top_left_y, bottom_right_y)
+        center_x = (left + right) / 2
+        center_y = (top + bottom) / 2
+        if right - left < min_canvas_size:
+            left = center_x - (min_canvas_size / 2)
+            right = center_x + (min_canvas_size / 2)
+        if bottom - top < min_canvas_size:
+            top = center_y - (min_canvas_size / 2)
+            bottom = center_y + (min_canvas_size / 2)
+        if dash is None:
+            self.canvas.create_rectangle(
+                left,
+                top,
+                right,
+                bottom,
+                outline=outline,
+                width=width,
+            )
+        else:
+            self.canvas.create_rectangle(
+                left,
+                top,
+                right,
+                bottom,
+                outline=outline,
+                width=width,
+                dash=dash,
+            )
+
     def _draw_world_map_next_target_bounds(self) -> None:
         preview = self._current_world_map_next_target_preview()
         if preview is None:
             return
 
-        top_left_x, top_left_y = self.world_to_canvas((preview.min_x, -preview.min_z))
-        bottom_right_x, bottom_right_y = self.world_to_canvas((preview.max_x, -preview.max_z))
+        self._draw_world_map_target_preview_rectangle(
+            preview,
+            outline=WORLD_MAP_NEXT_TARGET_COLOR,
+            width=WORLD_MAP_NEXT_TARGET_WIDTH,
+            dash=WORLD_MAP_NEXT_TARGET_DASH,
+        )
+
+    def _draw_world_map_target_preview_rectangle(
+        self,
+        preview: Any,
+        *,
+        outline: str,
+        width: int,
+        dash: tuple[int, int] | None,
+    ) -> None:
+        canvas_bounds = self._world_map_target_canvas_bounds(preview)
+        if canvas_bounds is None:
+            return
+        left, top, right, bottom = canvas_bounds
+
+        if dash is None:
+            self.canvas.create_rectangle(
+                left,
+                top,
+                right,
+                bottom,
+                outline=outline,
+                width=width,
+            )
+        else:
+            self.canvas.create_rectangle(
+                left,
+                top,
+                right,
+                bottom,
+                outline=outline,
+                width=width,
+                dash=dash,
+            )
+        coverage = getattr(preview, 'coverage', None)
+        if not isinstance(coverage, (int, float)):
+            return
+        progress = max(0.0, min(1.0, float(coverage)))
+        progress_top = max(top, bottom - WORLD_MAP_TARGET_PROGRESS_HEIGHT)
+        self.canvas.create_rectangle(
+            left,
+            progress_top,
+            right,
+            bottom,
+            outline='',
+            fill=WORLD_MAP_TARGET_PROGRESS_BACKGROUND,
+        )
+        if progress <= 0:
+            return
+        self.canvas.create_rectangle(
+            left,
+            progress_top,
+            left + ((right - left) * progress),
+            bottom,
+            outline='',
+            fill=outline,
+        )
+
+    def _world_map_target_canvas_bounds(
+        self,
+        preview: Any,
+    ) -> tuple[float, float, float, float] | None:
+        min_x = getattr(preview, 'min_x', None)
+        max_x = getattr(preview, 'max_x', None)
+        min_z = getattr(preview, 'min_z', None)
+        max_z = getattr(preview, 'max_z', None)
+        if not isinstance(min_x, (int, float)):
+            return None
+        if not isinstance(max_x, (int, float)):
+            return None
+        if not isinstance(min_z, (int, float)):
+            return None
+        if not isinstance(max_z, (int, float)):
+            return None
+
+        top_left_x, top_left_y = self.world_to_canvas((float(min_x), -float(min_z)))
+        bottom_right_x, bottom_right_y = self.world_to_canvas((float(max_x), -float(max_z)))
         left = min(top_left_x, bottom_right_x)
         right = max(top_left_x, bottom_right_x)
         top = min(top_left_y, bottom_right_y)
         bottom = max(top_left_y, bottom_right_y)
         if right <= left or bottom <= top:
-            return
-
-        self.canvas.create_rectangle(
-            left,
-            top,
-            right,
-            bottom,
-            outline=WORLD_MAP_NEXT_TARGET_COLOR,
-            width=WORLD_MAP_NEXT_TARGET_WIDTH,
-            dash=WORLD_MAP_NEXT_TARGET_DASH,
-        )
+            return None
+        return (left, top, right, bottom)
 
     def _draw_planning_circle(self) -> None:
         if not self.show_planning_circle_var.get():

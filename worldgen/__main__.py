@@ -66,9 +66,12 @@ def main(argv: list[str] | None = None) -> int:
                     'Unknown block persistent candidates: '
                     f'{result.unknown_block_persistent_candidates_path}'
                 )
-            print(_yellow_box_completion_text(result.colored_pixels, result.total_pixels))
+            print(_map_completion_text(result))
             print(f'Colored pixels: {result.colored_pixels}/{result.total_pixels}')
             print(f'Uncolored block occurrences: {result.uncolored_block_occurrences}')
+            print(f'Unfinished points: {result.unfinished_point_count}')
+            print(f'Unfinished point groups: {result.unfinished_group_count}')
+            print(f'Unfinished point report: {result.unfinished_points_path}')
             print(f'Chunk columns read: {result.chunk_columns_read}/{result.chunk_columns_requested}')
             if result.chunk_columns_read == 0:
                 print('No generated chunk columns were found in the requested render area yet.')
@@ -221,11 +224,13 @@ def _handle_status(generator: BedrockWorldGenerator) -> int:
     return 0
 
 
-def _yellow_box_completion_text(colored_pixels: int, total_pixels: int) -> str:
-    if total_pixels <= 0:
-        return 'Yellow box completed: unknown'
+def _map_completion_text(result: object) -> str:
+    colored_pixels = getattr(result, 'colored_pixels')
+    total_pixels = getattr(result, 'total_pixels')
+    if not isinstance(colored_pixels, int) or not isinstance(total_pixels, int) or total_pixels <= 0:
+        return 'Map completed: unknown'
     completed_percent = (colored_pixels / total_pixels) * 100
-    return f'Yellow box completed: {completed_percent:.2f}%'
+    return f'Map completed: {completed_percent:.2f}%'
 
 
 if __name__ == '__main__':

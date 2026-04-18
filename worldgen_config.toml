@@ -48,8 +48,8 @@ connect_timeout_ms = 20000
 
 [storage]
 data_dir = "~/Library/Application Support/Plumville/worldgen/bedrock-data"
-cache_dir = "worldgen_data/cache"
-output_dir = "worldgen_output"
+cache_dir = "~/Library/Application Support/Plumville/worldgen/cache"
+output_dir = "~/Library/Application Support/Plumville/worldgen/output"
 
 [render]
 center_label = "Blackport"

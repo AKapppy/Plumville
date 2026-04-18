@@ -2,10 +2,11 @@ Minecraft Metro Map Notes
 =========================
 
 #App (Python Version)
-   [] it opens really slowly. i know this is because of the immense image size, but is there a way to speed this up?
-   [] each step takes so long to finish. i waited over 10 minutes before force canceling the 1st step
-   [] can the displayed yellow box (we can change the color it doesn't matter) be the borders of the rendered map still? the percentage should be based on that box not the full full box
-   [] if it's possible and won't add too much time to the process, i would like it to show pixels as they are processed, so i can see more continuous progress. honestly, we can do the whole thing on a pixel-by-pixel basis. just scan the box for blank pixels based radially around blackport, following the path of a spiral. it should scan to see if the pixel is accounted for. if it is, no need to do anything. just a super quick check-and-skip. if it's empty, then it uses the renderer to find what that pixel is, display it, then move onto the next pixel. i hope this might make the process smoother and make it go quicker. this would eliminate the entire concept of the blue square
+[] once the yellow area matches the outer bounds of the world and the completeness level is ≥ 90%, we should start keeping track of all unfinished points (or groups of points to eliminate hyperfiles). This will help us keep track of points that were missed internally
+[] lets get rid of the “drag second square” thing and just have it go through the algorithm. Im liking what its doing now
+[] map completed should now reflect percentage of the entire map. Yellow box no longer needs to exist, just dotted blue box (and maybe a progress bar inside it so I know how far along the step is?)
+[] ability to export svg of the map with full block-by-block resolution
+[] when user is zoomed in to an acceptable level, switch map resolution to block-by-block so we can see exactly what’s going on. This should mirror what satellite maps do when you zoom in, but only when that high of a resolution is going to matter
 
 #App (Web Version)
 

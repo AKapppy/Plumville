@@ -40,7 +40,8 @@
       "has_finished_railway": true,
       "has_signs": false,
       "chime_directions": [
-        "east"
+        "east",
+        "south"
       ]
     },
     {

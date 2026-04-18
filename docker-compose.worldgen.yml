@@ -46,6 +46,7 @@ services:
     restart: "no"
     volumes:
       - ".:/app"
+      - "${BEDROCK_CACHE_DIR}:/worldgen-cache"
       - "chunk_loader_node_modules:/app/node_modules"
 
 volumes:
