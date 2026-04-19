@@ -57,14 +57,16 @@ class TerrainGrid:
         self.max_x = max_x
         self.min_z = min_z
         self.max_z = max_z
-        self.image = image.convert('RGBA')
+        self.image = image.convert("RGBA")
         self.image_width, self.image_height = self.image.size
         self.step_px = max(1, round(max(self.image_width, self.image_height) / MAX_GRID_DIMENSION))
         self.grid_width = max(1, (self.image_width + self.step_px - 1) // self.step_px)
         self.grid_height = max(1, (self.image_height + self.step_px - 1) // self.step_px)
         self.rendered: list[list[bool]] = [[False] * self.grid_width for _ in range(self.grid_height)]
         self.water: list[list[bool]] = [[False] * self.grid_width for _ in range(self.grid_height)]
+        self.land_component: list[list[int]] = [[-1] * self.grid_width for _ in range(self.grid_height)]
         self._populate_grid()
+        self._label_land_components()
 
     @property
     def signature(self) -> tuple[object, ...]:
@@ -118,6 +120,29 @@ class TerrainGrid:
                 self.rendered[grid_y][grid_x] = True
                 self.water[grid_y][grid_x] = _looks_like_water(avg_red, avg_green, avg_blue)
 
+    def _label_land_components(self) -> None:
+        next_component = 0
+        for grid_y in range(self.grid_height):
+            for grid_x in range(self.grid_width):
+                if not self.rendered[grid_y][grid_x] or self.water[grid_y][grid_x]:
+                    continue
+                if self.land_component[grid_y][grid_x] >= 0:
+                    continue
+                stack = [(grid_x, grid_y)]
+                self.land_component[grid_y][grid_x] = next_component
+                while stack:
+                    current_x, current_y = stack.pop()
+                    for neighbor_x, neighbor_y in _neighbors8(current_x, current_y):
+                        if not self._in_bounds((neighbor_x, neighbor_y)):
+                            continue
+                        if not self.rendered[neighbor_y][neighbor_x] or self.water[neighbor_y][neighbor_x]:
+                            continue
+                        if self.land_component[neighbor_y][neighbor_x] >= 0:
+                            continue
+                        self.land_component[neighbor_y][neighbor_x] = next_component
+                        stack.append((neighbor_x, neighbor_y))
+                next_component += 1
+
     def _world_to_grid(self, coordinates: tuple[int, int]) -> tuple[int, int]:
         world_x, world_z = coordinates
         x_ratio = 0.0 if self.max_x == self.min_x else (world_x - self.min_x) / (self.max_x - self.min_x)
@@ -145,6 +170,11 @@ class TerrainGrid:
     def _is_water(self, grid_point: tuple[int, int]) -> bool:
         grid_x, grid_y = grid_point
         return self.water[grid_y][grid_x]
+
+    def _land_component_id(self, grid_point: tuple[int, int]) -> int | None:
+        grid_x, grid_y = grid_point
+        value = self.land_component[grid_y][grid_x]
+        return None if value < 0 else value
 
     def _is_near_water(self, grid_point: tuple[int, int]) -> bool:
         grid_x, grid_y = grid_point
@@ -192,7 +222,13 @@ class TerrainGrid:
                 return best_land_point
         return best_water_point
 
-    def _neighbors(self, grid_point: tuple[int, int]) -> Iterable[tuple[tuple[int, int], float]]:
+    def _neighbors(
+        self,
+        grid_point: tuple[int, int],
+        *,
+        required_land_component: int | None,
+        forbid_water: bool,
+    ) -> Iterable[tuple[tuple[int, int], float]]:
         grid_x, grid_y = grid_point
         for delta_y in (-1, 0, 1):
             for delta_x in (-1, 0, 1):
@@ -201,8 +237,13 @@ class TerrainGrid:
                 neighbor = (grid_x + delta_x, grid_y + delta_y)
                 if not self._in_bounds(neighbor) or not self._is_rendered(neighbor):
                     continue
+                if required_land_component is not None:
+                    if self._land_component_id(neighbor) != required_land_component:
+                        continue
                 base_cost = 1.41421356237 if delta_x != 0 and delta_y != 0 else 1.0
                 if self._is_water(neighbor):
+                    if forbid_water:
+                        continue
                     yield (neighbor, base_cost * WATER_COST_MULTIPLIER)
                     continue
                 if self._is_near_water(neighbor):
@@ -227,6 +268,14 @@ class TerrainGrid:
         if start_grid is None or end_grid is None:
             return None
 
+        start_component = self._land_component_id(start_grid)
+        end_component = self._land_component_id(end_grid)
+        same_land_component = (
+            start_component is not None
+            and end_component is not None
+            and start_component == end_component
+        )
+
         frontier: list[tuple[float, float, tuple[int, int]]] = []
         heapq.heappush(frontier, (self._heuristic(start_grid, end_grid), 0.0, start_grid))
         best_costs: dict[tuple[int, int], float] = {start_grid: 0.0}
@@ -239,9 +288,13 @@ class TerrainGrid:
             if current_point == end_grid:
                 break
 
-            for next_point, edge_cost in self._neighbors(current_point):
+            for next_point, edge_cost in self._neighbors(
+                current_point,
+                required_land_component=start_component if same_land_component else None,
+                forbid_water=same_land_component,
+            ):
                 next_cost = current_cost + edge_cost
-                if next_cost >= best_costs.get(next_point, float('inf')):
+                if next_cost >= best_costs.get(next_point, float("inf")):
                     continue
                 best_costs[next_point] = next_cost
                 previous[next_point] = current_point
@@ -267,6 +320,14 @@ class TerrainGrid:
             world_points.append(self._grid_to_world(grid_point))
         world_points.append(end_coordinates)
         return (best_costs[end_grid], tuple(_dedupe_consecutive_points(world_points)))
+
+
+def _neighbors8(grid_x: int, grid_y: int):
+    for delta_y in (-1, 0, 1):
+        for delta_x in (-1, 0, 1):
+            if delta_x == 0 and delta_y == 0:
+                continue
+            yield (grid_x + delta_x, grid_y + delta_y)
 
 
 def _looks_like_water(red: float, green: float, blue: float) -> bool:
@@ -320,8 +381,10 @@ def _sign(value: int) -> int:
     return 0
 
 
-def _is_explicit_node(node: object) -> bool:
-    return bool(getattr(node, 'is_explicit', False))
+def _is_pier_node(node: object) -> bool:
+    node_key = str(getattr(node, "key", "")).lower()
+    node_label = str(getattr(node, "label", "") or "").lower()
+    return "_pier_" in node_key or "pier" in node_label
 
 
 def _display_label_for(base: object, endpoint_key: str) -> str:
@@ -332,14 +395,14 @@ def _display_label_for(base: object, endpoint_key: str) -> str:
 
 
 def _choose_anchor_key_for_stop(base: object, stop: object) -> str:
-    stop_coordinates = tuple(getattr(stop, 'coordinates'))
+    stop_coordinates = tuple(getattr(stop, "coordinates"))
     best_node = None
     best_distance = None
 
     for node in base.PATH_NODES:
-        if not _is_explicit_node(node):
+        if _is_pier_node(node):
             continue
-        node_distance = dist(stop_coordinates, tuple(getattr(node, 'coordinates')))
+        node_distance = dist(stop_coordinates, tuple(getattr(node, "coordinates")))
         if node_distance > ANCHOR_NODE_MAX_DISTANCE:
             continue
         if best_distance is None or node_distance < best_distance:
@@ -347,13 +410,13 @@ def _choose_anchor_key_for_stop(base: object, stop: object) -> str:
             best_node = node
 
     if best_node is None:
-        return str(getattr(stop, 'var'))
-    return str(getattr(best_node, 'key'))
+        return str(getattr(stop, "var"))
+    return str(getattr(best_node, "key"))
 
 
 def village_anchor_keys(base: object) -> dict[str, str]:
     return {
-        str(getattr(stop, 'var')): _choose_anchor_key_for_stop(base, stop)
+        str(getattr(stop, "var")): _choose_anchor_key_for_stop(base, stop)
         for stop in base.METRO_STOPS
     }
 
@@ -363,10 +426,10 @@ def _walk_component_index(base: object, anchor_keys: Iterable[str]) -> dict[str,
     adjacency: dict[str, set[str]] = {key: set() for key in relevant_keys}
 
     for edge in base.EXTRA_EDGES:
-        if getattr(edge, 'kind', None) != 'walk':
+        if getattr(edge, "kind", None) != "walk":
             continue
-        from_key = str(getattr(getattr(edge, 'from_endpoint'), 'key'))
-        to_key = str(getattr(getattr(edge, 'to_endpoint'), 'key'))
+        from_key = str(getattr(getattr(edge, "from_endpoint"), "key"))
+        to_key = str(getattr(getattr(edge, "to_endpoint"), "key"))
         if from_key in adjacency and to_key in adjacency:
             adjacency[from_key].add(to_key)
             adjacency[to_key].add(from_key)
@@ -397,7 +460,7 @@ def _endpoint_coordinates(base: object, endpoint_key: str) -> tuple[int, int]:
 
 
 def _terrain_from_viewer(viewer: object) -> TerrainGrid | None:
-    if not hasattr(viewer, '_current_world_map_render_underlay'):
+    if not hasattr(viewer, "_current_world_map_render_underlay"):
         return None
     render_underlay = viewer._current_world_map_render_underlay()
     if render_underlay is None:
@@ -405,10 +468,10 @@ def _terrain_from_viewer(viewer: object) -> TerrainGrid | None:
 
     payload, source_image = render_underlay
     try:
-        min_x = int(payload['min_x'])
-        max_x = int(payload['max_x'])
-        min_z = int(payload['min_z'])
-        max_z = int(payload['max_z'])
+        min_x = int(payload["min_x"])
+        max_x = int(payload["max_x"])
+        min_z = int(payload["min_z"])
+        max_z = int(payload["max_z"])
     except (KeyError, TypeError, ValueError):
         return None
 
@@ -433,8 +496,7 @@ def _network_signature(base: object) -> tuple[object, ...]:
             str(node.key),
             int(node.x),
             int(node.y),
-            bool(getattr(node, 'is_explicit', False)),
-            str(getattr(node, 'label', '') or ''),
+            str(getattr(node, "label", "") or ""),
         )
         for node in sorted(base.PATH_NODES, key=lambda node: str(node.key))
     )
@@ -443,10 +505,11 @@ def _network_signature(base: object) -> tuple[object, ...]:
             str(edge.id),
             str(edge.from_endpoint.key),
             str(edge.to_endpoint.key),
-            tuple(tuple(point) for point in getattr(edge, 'path_points', ()) or ()),
+            tuple(tuple(point) for point in getattr(edge, "path_points", ()) or ()),
+            str(getattr(edge, "label", "") or ""),
         )
         for edge in sorted(
-            (edge for edge in base.EXTRA_EDGES if getattr(edge, 'kind', None) == 'walk'),
+            (edge for edge in base.EXTRA_EDGES if getattr(edge, "kind", None) == "walk"),
             key=lambda edge: str(edge.id),
         )
     )
