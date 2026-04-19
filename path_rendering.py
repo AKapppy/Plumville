@@ -12,19 +12,21 @@ def _draw_suggested_walking_paths(self: "base.MetroMapViewer") -> None:
     if not self.show_suggested_walking_paths_var.get():
         return
 
-    for segment in build_suggested_segments(base):
-        start_x, start_y = self.world_to_canvas((segment.start_coordinates[0], -segment.start_coordinates[1]))
-        end_x, end_y = self.world_to_canvas((segment.end_coordinates[0], -segment.end_coordinates[1]))
+    for segment in build_suggested_segments(base, self):
+        canvas_points: list[float] = []
+        for point_x, point_y in segment.path_coordinates:
+            canvas_x, canvas_y = self.world_to_canvas((point_x, -point_y))
+            canvas_points.extend((canvas_x, canvas_y))
+        if len(canvas_points) < 4:
+            continue
         self.canvas.create_line(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
+            *canvas_points,
             fill=base.WALK_ROUTE_COLOR,
             width=4,
             dash=(8, 6),
-            capstyle="round",
-            joinstyle="round",
+            capstyle='round',
+            joinstyle='round',
+            smooth=True,
         )
 
 
@@ -63,11 +65,11 @@ def _patched_draw_path_nodes(self: "base.MetroMapViewer") -> None:
             self.canvas.create_text(
                 canvas_x + label_offset_x,
                 canvas_y - label_offset_y,
-                anchor="sw",
+                anchor='sw',
                 angle=base.LABEL_ANGLE,
                 text=path_node.label,
                 fill=base.PATH_NODE_LABEL_COLOR,
-                font=("Helvetica", label_font_size),
+                font=('Helvetica', label_font_size),
             )
 
 
