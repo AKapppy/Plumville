@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 import queue
 import threading
-from typing import Any
 
 import numpy as np
 from PIL import Image
@@ -14,17 +13,23 @@ import legacy_core as base
 
 MAX_ANALYSIS_DIMENSION = 4096
 MIN_HOLE_AREA = 1
-HIGHLIGHT_OUTLINE = "#ffd84d"
-HIGHLIGHT_WIDTH = 2
-HIGHLIGHT_PADDING = 4
+OUTLINE_COLOR = "#ffd84d"
+LARGEST_OUTLINE_COLOR = "#ff7a59"
+OUTLINE_WIDTH = 2
+COUNT_TEXT_COLOR = "#f5f7fa"
+COUNT_TEXT_PADDING_X = 8
+COUNT_TEXT_PADDING_Y = 6
 
 
 @dataclass(frozen=True, slots=True)
-class VoidHighlight:
+class VoidOutline:
+    horizontal_segments: tuple[tuple[int, int, int], ...]
+    vertical_segments: tuple[tuple[int, int, int], ...]
     image_left: int
     image_top: int
     image_right: int
     image_bottom: int
+    area_pixels: int
 
 
 def _ensure_state(viewer: "base.MetroMapViewer") -> None:
@@ -32,11 +37,12 @@ def _ensure_state(viewer: "base.MetroMapViewer") -> None:
         return
     viewer._internal_void_state_ready = True
     viewer._internal_void_signature = None
-    viewer._internal_void_highlights = []
+    viewer._internal_void_outlines = []
     viewer._internal_void_queue = queue.Queue()
     viewer._internal_void_thread = None
     viewer._internal_void_stop = None
     viewer._internal_void_polling = False
+    viewer._internal_void_analysis_complete = False
 
 
 def _analysis_signature(
@@ -86,11 +92,76 @@ def _downsample_render_mask(image: Image.Image) -> tuple[np.ndarray, int]:
     return reduced, scale
 
 
+def _merge_intervals(values: list[int]) -> list[tuple[int, int]]:
+    if not values:
+        return []
+    values.sort()
+    runs: list[tuple[int, int]] = []
+    run_start = values[0]
+    run_end = values[0]
+    for value in values[1:]:
+        if value == run_end + 1:
+            run_end = value
+            continue
+        runs.append((run_start, run_end))
+        run_start = value
+        run_end = value
+    runs.append((run_start, run_end))
+    return runs
+
+
+def _build_outline(component: list[tuple[int, int]], *, scale: int) -> VoidOutline:
+    cells = set(component)
+    top_edges: dict[int, list[int]] = defaultdict(list)
+    bottom_edges: dict[int, list[int]] = defaultdict(list)
+    left_edges: dict[int, list[int]] = defaultdict(list)
+    right_edges: dict[int, list[int]] = defaultdict(list)
+
+    xs = [cell_x for cell_x, _cell_y in component]
+    ys = [cell_y for _cell_x, cell_y in component]
+
+    for cell_x, cell_y in component:
+        if (cell_x, cell_y - 1) not in cells:
+            top_edges[cell_y].append(cell_x)
+        if (cell_x, cell_y + 1) not in cells:
+            bottom_edges[cell_y + 1].append(cell_x)
+        if (cell_x - 1, cell_y) not in cells:
+            left_edges[cell_x].append(cell_y)
+        if (cell_x + 1, cell_y) not in cells:
+            right_edges[cell_x + 1].append(cell_y)
+
+    horizontal_segments: list[tuple[int, int, int]] = []
+    vertical_segments: list[tuple[int, int, int]] = []
+
+    for edge_y, x_values in top_edges.items():
+        for run_start, run_end in _merge_intervals(x_values):
+            horizontal_segments.append((edge_y, run_start, run_end + 1))
+    for edge_y, x_values in bottom_edges.items():
+        for run_start, run_end in _merge_intervals(x_values):
+            horizontal_segments.append((edge_y, run_start, run_end + 1))
+    for edge_x, y_values in left_edges.items():
+        for run_start, run_end in _merge_intervals(y_values):
+            vertical_segments.append((edge_x, run_start, run_end + 1))
+    for edge_x, y_values in right_edges.items():
+        for run_start, run_end in _merge_intervals(y_values):
+            vertical_segments.append((edge_x, run_start, run_end + 1))
+
+    return VoidOutline(
+        horizontal_segments=tuple(horizontal_segments),
+        vertical_segments=tuple(vertical_segments),
+        image_left=min(xs) * scale,
+        image_top=min(ys) * scale,
+        image_right=(max(xs) + 1) * scale,
+        image_bottom=(max(ys) + 1) * scale,
+        area_pixels=len(component) * (scale * scale),
+    )
+
+
 def _find_internal_voids_worker(
     *,
     signature: tuple[object, ...],
     image: Image.Image,
-    result_queue: "queue.Queue[tuple[tuple[object, ...], VoidHighlight | None]]",
+    result_queue: "queue.Queue[tuple[tuple[object, ...], VoidOutline | None]]",
     stop_event: threading.Event,
     sealed_top: bool,
     sealed_bottom: bool,
@@ -113,7 +184,7 @@ def _find_internal_voids_worker(
 
             queue_local = deque([(start_x, start_y)])
             visited[start_y, start_x] = True
-            component = []
+            component: list[tuple[int, int]] = []
             touches_unsealed_border = False
 
             while queue_local:
@@ -145,15 +216,7 @@ def _find_internal_voids_worker(
             if touches_unsealed_border or len(component) < MIN_HOLE_AREA:
                 continue
 
-            xs = [point_x for point_x, _point_y in component]
-            ys = [point_y for _point_x, point_y in component]
-            highlight = VoidHighlight(
-                image_left=max(0, (min(xs) * scale) - HIGHLIGHT_PADDING),
-                image_top=max(0, (min(ys) * scale) - HIGHLIGHT_PADDING),
-                image_right=((max(xs) + 1) * scale) + HIGHLIGHT_PADDING,
-                image_bottom=((max(ys) + 1) * scale) + HIGHLIGHT_PADDING,
-            )
-            result_queue.put((signature, highlight))
+            result_queue.put((signature, _build_outline(component, scale=scale)))
 
     result_queue.put((signature, None))
 
@@ -200,7 +263,8 @@ def _start_analysis(
         return
 
     viewer._internal_void_signature = signature
-    viewer._internal_void_highlights = []
+    viewer._internal_void_outlines = []
+    viewer._internal_void_analysis_complete = False
 
     stop_event = getattr(viewer, "_internal_void_stop", None)
     if stop_event is not None:
@@ -241,8 +305,9 @@ def _start_analysis(
                     if item_signature != getattr(viewer, "_internal_void_signature", None):
                         continue
                     if payload_item is None:
+                        viewer._internal_void_analysis_complete = True
                         continue
-                    viewer._internal_void_highlights.append(payload_item)
+                    viewer._internal_void_outlines.append(payload_item)
                     updated = True
             except queue.Empty:
                 pass
@@ -264,7 +329,8 @@ def update_background_analysis(
         if stop_event is not None:
             stop_event.set()
         viewer._internal_void_signature = None
-        viewer._internal_void_highlights = []
+        viewer._internal_void_outlines = []
+        viewer._internal_void_analysis_complete = False
         return
 
     _start_analysis(viewer, payload, image)
@@ -311,17 +377,43 @@ def draw_internal_voids(
     x_scale = (right - left) / image_width
     y_scale = (bottom - top) / image_height
 
-    for highlight in getattr(viewer, "_internal_void_highlights", []):
-        draw_left = left + (highlight.image_left * x_scale)
-        draw_top = top + (highlight.image_top * y_scale)
-        draw_right = left + (highlight.image_right * x_scale)
-        draw_bottom = top + (highlight.image_bottom * y_scale)
-        viewer.canvas.create_oval(
-            draw_left,
-            draw_top,
-            draw_right,
-            draw_bottom,
-            outline=HIGHLIGHT_OUTLINE,
-            width=HIGHLIGHT_WIDTH,
-            dash=(4, 3),
-        )
+    outlines = getattr(viewer, "_internal_void_outlines", [])
+    if not outlines:
+        return
+
+    largest_outline = max(outlines, key=lambda outline: outline.area_pixels)
+
+    for outline in outlines:
+        outline_color = LARGEST_OUTLINE_COLOR if outline is largest_outline else OUTLINE_COLOR
+
+        for edge_y, start_x, end_x in outline.horizontal_segments:
+            viewer.canvas.create_line(
+                left + (start_x * x_scale),
+                top + (edge_y * y_scale),
+                left + (end_x * x_scale),
+                top + (edge_y * y_scale),
+                fill=outline_color,
+                width=OUTLINE_WIDTH,
+            )
+
+        for edge_x, start_y, end_y in outline.vertical_segments:
+            viewer.canvas.create_line(
+                left + (edge_x * x_scale),
+                top + (start_y * y_scale),
+                left + (edge_x * x_scale),
+                top + (end_y * y_scale),
+                fill=outline_color,
+                width=OUTLINE_WIDTH,
+            )
+
+    count_text = f"Internal voids: {len(outlines)}"
+    if not getattr(viewer, "_internal_void_analysis_complete", False):
+        count_text += "+"
+    viewer.canvas.create_text(
+        left + COUNT_TEXT_PADDING_X,
+        top + COUNT_TEXT_PADDING_Y,
+        anchor="nw",
+        text=count_text,
+        fill=COUNT_TEXT_COLOR,
+        font=("Helvetica", 10, "bold"),
+    )

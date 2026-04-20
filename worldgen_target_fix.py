@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 import json
-import math
 from pathlib import Path
 import random
 
@@ -27,9 +26,6 @@ class _BlankChunkComponent:
 
 
 _COMPONENT_CACHE: dict[tuple[object, ...], tuple[_BlankChunkComponent, ...]] = {}
-_PROMOTED_CACHE: dict[tuple[object, ...], tuple[tuple[int, int], ...]] = {}
-_PROMOTED_INSERT_EVERY = 6
-_PROMOTED_PREFERENCE_PERIOD = 4
 
 
 def _file_signature(path: Path) -> tuple[str, int, int] | None:
@@ -155,8 +151,6 @@ def _blank_chunk_components(config, blank_coverage) -> tuple[_BlankChunkComponen
         total_blank_pixels = sum(component_chunk_counts.values())
         weighted_x = sum(chunk_x * count for (chunk_x, _chunk_z), count in component_chunk_counts.items())
         weighted_z = sum(chunk_z * count for (_chunk_x, chunk_z), count in component_chunk_counts.items())
-        centroid_chunk_x = weighted_x / max(1, total_blank_pixels)
-        centroid_chunk_z = weighted_z / max(1, total_blank_pixels)
         components.append(
             _BlankChunkComponent(
                 chunk_counts=component_chunk_counts,
@@ -165,8 +159,8 @@ def _blank_chunk_components(config, blank_coverage) -> tuple[_BlankChunkComponen
                 max_chunk_x=max(chunk_x for chunk_x, _chunk_z in component_chunk_counts),
                 min_chunk_z=min(chunk_z for _chunk_x, chunk_z in component_chunk_counts),
                 max_chunk_z=max(chunk_z for _chunk_x, chunk_z in component_chunk_counts),
-                centroid_chunk_x=centroid_chunk_x,
-                centroid_chunk_z=centroid_chunk_z,
+                centroid_chunk_x=weighted_x / max(1, total_blank_pixels),
+                centroid_chunk_z=weighted_z / max(1, total_blank_pixels),
                 is_internal=_component_is_internal(
                     component_chunk_counts,
                     config=config,
@@ -178,7 +172,9 @@ def _blank_chunk_components(config, blank_coverage) -> tuple[_BlankChunkComponen
     components.sort(
         key=lambda component: (
             0 if component.is_internal else 1,
-            component.total_blank_pixels,
+            -component.total_blank_pixels,
+            component.min_chunk_z,
+            component.min_chunk_x,
         )
     )
     result = tuple(components)
@@ -195,98 +191,75 @@ def _clamp_chunk_center(config, center_chunk: tuple[int, int]) -> tuple[int, int
     return (chunk_x, chunk_z)
 
 
+def _coast_candidate_centers(config, component: _BlankChunkComponent) -> list[tuple[int, int]]:
+    radius = config.headless_loader.chunk_radius
+    component_chunks = set(component.chunk_counts)
+    candidates: list[tuple[int, int]] = []
+
+    for chunk_x, chunk_z in component_chunks:
+        if (chunk_x - 1, chunk_z) not in component_chunks:
+            candidates.append((chunk_x - 1 + radius, chunk_z))
+        if (chunk_x + 1, chunk_z) not in component_chunks:
+            candidates.append((chunk_x + 1 - radius, chunk_z))
+        if (chunk_x, chunk_z - 1) not in component_chunks:
+            candidates.append((chunk_x, chunk_z - 1 + radius))
+        if (chunk_x, chunk_z + 1) not in component_chunks:
+            candidates.append((chunk_x, chunk_z + 1 - radius))
+
+    deduped: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for candidate in candidates:
+        clamped = _clamp_chunk_center(config, candidate)
+        if clamped in seen:
+            continue
+        seen.add(clamped)
+        deduped.append(clamped)
+    return deduped
+
+
 def _component_target(config, component: _BlankChunkComponent) -> tuple[int, int]:
+    coast_candidates = _coast_candidate_centers(config, component)
+    if coast_candidates:
+        seed_value = hash((
+            config.render.min_x,
+            config.render.max_x,
+            config.render.min_z,
+            config.render.max_z,
+            round(component.centroid_chunk_x, 3),
+            round(component.centroid_chunk_z, 3),
+            component.total_blank_pixels,
+        ))
+        rng = random.Random(seed_value)
+        return coast_candidates[rng.randrange(len(coast_candidates))]
+
     dense_chunk = max(
         component.chunk_counts.items(),
         key=lambda item: (
             item[1],
-            -math.hypot(item[0][0] - component.centroid_chunk_x, item[0][1] - component.centroid_chunk_z),
+            -((item[0][0] - component.centroid_chunk_x) ** 2 + (item[0][1] - component.centroid_chunk_z) ** 2),
         ),
     )[0]
     return _clamp_chunk_center(config, dense_chunk)
 
 
-def _promoted_random_targets(config, blank_coverage) -> tuple[tuple[int, int], ...]:
+def _promoted_largest_targets(config, blank_coverage) -> tuple[tuple[int, int], ...]:
     if blank_coverage is None:
         return ()
 
-    cache_key = (
-        blank_coverage.image_stat,
-        config.render.min_x,
-        config.render.max_x,
-        config.render.min_z,
-        config.render.max_z,
-    )
-    cached = _PROMOTED_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
-
     import worldgen.generator as generator
 
-    components = list(_blank_chunk_components(config, blank_coverage))
-    if not components:
-        return ()
-
-    seed_value = hash(cache_key)
-    rng = random.Random(seed_value)
-
-    internal_components = [component for component in components if component.is_internal]
-    other_components = [component for component in components if not component.is_internal]
-
-    rng.shuffle(internal_components)
-    rng.shuffle(other_components)
-
-    ordered_components = internal_components + other_components
     targets: list[tuple[int, int]] = []
     seen_targets: set[tuple[int, int]] = set()
-
-    for component in ordered_components:
+    for component in _blank_chunk_components(config, blank_coverage):
         target = generator._chunk_center_world_pair(_component_target(config, component))
         if target in seen_targets:
             continue
         seen_targets.add(target)
         targets.append(target)
-
-    result = tuple(targets)
-    _PROMOTED_CACHE[cache_key] = result
-    return result
+    return tuple(targets)
 
 
-def _interleave_targets(
-    original_points: tuple[tuple[int, int], ...],
-    promoted_points: tuple[tuple[int, int], ...],
-) -> tuple[tuple[int, int], ...]:
-    if not promoted_points:
-        return original_points
-    if not original_points:
-        return promoted_points
-
-    result: list[tuple[int, int]] = []
-    seen: set[tuple[int, int]] = set()
-    promoted_index = 0
-
-    for original_index, point in enumerate(original_points, start=1):
-        if point not in seen:
-            seen.add(point)
-            result.append(point)
-        if original_index % _PROMOTED_INSERT_EVERY == 0 and promoted_index < len(promoted_points):
-            promoted = promoted_points[promoted_index]
-            promoted_index += 1
-            if promoted not in seen:
-                seen.add(promoted)
-                result.append(promoted)
-
-    while promoted_index < len(promoted_points):
-        promoted = promoted_points[promoted_index]
-        promoted_index += 1
-        if promoted not in seen:
-            seen.add(promoted)
-            result.append(promoted)
-
-    return tuple(result)
-
-
-def _light_render_area_teleport_points(
+def _largest_first_render_area_teleport_points(
     config,
     *,
     world_path=None,
@@ -299,11 +272,22 @@ def _light_render_area_teleport_points(
     )
     if blank_coverage is None:
         return original_points
-    promoted_points = _promoted_random_targets(config, blank_coverage)
-    return _interleave_targets(original_points, promoted_points)
+
+    promoted_points = _promoted_largest_targets(config, blank_coverage)
+    if not promoted_points:
+        return original_points
+
+    result: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for point in promoted_points + original_points:
+        if point in seen:
+            continue
+        seen.add(point)
+        result.append(point)
+    return tuple(result)
 
 
-def _light_next_undercovered_teleport_index(
+def _largest_first_next_undercovered_teleport_index(
     config,
     teleport_points,
     *,
@@ -319,13 +303,21 @@ def _light_next_undercovered_teleport_index(
     normalized_start_index = start_index % len(teleport_points)
 
     if blank_coverage is not None:
-        promoted_set = set(_promoted_random_targets(config, blank_coverage))
-        prefer_promoted = (normalized_start_index % _PROMOTED_PREFERENCE_PERIOD == 0)
+        promoted_points = _promoted_largest_targets(config, blank_coverage)
+
+        for promoted_point in promoted_points:
+            if promoted_point not in teleport_points:
+                continue
+            missing_pixels = generator._teleport_point_missing_pixel_count(
+                config,
+                promoted_point,
+                blank_coverage,
+            )
+            if missing_pixels > 0:
+                return teleport_points.index(promoted_point)
 
         first_actionable = None
-        first_promoted_positive = None
         first_positive = None
-
         for offset in range(len(teleport_points)):
             index = (normalized_start_index + offset) % len(teleport_points)
             point = teleport_points[index]
@@ -334,24 +326,12 @@ def _light_next_undercovered_teleport_index(
                 point,
                 blank_coverage,
             )
-
             if missing_pixels > generator.TELEPORT_TARGET_MIN_ACTIONABLE_BLANK_PIXELS:
-                if first_actionable is None:
-                    first_actionable = index
-                if prefer_promoted and point in promoted_set:
-                    return index
-
-            if point in promoted_set and missing_pixels > 0 and first_promoted_positive is None:
-                first_promoted_positive = index
-
+                first_actionable = index
+                break
             if missing_pixels > 0 and first_positive is None:
                 first_positive = index
 
-            if not prefer_promoted and missing_pixels > generator.TELEPORT_TARGET_MIN_ACTIONABLE_BLANK_PIXELS:
-                return index
-
-        if prefer_promoted and first_promoted_positive is not None:
-            return first_promoted_positive
         if first_actionable is not None:
             return first_actionable
         if first_positive is not None:
@@ -380,7 +360,7 @@ def apply() -> None:
     _ORIGINAL_NEXT_UNDERCOVERED = generator._next_undercovered_teleport_index
     _ORIGINAL_RENDER_AREA_TELEPORT_POINTS = generator._render_area_teleport_points
 
-    generator._render_area_teleport_points = _light_render_area_teleport_points
-    generator._next_undercovered_teleport_index = _light_next_undercovered_teleport_index
+    generator._render_area_teleport_points = _largest_first_render_area_teleport_points
+    generator._next_undercovered_teleport_index = _largest_first_next_undercovered_teleport_index
 
     _APPLIED = True

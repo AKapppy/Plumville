@@ -6,6 +6,7 @@ import legacy_core as base
 import path_detection
 import path_rendering
 import world_map_overrides
+import worldgen_speedups
 import worldgen_target_fix
 
 
@@ -81,6 +82,7 @@ def _patched_build_route_panel(self: "base.MetroMapViewer") -> None:
 
 def apply() -> None:
     worldgen_target_fix.apply()
+    worldgen_speedups.apply()
     base.MetroMapViewer._build_route_panel = _patched_build_route_panel
     path_rendering.apply()
     path_detection.apply()
