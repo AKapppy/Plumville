@@ -882,6 +882,10 @@ class BedrockWorldGenerator:
             pixel_keys=pixel_keys,
         )
         _copy_file_best_effort(self.paths.render_image_path, self.paths.docs_render_image_path)
+        _copy_file_best_effort(
+            self.paths.render_cache_path,
+            _docs_render_metadata_path(self.paths.docs_render_image_path),
+        )
         return result
 
     def render_loaded_target_map(
@@ -922,6 +926,10 @@ class BedrockWorldGenerator:
             fixed_y=mode.fixed_y,
         )
         _copy_file_best_effort(mode_paths.render_image_path, mode_paths.docs_render_image_path)
+        _copy_file_best_effort(
+            mode_paths.render_cache_path,
+            _docs_render_metadata_path(mode_paths.docs_render_image_path),
+        )
         return result
 
     def render_cached_blank_pixel_batch(
@@ -1580,6 +1588,10 @@ def _copy_file_best_effort(source_path: Path, destination_path: Path) -> None:
         _copy_file_with_retry(source_path, destination_path)
     except OSError:
         return
+
+
+def _docs_render_metadata_path(docs_render_image_path: Path) -> Path:
+    return docs_render_image_path.with_suffix('.render.json')
 
 
 def _unlink_file_with_retry(

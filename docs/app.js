@@ -51,6 +51,7 @@ const CONSTANTS = {
   alignmentMinSize: 30,
   alignmentLabelSize: 10,
   worldMapAlpha: 0.745,
+  terrainMetadataUrl: 'assets/blackport_topdown.render.json',
   blackportVar: 'P_ABCDE',
   blackportViewRadius: 2000,
 };
@@ -69,6 +70,7 @@ const state = {
   terrain: {
     image: null,
     loaded: false,
+    bounds: null,
     stationBounds: null,
   },
   viewport: {
@@ -96,6 +98,7 @@ init();
 async function init() {
   try {
     loadTerrainImage();
+    loadTerrainBounds();
     const response = await fetch('metro_network.json', { cache: 'no-cache' });
     if (!response.ok) {
       throw new Error(`Could not load metro_network.json: ${response.status}`);
@@ -238,6 +241,7 @@ function bindEvents() {
     hidePopup();
     render();
   });
+  document.addEventListener('keydown', handleHotkey);
 
   searchInput.addEventListener('input', refreshSearch);
   searchInput.addEventListener('keydown', (event) => {
@@ -327,6 +331,23 @@ function showBlackportView() {
   render();
 }
 
+function showConnectedAreaView() {
+  const connectedPoints = state.lineSegments
+    .filter((segment) => segment.connected)
+    .flatMap((segment) => segment.points);
+  const points = connectedPoints.length
+    ? connectedPoints
+    : state.data.stops.filter((stop) => stop.is_connected).map(stationPlotPoint);
+  const bounds = boundsForPoints(points);
+  if (!validBounds(bounds)) {
+    resetView();
+    render();
+    return;
+  }
+  setViewToPlotBounds(bounds);
+  render();
+}
+
 function setViewToPlotBounds(bounds) {
   const { width, height, scale } = state.transform;
   const spanX = Math.max(bounds.maxX - bounds.minX, 1);
@@ -344,6 +365,32 @@ function setViewToPlotBounds(bounds) {
   state.viewport.panX = ((width / 2) - baseCenter.x) * state.viewport.zoom;
   state.viewport.panY = ((height / 2) - baseCenter.y) * state.viewport.zoom;
   hidePopup();
+}
+
+function handleHotkey(event) {
+  if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey || hotkeysAreSuppressed(event.target)) {
+    return;
+  }
+  const key = event.key.toLowerCase();
+  if (key === 'r') {
+    event.preventDefault();
+    resetView();
+    render();
+  } else if (key === 'b') {
+    event.preventDefault();
+    showBlackportView();
+  } else if (key === 'a') {
+    event.preventDefault();
+    showConnectedAreaView();
+  }
+}
+
+function hotkeysAreSuppressed(target) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  const tagName = target.tagName.toLowerCase();
+  return target.isContentEditable || ['input', 'textarea', 'select', 'button'].includes(tagName);
 }
 
 function render() {
@@ -379,6 +426,23 @@ function loadTerrainImage() {
     render();
   };
   image.src = `assets/blackport_topdown.png?v=${Date.now()}`;
+}
+
+async function loadTerrainBounds() {
+  try {
+    const response = await fetch(`${CONSTANTS.terrainMetadataUrl}?v=${Date.now()}`, { cache: 'no-cache' });
+    if (!response.ok) {
+      return;
+    }
+    const bounds = terrainBoundsFromMetadata(await response.json());
+    if (!bounds) {
+      return;
+    }
+    state.terrain.bounds = bounds;
+    render();
+  } catch (_error) {
+    // The viewer can still place the image from the network and image dimensions.
+  }
 }
 
 function drawTerrainUnderlay() {
@@ -1311,6 +1375,15 @@ function boundsForPoints(points) {
   });
 }
 
+function validBounds(bounds) {
+  return Number.isFinite(bounds.minX)
+    && Number.isFinite(bounds.maxX)
+    && Number.isFinite(bounds.minY)
+    && Number.isFinite(bounds.maxY)
+    && bounds.minX <= bounds.maxX
+    && bounds.minY <= bounds.maxY;
+}
+
 function samePoint(first, second) {
   return first.x === second.x && first.y === second.y;
 }
@@ -1345,6 +1418,9 @@ function terrainStationBounds(stops) {
 }
 
 function currentTerrainBounds() {
+  if (state.terrain.bounds) {
+    return state.terrain.bounds;
+  }
   const bounds = state.terrain.stationBounds;
   const image = state.terrain.image;
   if (!bounds || !image?.naturalWidth || !image?.naturalHeight) {
@@ -1362,6 +1438,25 @@ function currentTerrainBounds() {
     minZ,
     maxZ: minZ + image.naturalHeight - 1,
   };
+}
+
+function terrainBoundsFromMetadata(payload) {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+  const minX = finiteNumber(payload.min_x);
+  const maxX = finiteNumber(payload.max_x);
+  const minZ = finiteNumber(payload.min_z);
+  const maxZ = finiteNumber(payload.max_z);
+  if (minX === null || maxX === null || minZ === null || maxZ === null || minX >= maxX || minZ >= maxZ) {
+    return null;
+  }
+  return { minX, maxX, minZ, maxZ };
+}
+
+function finiteNumber(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
 function displayLabel(label) {

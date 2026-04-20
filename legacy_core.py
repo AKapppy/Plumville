@@ -4796,8 +4796,6 @@ class MetroMapViewer:
         self.root.bind('A', self._on_focus_connected_area_view)
         self.root.bind('b', self._on_focus_blackport_view)
         self.root.bind('B', self._on_focus_blackport_view)
-        self.root.bind('m', self._on_focus_world_map_render_view)
-        self.root.bind('M', self._on_focus_world_map_render_view)
         self.root.bind_all('<ButtonRelease-1>', self._on_global_left_click_release, add='+')
         self.root.bind_all('<MouseWheel>', self._on_global_mousewheel, add='+')
         self.root.bind_all('<Button-4>', self._on_global_mousewheel_linux_up, add='+')
@@ -9071,35 +9069,6 @@ class MetroMapViewer:
             center_y + BLACKPORT_VIEW_RADIUS,
         )
 
-    def show_world_map_render_view(self) -> None:
-        try:
-            from worldgen.config import load_config
-            from worldgen.generator import BedrockWorldGenerator
-
-            config = load_config()
-            mode_paths = BedrockWorldGenerator(config).paths_for_mode(
-                self._selected_world_map_mode_key()
-            )
-            payload = json.loads(mode_paths.render_cache_path.read_text(encoding='utf-8'))
-            colored_min_x = int(payload['colored_min_x'])
-            colored_max_x = int(payload['colored_max_x'])
-            colored_min_z = int(payload['colored_min_z'])
-            colored_max_z = int(payload['colored_max_z'])
-        except Exception:
-            self.show_blackport_view()
-            return
-
-        if colored_min_x > colored_max_x or colored_min_z > colored_max_z:
-            self.show_blackport_view()
-            return
-
-        self._set_view_to_plot_bounds(
-            colored_min_x,
-            colored_max_x,
-            -colored_max_z,
-            -colored_min_z,
-        )
-
     def reset_view(self) -> None:
         self.show_whole_map_view()
 
@@ -9377,15 +9346,6 @@ class MetroMapViewer:
         self.cursor_readout_coordinates = None
         self.show_cursor_guides = False
         self.show_blackport_view()
-
-    def _on_focus_world_map_render_view(self, event: object) -> None:
-        if not self._hotkeys_enabled():
-            return
-        self.hover_canvas_point = None
-        self.cursor_readout_coordinates = None
-        self.show_cursor_guides = False
-        self.show_world_map_render_view()
-
 
 def plot_stops(
     width: int = PLOT_WIDTH,
