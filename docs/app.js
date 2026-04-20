@@ -69,9 +69,7 @@ const state = {
   terrain: {
     image: null,
     loaded: false,
-    centerX: 294,
-    centerZ: 390,
-    radius: 2000,
+    stationBounds: null,
   },
   viewport: {
     zoom: CONSTANTS.defaultZoom,
@@ -133,6 +131,7 @@ function hydrateNetwork(data) {
     ...(data.path_nodes || []).map((node) => ({ x: node.x, y: -node.y })),
   ];
   state.plotBounds = boundsForPoints(allPoints);
+  state.terrain.stationBounds = terrainStationBounds(data.stops);
   summaryText.textContent = stationProgressSummary();
 }
 
@@ -386,9 +385,13 @@ function drawTerrainUnderlay() {
   if (!showWorldMapInput.checked || !state.terrain.loaded || !state.terrain.image) {
     return;
   }
-  const { centerX, centerZ, radius, image } = state.terrain;
-  const first = plotToCanvas({ x: centerX - radius, y: -(centerZ - radius) });
-  const second = plotToCanvas({ x: centerX + radius, y: -(centerZ + radius) });
+  const { image } = state.terrain;
+  const bounds = currentTerrainBounds();
+  if (!bounds) {
+    return;
+  }
+  const first = plotToCanvas({ x: bounds.minX, y: -bounds.minZ });
+  const second = plotToCanvas({ x: bounds.maxX, y: -bounds.maxZ });
   const left = Math.min(first.x, second.x);
   const right = Math.max(first.x, second.x);
   const top = Math.min(first.y, second.y);
@@ -1055,16 +1058,6 @@ function plotToCanvas(point) {
   };
 }
 
-function canvasToPlot(x, y) {
-  const { width, height, minX, minY, scale } = state.transform;
-  const baseX = (width / 2) + ((x - (width / 2) - state.viewport.panX) / state.viewport.zoom);
-  const baseY = (height / 2) + ((y - (height / 2) - state.viewport.panY) / state.viewport.zoom);
-  return {
-    x: minX + ((baseX - CONSTANTS.padding) / scale),
-    y: minY + ((height - CONSTANTS.padding - baseY) / scale),
-  };
-}
-
 function centerOnPlotPoint(point) {
   const base = plotToBaseCanvas(point);
   const { width, height } = state.transform;
@@ -1335,6 +1328,40 @@ function formatTrackDistance(distanceMeters) {
     return `${Math.round(distanceMeters).toLocaleString()} m`;
   }
   return `${Number((distanceMeters / 1000).toFixed(1)).toLocaleString()} km`;
+}
+
+function terrainStationBounds(stops) {
+  if (!stops.length) {
+    return null;
+  }
+  const xs = stops.map((stop) => stop.x);
+  const zs = stops.map((stop) => stop.y);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minZ: Math.min(...zs),
+    maxZ: Math.max(...zs),
+  };
+}
+
+function currentTerrainBounds() {
+  const bounds = state.terrain.stationBounds;
+  const image = state.terrain.image;
+  if (!bounds || !image?.naturalWidth || !image?.naturalHeight) {
+    return null;
+  }
+  const stationWidth = bounds.maxX - bounds.minX + 1;
+  const stationHeight = bounds.maxZ - bounds.minZ + 1;
+  const xMargin = Math.max(0, (image.naturalWidth - stationWidth) / 2);
+  const zMargin = Math.max(0, (image.naturalHeight - stationHeight) / 2);
+  const minX = bounds.minX - xMargin;
+  const minZ = bounds.minZ - zMargin;
+  return {
+    minX,
+    maxX: minX + image.naturalWidth - 1,
+    minZ,
+    maxZ: minZ + image.naturalHeight - 1,
+  };
 }
 
 function displayLabel(label) {

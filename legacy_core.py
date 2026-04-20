@@ -110,11 +110,6 @@ WORLD_MAP_RENDER_BOUNDS_COLOR: Final[str] = '#f3d66b'
 WORLD_MAP_RENDER_BOUNDS_WIDTH: Final[int] = 2
 WORLD_MAP_RENDER_BOUNDS_DASH: Final[tuple[int, int]] = (6, 4)
 WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE: Final[int] = 24
-WORLD_MAP_NEXT_TARGET_COLOR: Final[str] = '#8ad4ff'
-WORLD_MAP_NEXT_TARGET_WIDTH: Final[int] = 2
-WORLD_MAP_NEXT_TARGET_DASH: Final[tuple[int, int]] = (3, 3)
-WORLD_MAP_TARGET_PROGRESS_HEIGHT: Final[int] = 5
-WORLD_MAP_TARGET_PROGRESS_BACKGROUND: Final[str] = '#102636'
 WORLD_MAP_AUTO_LOAD_PASSES: Final[int] = 1
 WORLD_MAP_RENDER_PROGRESS_PIXEL_INTERVAL: Final[int] = 5_000
 WORLD_MAP_PREVIEW_MAX_DIMENSION: Final[int] = 4096
@@ -175,10 +170,8 @@ WorldMapTaskQueueItem = tuple[
     Literal['progress', 'rendered', 'done'],
     bool,
     str,
-    tuple[int, int] | None,
 ]
 WorldMapPreviewQueueItem = tuple[bool, str, str]
-WorldMapTargetPreviewQueueItem = tuple[tuple[object, ...], object | None]
 FileStatKey = tuple[str, int, int]
 
 
@@ -2364,7 +2357,7 @@ def _world_map_auto_fill_step_text_for_generator(
     generator: Any,
     *,
     step_number: int | None = None,
-    progress_callback: Callable[[str, bool, tuple[int, int] | None], None] | None = None,
+    progress_callback: Callable[[str, bool], None] | None = None,
 ) -> str:
     step_label = f'Auto fill step {step_number}' if step_number is not None else 'Auto fill step'
     cached_pixel_result = generator.render_cached_blank_pixel_batch()
@@ -2409,7 +2402,6 @@ def _world_map_auto_fill_step_text_for_generator(
                 'No cached pixels could be filled from that batch, so Auto Fill is loading more terrain.'
             ),
             True,
-            None,
         )
 
     before_load_colored_pixels = (
@@ -2417,21 +2409,6 @@ def _world_map_auto_fill_step_text_for_generator(
         if hasattr(generator, 'cached_colored_pixel_count')
         else 0
     )
-    active_target: tuple[int, int] | None = None
-    if hasattr(generator, 'next_headless_loader_target_preview'):
-        active_preview = generator.next_headless_loader_target_preview(include_manual_target=False)
-        if active_preview is not None:
-            active_target = (active_preview.target_x, active_preview.target_z)
-    if progress_callback is not None and active_target is not None:
-        progress_callback(
-            (
-                f'{step_label} is loading the fixed dotted-blue target.\n\n'
-                f'Active target square: {active_target[0]},{active_target[1]}\n'
-                'Auto Fill will choose the next blank target after this pass.'
-            ),
-            False,
-            active_target,
-        )
     load_results = [
         generator.load_chunks_headless(stop_after=True, restart_existing=False)
         for _index in range(WORLD_MAP_AUTO_LOAD_PASSES)
@@ -2448,7 +2425,6 @@ def _world_map_auto_fill_step_text_for_generator(
                 'The map preview will update when this render pass finishes.'
             ),
             False,
-            render_target,
         )
 
     for load_result in load_results:
@@ -2545,7 +2521,7 @@ def _world_map_auto_fill_step_text() -> str:
 
 def _world_map_auto_fill_until_stopped_text(
     stop_event: threading.Event,
-    progress_callback: Callable[[str, bool, tuple[int, int] | None], None] | None = None,
+    progress_callback: Callable[[str, bool], None] | None = None,
 ) -> str:
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
@@ -2571,7 +2547,6 @@ def _world_map_auto_fill_until_stopped_text(
                 f'Auto filling world map...\n\n'
                 f'Running step {step_count}. Stop will happen after this step finishes.',
                 False,
-                None,
             )
 
         last_step_message = _world_map_auto_fill_step_text_for_generator(
@@ -2587,7 +2562,6 @@ def _world_map_auto_fill_until_stopped_text(
                 f'{last_step_message}\n\n'
                 'Still running. Press Stop Auto Fill to stop after the current step.',
                 True,
-                None,
             )
 
     return '\n'.join(
@@ -4669,13 +4643,10 @@ class MetroMapViewer:
         self.railway_finish_line_menu: tk.Menubutton
         self.world_map_task_queue: queue.SimpleQueue[WorldMapTaskQueueItem] = queue.SimpleQueue()
         self.world_map_preview_queue: queue.SimpleQueue[WorldMapPreviewQueueItem] = queue.SimpleQueue()
-        self.world_map_target_preview_queue: queue.SimpleQueue[WorldMapTargetPreviewQueueItem] = queue.SimpleQueue()
         self.world_map_task_completion_callback: Callable[[bool, str], None] | None = None
         self.world_map_task_running = False
         self.world_map_preview_build_key: tuple[str, FileStatKey] | None = None
         self.world_map_preview_poll_after_id: str | None = None
-        self.world_map_target_preview_build_key: tuple[object, ...] | None = None
-        self.world_map_target_preview_poll_after_id: str | None = None
         self.world_map_auto_fill_stop_event: threading.Event | None = None
         self.world_map_auto_fill_running = False
         self.world_map_auto_fill_stop_requested = False
@@ -4685,10 +4656,6 @@ class MetroMapViewer:
         self.world_map_render_payload: dict[str, object] | None = None
         self.world_map_render_source_image: Image.Image | None = None
         self.world_map_render_cache_checked_at = 0.0
-        self.world_map_next_target_cache_key: tuple[object, ...] | None = None
-        self.world_map_next_target_preview: Any | None = None
-        self.world_map_active_target: tuple[int, int] | None = None
-        self.world_map_active_target_preview: Any | None = None
         self.world_map_spiral_check_cache_stat: FileStatKey | None = None
         self.world_map_spiral_check_payload: dict[str, object] | None = None
         self.overlay_image_refs: list[ImageTk.PhotoImage] = []
@@ -4741,7 +4708,6 @@ class MetroMapViewer:
         self.show_frontier_highlights_var = tk.BooleanVar(master=self.root, value=False)
         self.show_labels_var = tk.BooleanVar(master=self.root, value=True)
         self.show_world_map_render_var = tk.BooleanVar(master=self.root, value=True)
-        self.show_world_map_bounds_var = tk.BooleanVar(master=self.root, value=True)
         self.export_include_world_map_var = tk.BooleanVar(master=self.root, value=True)
         self.export_include_grid_var = tk.BooleanVar(master=self.root, value=True)
         self.export_include_metro_lines_var = tk.BooleanVar(master=self.root, value=True)
@@ -4939,13 +4905,6 @@ class MetroMapViewer:
             command=self.redraw,
         )
         show_world_map_toggle.pack(anchor='w', padx=16, pady=(4, 6))
-        show_world_map_bounds_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Auto Fill target',
-            variable=self.show_world_map_bounds_var,
-            command=self.redraw,
-        )
-        show_world_map_bounds_toggle.pack(anchor='w', padx=16, pady=(0, 6))
         connected_area_toggle = self._make_sidebar_checkbox(
             self.sidebar,
             text='Connected area',
@@ -4981,59 +4940,6 @@ class MetroMapViewer:
             command=self.redraw,
         )
         labels_toggle.pack(anchor='w', padx=16, pady=(0, 12))
-
-        world_map_section = self._make_collapsible_sidebar_section('World Map', expanded=True)
-        mode_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
-        mode_row.pack(fill='x', padx=16, pady=(4, 6))
-        tk.Label(
-            mode_row,
-            text='Mode',
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            width=5,
-            anchor='w',
-        ).pack(side='left')
-        world_map_mode_menu = self._make_sidebar_option_menu(mode_row, self.world_map_mode_var)
-        world_map_mode_menu.pack(side='left', fill='x', expand=True)
-        self._populate_option_menu(
-            world_map_mode_menu,
-            self.world_map_mode_var,
-            _world_map_mode_labels(),
-        )
-        self._make_sidebar_hint(
-            'Auto Fill targets the dotted blue rectangle next, then keeps advancing through the planner.',
-            parent=world_map_section,
-        ).pack(anchor='w', padx=16, pady=(0, 6))
-        self.world_map_status_text = tk.Text(
-            world_map_section,
-            bg=INFO_BOX_BACKGROUND,
-            fg=TEXT_COLOR,
-            insertbackground=TEXT_COLOR,
-            wrap='word',
-            relief='flat',
-            bd=0,
-            highlightthickness=1,
-            highlightbackground=INFO_BOX_BORDER,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            padx=12,
-            pady=10,
-            spacing1=2,
-            spacing3=4,
-            height=8,
-            cursor='xterm',
-            exportselection=True,
-        )
-        self.world_map_status_text.pack(fill='x', padx=16, pady=(0, 8))
-        self._set_world_map_status_text(self.world_map_status_var.get())
-        world_map_auto_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
-        world_map_auto_row.pack(fill='x', padx=16, pady=(0, 12))
-        self.world_map_auto_fill_button = self._make_sidebar_button(
-            world_map_auto_row,
-            text='Start Auto Fill',
-            command=self._start_auto_fill_world_map,
-        )
-        self.world_map_auto_fill_button.pack(side='left')
 
         railway_section = self._make_collapsible_sidebar_section('Railway Finishing', expanded=True)
         self._make_sidebar_hint(
@@ -5307,6 +5213,60 @@ class MetroMapViewer:
         )
         self.path_edge_list_frame.pack(fill='x', padx=16, pady=(4, 12))
         self._refresh_path_edge_list()
+
+        world_map_section = self._make_collapsible_sidebar_section('World Map', expanded=False)
+        mode_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
+        mode_row.pack(fill='x', padx=16, pady=(4, 6))
+        tk.Label(
+            mode_row,
+            text='Mode',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            width=5,
+            anchor='w',
+        ).pack(side='left')
+        world_map_mode_menu = self._make_sidebar_option_menu(mode_row, self.world_map_mode_var)
+        world_map_mode_menu.pack(side='left', fill='x', expand=True)
+        self._populate_option_menu(
+            world_map_mode_menu,
+            self.world_map_mode_var,
+            _world_map_mode_labels(),
+        )
+        self._make_sidebar_hint(
+            'Auto Fill keeps advancing through the planner until the rendered map is complete.',
+            parent=world_map_section,
+        ).pack(anchor='w', padx=16, pady=(0, 6))
+        self.world_map_status_text = tk.Text(
+            world_map_section,
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR,
+            wrap='word',
+            relief='flat',
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=INFO_BOX_BORDER,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            padx=12,
+            pady=10,
+            spacing1=2,
+            spacing3=4,
+            height=8,
+            cursor='xterm',
+            exportselection=True,
+        )
+        self.world_map_status_text.pack(fill='x', padx=16, pady=(0, 8))
+        self._set_world_map_status_text(self.world_map_status_var.get())
+        world_map_auto_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
+        world_map_auto_row.pack(fill='x', padx=16, pady=(0, 12))
+        self.world_map_auto_fill_button = self._make_sidebar_button(
+            world_map_auto_row,
+            text='Start Auto Fill',
+            command=self._start_auto_fill_world_map,
+        )
+        self.world_map_auto_fill_button.pack(side='left')
+
         self._refresh_route_controls()
 
     def _make_collapsible_sidebar_section(self, title: str, *, expanded: bool) -> tk.Frame:
@@ -5707,10 +5667,9 @@ class MetroMapViewer:
         self,
         message: str,
         rendered_map: bool,
-        active_target: tuple[int, int] | None = None,
     ) -> None:
         message_kind: Literal['progress', 'rendered'] = 'rendered' if rendered_map else 'progress'
-        self.world_map_task_queue.put((message_kind, True, message, active_target))
+        self.world_map_task_queue.put((message_kind, True, message))
 
     def _selected_world_map_mode_key(self) -> str:
         return _world_map_mode_key_for_label(self.world_map_mode_var.get())
@@ -5742,24 +5701,22 @@ class MetroMapViewer:
             try:
                 message = worker()
             except Exception as exc:
-                self.world_map_task_queue.put(('done', False, f'{task_label} failed.\n{exc}', None))
+                self.world_map_task_queue.put(('done', False, f'{task_label} failed.\n{exc}'))
                 return
-            self.world_map_task_queue.put(('done', True, message, None))
+            self.world_map_task_queue.put(('done', True, message))
 
         threading.Thread(target=run_worker, daemon=True).start()
         self.root.after(200, self._poll_world_map_task)
 
     def _poll_world_map_task(self) -> None:
         try:
-            message_kind, succeeded, message, active_target = self.world_map_task_queue.get_nowait()
+            message_kind, succeeded, message = self.world_map_task_queue.get_nowait()
         except queue.Empty:
             if self.world_map_task_running:
                 self.root.after(200, self._poll_world_map_task)
             return
 
         if message_kind in ('progress', 'rendered'):
-            if active_target is not None:
-                self._set_world_map_active_target(active_target)
             if self.world_map_auto_fill_stop_requested:
                 message = (
                     f'{message.rstrip()}\n\n'
@@ -5858,8 +5815,6 @@ class MetroMapViewer:
         self.world_map_auto_fill_stop_event = stop_event
         self.world_map_auto_fill_running = True
         self.world_map_auto_fill_stop_requested = False
-        self.world_map_active_target = None
-        self.world_map_active_target_preview = None
         self._set_world_map_auto_fill_button('running')
 
         self._start_world_map_task(
@@ -5890,9 +5845,6 @@ class MetroMapViewer:
         self.world_map_auto_fill_stop_event = None
         self.world_map_auto_fill_running = False
         self.world_map_auto_fill_stop_requested = False
-        self.world_map_active_target = None
-        self.world_map_active_target_preview = None
-        self.world_map_next_target_cache_key = None
         self._set_world_map_auto_fill_button('idle')
         self.redraw()
 
@@ -8259,11 +8211,6 @@ class MetroMapViewer:
         self.world_map_render_payload = None
         self.world_map_render_source_image = None
         self.world_map_render_cache_checked_at = 0.0
-        self.world_map_next_target_cache_key = None
-        self.world_map_next_target_preview = None
-        if not self.world_map_auto_fill_running:
-            self.world_map_active_target = None
-            self.world_map_active_target_preview = None
         self.world_map_spiral_check_cache_stat = None
         self.world_map_spiral_check_payload = None
 
@@ -8479,106 +8426,6 @@ class MetroMapViewer:
         self.world_map_render_source_image = source_image
         return (payload, source_image)
 
-    def _current_world_map_next_target_preview(self) -> Any | None:
-        if self.world_map_auto_fill_running and self.world_map_active_target_preview is not None:
-            return self.world_map_active_target_preview
-
-        try:
-            from worldgen.config import load_config
-            from worldgen.generator import (
-                HEADLESS_LOADER_PROGRESS_FILE_NAME,
-                BedrockWorldGenerator,
-            )
-
-            config = load_config()
-            mode_key = self._selected_world_map_mode_key()
-            if mode_key != 'local_seed_surface':
-                self.world_map_next_target_cache_key = None
-                self.world_map_next_target_preview = None
-                return None
-            generator = BedrockWorldGenerator(config)
-            mode_paths = generator.paths_for_mode(mode_key)
-            progress_path = config.paths.cache_dir / HEADLESS_LOADER_PROGRESS_FILE_NAME
-            cache_key = (
-                mode_key,
-                _file_stat_key(config.config_path),
-                _file_stat_key(mode_paths.render_cache_path),
-                _file_stat_key(mode_paths.render_image_path),
-                _file_stat_key(progress_path),
-            )
-            if cache_key == self.world_map_next_target_cache_key:
-                return self.world_map_next_target_preview
-        except Exception:
-            self.world_map_next_target_cache_key = None
-            self.world_map_next_target_preview = None
-            return None
-
-        self._ensure_world_map_target_preview_async(cache_key)
-        return self.world_map_next_target_preview
-
-    def _ensure_world_map_target_preview_async(self, cache_key: tuple[object, ...]) -> None:
-        if self.world_map_target_preview_build_key == cache_key:
-            return
-        self.world_map_target_preview_build_key = cache_key
-
-        def build_preview() -> None:
-            try:
-                from worldgen.config import load_config
-                from worldgen.generator import BedrockWorldGenerator
-
-                preview = BedrockWorldGenerator(load_config()).next_headless_loader_target_preview(
-                    include_manual_target=False,
-                )
-            except Exception:
-                preview = None
-            self.world_map_target_preview_queue.put((cache_key, preview))
-
-        threading.Thread(target=build_preview, daemon=True).start()
-        self._schedule_world_map_target_preview_poll()
-
-    def _schedule_world_map_target_preview_poll(self) -> None:
-        if self.world_map_target_preview_poll_after_id is not None:
-            return
-        self.world_map_target_preview_poll_after_id = self.root.after(
-            250,
-            self._poll_world_map_target_preview_queue,
-        )
-
-    def _poll_world_map_target_preview_queue(self) -> None:
-        self.world_map_target_preview_poll_after_id = None
-        handled_message = False
-        while True:
-            try:
-                cache_key, preview = self.world_map_target_preview_queue.get_nowait()
-            except queue.Empty:
-                break
-            if cache_key != self.world_map_target_preview_build_key:
-                continue
-            self.world_map_target_preview_build_key = None
-            self.world_map_next_target_cache_key = cache_key
-            self.world_map_next_target_preview = preview
-            handled_message = True
-
-        if handled_message:
-            self.redraw()
-            return
-
-        if self.world_map_target_preview_build_key is not None:
-            self._schedule_world_map_target_preview_poll()
-
-    def _set_world_map_active_target(self, target: tuple[int, int]) -> None:
-        self.world_map_active_target = target
-        self.world_map_active_target_preview = self._world_map_target_preview_for_point(target)
-
-    def _world_map_target_preview_for_point(self, point: tuple[int, int]) -> Any | None:
-        try:
-            from worldgen.config import load_config
-            from worldgen.generator import BedrockWorldGenerator
-
-            return BedrockWorldGenerator(load_config()).headless_loader_target_preview_for_point(point)
-        except Exception:
-            return None
-
     def _current_world_map_spiral_check_preview(self) -> dict[str, object] | None:
         try:
             from worldgen.config import load_config
@@ -8676,9 +8523,6 @@ class MetroMapViewer:
         underlay_image = ImageTk.PhotoImage(underlay)
         self.overlay_image_refs.append(underlay_image)
         self.canvas.create_image(visible_left, visible_top, anchor='nw', image=underlay_image)
-        if not self.show_world_map_bounds_var.get():
-            return
-        self._draw_world_map_next_target_bounds()
 
     def _draw_world_map_render_bounds(self, payload: dict[str, object]) -> None:
         bounds = _world_map_visible_render_bounds_from_payload(payload)
@@ -8815,101 +8659,6 @@ class MetroMapViewer:
                 width=width,
                 dash=dash,
             )
-
-    def _draw_world_map_next_target_bounds(self) -> None:
-        preview = self._current_world_map_next_target_preview()
-        if preview is None:
-            return
-
-        self._draw_world_map_target_preview_rectangle(
-            preview,
-            outline=WORLD_MAP_NEXT_TARGET_COLOR,
-            width=WORLD_MAP_NEXT_TARGET_WIDTH,
-            dash=WORLD_MAP_NEXT_TARGET_DASH,
-        )
-
-    def _draw_world_map_target_preview_rectangle(
-        self,
-        preview: Any,
-        *,
-        outline: str,
-        width: int,
-        dash: tuple[int, int] | None,
-    ) -> None:
-        canvas_bounds = self._world_map_target_canvas_bounds(preview)
-        if canvas_bounds is None:
-            return
-        left, top, right, bottom = canvas_bounds
-
-        if dash is None:
-            self.canvas.create_rectangle(
-                left,
-                top,
-                right,
-                bottom,
-                outline=outline,
-                width=width,
-            )
-        else:
-            self.canvas.create_rectangle(
-                left,
-                top,
-                right,
-                bottom,
-                outline=outline,
-                width=width,
-                dash=dash,
-            )
-        coverage = getattr(preview, 'coverage', None)
-        if not isinstance(coverage, (int, float)):
-            return
-        progress = max(0.0, min(1.0, float(coverage)))
-        progress_top = max(top, bottom - WORLD_MAP_TARGET_PROGRESS_HEIGHT)
-        self.canvas.create_rectangle(
-            left,
-            progress_top,
-            right,
-            bottom,
-            outline='',
-            fill=WORLD_MAP_TARGET_PROGRESS_BACKGROUND,
-        )
-        if progress <= 0:
-            return
-        self.canvas.create_rectangle(
-            left,
-            progress_top,
-            left + ((right - left) * progress),
-            bottom,
-            outline='',
-            fill=outline,
-        )
-
-    def _world_map_target_canvas_bounds(
-        self,
-        preview: Any,
-    ) -> tuple[float, float, float, float] | None:
-        min_x = getattr(preview, 'min_x', None)
-        max_x = getattr(preview, 'max_x', None)
-        min_z = getattr(preview, 'min_z', None)
-        max_z = getattr(preview, 'max_z', None)
-        if not isinstance(min_x, (int, float)):
-            return None
-        if not isinstance(max_x, (int, float)):
-            return None
-        if not isinstance(min_z, (int, float)):
-            return None
-        if not isinstance(max_z, (int, float)):
-            return None
-
-        top_left_x, top_left_y = self.world_to_canvas((float(min_x), -float(min_z)))
-        bottom_right_x, bottom_right_y = self.world_to_canvas((float(max_x), -float(max_z)))
-        left = min(top_left_x, bottom_right_x)
-        right = max(top_left_x, bottom_right_x)
-        top = min(top_left_y, bottom_right_y)
-        bottom = max(top_left_y, bottom_right_y)
-        if right <= left or bottom <= top:
-            return None
-        return (left, top, right, bottom)
 
     def _draw_planning_circle(self) -> None:
         if not self.show_planning_circle_var.get():

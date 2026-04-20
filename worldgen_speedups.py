@@ -120,7 +120,7 @@ def _patched_auto_fill_step_text_for_generator(
     generator: Any,
     *,
     step_number: int | None = None,
-    progress_callback: Callable[[str, bool, tuple[int, int] | None], None] | None = None,
+    progress_callback: Callable[[str, bool], None] | None = None,
 ) -> str:
     step_label = f'Auto fill step {step_number}' if step_number is not None else 'Auto fill step'
     cached_pixel_result = generator.render_cached_blank_pixel_batch()
@@ -165,7 +165,6 @@ def _patched_auto_fill_step_text_for_generator(
                 'No cached pixels could be filled from that batch, so Auto Fill is loading more terrain.'
             ),
             True,
-            None,
         )
 
     before_load_colored_pixels = (
@@ -173,22 +172,6 @@ def _patched_auto_fill_step_text_for_generator(
         if hasattr(generator, 'cached_colored_pixel_count')
         else 0
     )
-    active_target: tuple[int, int] | None = None
-    if hasattr(generator, 'next_headless_loader_target_preview'):
-        active_preview = generator.next_headless_loader_target_preview(include_manual_target=False)
-        if active_preview is not None:
-            active_target = (active_preview.target_x, active_preview.target_z)
-    if progress_callback is not None and active_target is not None:
-        progress_callback(
-            (
-                f'{step_label} is loading the active target.\n\n'
-                f'Active target square: {active_target[0]},{active_target[1]}\n'
-                'Auto Fill will keep the server warm between steps and use a fast target render.'
-            ),
-            False,
-            active_target,
-        )
-
     load_results = [
         generator.load_chunks_headless(stop_after=False, restart_existing=False)
         for _index in range(base.WORLD_MAP_AUTO_LOAD_PASSES)
@@ -205,7 +188,6 @@ def _patched_auto_fill_step_text_for_generator(
                 'This pass is using the recent packet cache only for speed.'
             ),
             False,
-            render_target,
         )
 
     for load_result in load_results:

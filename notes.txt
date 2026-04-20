@@ -1,41 +1,30 @@
 Minecraft Metro Map Notes
 =========================
 
-#App (Python Version)
-[] ability to export svg of the map with full block-by-block resolution
-[] when user is zoomed in to an acceptable level, switch map resolution to block-by-block so we can see exactly what’s going on. This should mirror what satellite maps do when you zoom in, but only when that high of a resolution is going to matter
+Desktop App
+-----------
+[] Add a high-resolution export path for SVG or raster output when a block-level map is needed.
+[] When zoomed in far enough, consider switching the world-map underlay to a sharper block-level rendering mode.
+[] Add a small smoke-test script for launching the Tk app far enough to build the sidebar and verify default section state.
+[] Review whether the World Map section can own more of its controls so the Show/Hide area stays focused on visual layers only.
 
-#App (Web Version)
+Web Viewer
+----------
+[] Add a lightweight browser smoke test that confirms the canvas, network JSON, and terrain image all load.
+[] Add a regression check for world-map image bounds so the rendered image continues to match the true image dimensions.
+[] Consider exposing a simple "fit rendered map" action if the full network view makes the terrain hard to inspect.
 
-#World Map
-   [] this should be a completely virtual experience. no minecraft world will be opened at anytime to generate the terrain. it should just be based off the seed and the seed alone. if docker desktop is looking for an open or saved minecraft file, it will never find one. we should reroute it if this is the case
-   [] keep filling the rectangle with repeated Auto Fill Step clicks.
-      - reset backup: `worldgen_data/reset_backups/20260416_094729`
-      - active generated world folder: `metro_map_world_boxfill`
-      - render area is centered on Blackport at x=294, z=390
-      - Auto Fill now starts at Blackport/world spawn only; no teleport targets are sent
-      - latest fresh Blackport-only load cached 545 chunk columns
-      - latest fresh render reads 545 chunk columns and draws 139520 known-color pixels
-      - latest fresh report found 1116 sampled uncolored occurrences
-      - Auto Fill now advances through least-covered rectangular targets with zero configured overlap
-      - next target rectangle is drawn in blue around the next rectangular load target
-      - latest expansion pass targeted (294, 246), cached 760 chunk columns, and rendered 194560 known-color pixels
-      - next expansion target preview draws from a 64-target rectangular pool
-      - coverage now includes cached headless packet columns as well as LevelDB columns
-      - Auto Fill is the only world-map button; it runs one batched Bedrock load session, then renders
-      - current load session settings: wait 75 seconds max, 4 teleport targets, chunk radius 16, zero-block target overlap
-      - default gray / unknown blocks are now transparent instead of rendered, so the map is intentionally sparse until more network palette IDs are mapped back to block names
-      - unknown/uncolored block details are written to `worldgen_output/uncolored_blocks_report.txt` after each render
-      - headless loader now saves `headless_start_game.json` so the next renderer pass can inspect whether Bedrock is using hashed block network IDs and which block names were advertised
-      - do not repair or edit the live Bedrock DB before Auto Fill; the old recovered world crashed after repeated restarts plus live DB mutation
+World Map / Generation
+----------------------
+[] Improve the terrain palette after coverage is reliable.
+[] Keep Auto Fill focused on one clear flow: choose the next blank target, load chunks, render, then update status.
+[] If server-side teleports stop persisting chunk areas, make the headless client move itself or reconnect at the next target.
+[] Consider moving generated world data out of iCloud Drive if performance or sync weirdness becomes a problem.
+[] Remember that changing the seed later will not regenerate an existing saved world.
+[] Remember that Bedrock only saves chunks that have actually been generated or visited.
+[] figure out how to connect to live playstation server that i would be playing in to get a map of the actual world and not just the generic seed im in
 
-
-Future Items
-------------
-[x] World map: expand chunk loading across the full requested render area, not just the first patch around Blackport.
-[] World map: if server-side teleports do not persist new chunk areas, make the headless client move itself or reconnect at the next target.
-[] World map: add a focused preview or "zoom to rendered area" helper if the full-radius render stays hard to inspect.
-[] World map: improve the terrain palette after coverage is reliable.
-[] World map: consider moving generated world data out of iCloud Drive if performance or sync weirdness becomes a problem.
-[] World map: remember that changing the seed later will not magically regenerate an existing saved world.
-[] World map: remember that Bedrock only saves chunks that have actually been generated/visited.
+Cleanup Candidates
+------------------
+[] Keep an eye on patch modules such as worldgen_speedups.py and world_map_overrides.py; consolidate only when their behavior is stable.
+[] Leave small public launch wrappers in place unless there is a clear replacement entrypoint.

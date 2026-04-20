@@ -89,40 +89,6 @@ def _compute_underlay_draw_plan(
     return (draw_left, draw_top, target_width, target_height, source_box)
 
 
-def _patched_draw_world_map_target_preview_rectangle(
-    self: "base.MetroMapViewer",
-    preview: Any,
-    *,
-    outline: str,
-    width: int,
-    dash: tuple[int, int] | None,
-) -> None:
-    canvas_bounds = self._world_map_target_canvas_bounds(preview)
-    if canvas_bounds is None:
-        return
-    left, top, right, bottom = canvas_bounds
-
-    if dash is None:
-        self.canvas.create_rectangle(
-            left,
-            top,
-            right,
-            bottom,
-            outline=outline,
-            width=width,
-        )
-    else:
-        self.canvas.create_rectangle(
-            left,
-            top,
-            right,
-            bottom,
-            outline=outline,
-            width=width,
-            dash=dash,
-        )
-
-
 def _edge_runs(edge_mask: np.ndarray) -> list[tuple[int, int]]:
     runs: list[tuple[int, int]] = []
     run_start = None
@@ -263,10 +229,6 @@ def _patched_draw_world_map_render_underlay(self: "base.MetroMapViewer") -> None
     world_map_analysis.draw_internal_voids(self, payload, source_image)
     _draw_world_boundary_completion_edges(self, payload, source_image)
 
-    if not self.show_world_map_bounds_var.get():
-        return
-    self._draw_world_map_next_target_bounds()
-
 
 def _patched_current_world_map_svg_image(self: "base.MetroMapViewer") -> base.SvgRasterImage | None:
     render_underlay = self._current_world_map_render_underlay()
@@ -303,6 +265,5 @@ def _patched_current_world_map_svg_image(self: "base.MetroMapViewer") -> base.Sv
 
 
 def apply() -> None:
-    base.MetroMapViewer._draw_world_map_target_preview_rectangle = _patched_draw_world_map_target_preview_rectangle
     base.MetroMapViewer._draw_world_map_render_underlay = _patched_draw_world_map_render_underlay
     base.MetroMapViewer._current_world_map_svg_image = _patched_current_world_map_svg_image
