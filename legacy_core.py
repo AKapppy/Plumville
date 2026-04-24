@@ -15,7 +15,7 @@ from datetime import datetime
 from itertools import combinations
 from math import ceil, dist, floor, log
 from pathlib import Path
-from typing import Any, Callable, Final, Literal, NotRequired, Sequence, TypedDict, cast
+from typing import Any, Callable, ClassVar, Final, Iterable, Literal, NotRequired, Sequence, TypedDict, cast
 
 from PIL import Image, ImageDraw, ImageTk
 
@@ -25,7 +25,9 @@ Image.MAX_IMAGE_PIXELS = None
 BLACKPORT_LBL: Final[str] = 'Blackport'
 BLACKPORT_VAR: Final[str] = 'P_ABCDE'
 COORDINATE_ENDPOINT_PREFIX: Final[str] = 'coord:'
+CITY_LIMIT_ENDPOINT_PREFIX: Final[str] = 'city:'
 COORDINATE_NODE_CONTEXT: Final[str] = '__coord__'
+STATION_CITY_PATH_CONTEXT: Final[str] = '__station_city_path__'
 METRO_NETWORK_PATH: Final[Path] = Path(__file__).with_name('metro_network.json')
 METRO_NETWORK_BACKUP_PATH: Final[Path] = Path(__file__).with_name('metro_network.last.json')
 METRO_NETWORK_HISTORY_DIR: Final[Path] = Path(__file__).with_name('metro_network.history')
@@ -59,6 +61,12 @@ PATH_EDIT_HANDLE_TOLERANCE: Final[int] = 10
 PATH_EDIT_ACTIVE_OUTLINE_WIDTH: Final[int] = 9
 PATH_EDIT_ACTIVE_WIDTH: Final[int] = 4
 SELECTED_PATH_NODE_RADIUS: Final[int] = 9
+CITY_LIMIT_FILL: Final[str] = '#f3d66b'
+CITY_LIMIT_OUTLINE: Final[str] = '#ffe8a3'
+CITY_LIMIT_ACTIVE_FILL: Final[str] = '#8ad4ff'
+CITY_LIMIT_ACTIVE_OUTLINE: Final[str] = '#d8f3ff'
+CITY_LIMIT_WIDTH: Final[int] = 2
+CITY_LIMIT_DASH: Final[tuple[int, int]] = (8, 4)
 LINE_CLICK_TOLERANCE: Final[int] = 8
 DRAG_THRESHOLD: Final[int] = 4
 INFO_BOX_BACKGROUND: Final[str] = '#111111'
@@ -145,6 +153,7 @@ CONNECTED_TASK_WEIGHTS: Final[dict[str, int]] = {
     'name': 1,
     'façade': 3,
     'station': 6,
+    'walking paths': 3,
     'finished railway': 4,
     'signs': 2,
     'chimes': 2,
@@ -182,10 +191,14 @@ class StopRecord(TypedDict):
     y: int
     has_connector: bool
     has_full_station: bool
+    has_walking_paths: bool
     is_connected: bool
     has_finished_railway: bool
     has_signs: bool
     chime_directions: list[ChimeDirection]
+    station_entry_x: NotRequired[int]
+    station_entry_y: NotRequired[int]
+    city_limit_node_keys: NotRequired[list[str]]
 
 
 class LinePathSpecRecord(TypedDict):
@@ -265,6 +278,7 @@ class MetroNetworkPayload(TypedDict):
 CheckpointField = Literal[
     'has_connector',
     'has_full_station',
+    'has_walking_paths',
     'is_connected',
     'has_finished_railway',
     'has_signs',
@@ -272,6 +286,7 @@ CheckpointField = Literal[
 CHECKPOINT_FIELDS: Final[tuple[CheckpointField, ...]] = (
     'has_connector',
     'has_full_station',
+    'has_walking_paths',
     'is_connected',
     'has_finished_railway',
     'has_signs',
@@ -281,7 +296,7 @@ AlignmentAxisInput = Literal['x', 'y', 'auto']
 RouteNode = tuple[str, str]
 RouteKind = Literal['ride', 'transfer', 'connector', 'walk', 'fly']
 ExtraEdgeKind = Literal['connector', 'walk']
-PathEndpointKind = Literal['stop', 'coord']
+PathEndpointKind = Literal['stop', 'coord', 'city_limit']
 MetroSegmentShape = Literal['direct', 'turn', 'custom']
 
 
@@ -293,18 +308,37 @@ class MetroStop:
     y: int
     has_connector: bool = False
     has_full_station: bool = False
+    has_walking_paths: bool = False
     is_connected: bool = False
     has_finished_railway: bool = False
     has_signs: bool = False
     chime_directions: tuple[ChimeDirection, ...] = ()
+    station_entry_x: int | None = None
+    station_entry_y: int | None = None
+    city_limit_node_keys: tuple[str, ...] = ()
 
     @property
     def coordinates(self) -> tuple[int, int]:
         return (self.x, self.y)
 
     @property
+    def station_entry_coordinates(self) -> tuple[int, int] | None:
+        if self.station_entry_x is None or self.station_entry_y is None:
+            return None
+        return (self.station_entry_x, self.station_entry_y)
+
+    @property
+    def walking_coordinates(self) -> tuple[int, int]:
+        return self.station_entry_coordinates or self.coordinates
+
+    @property
     def plot_coordinates(self) -> tuple[int, int]:
         return (self.x, -self.y)
+
+    @property
+    def walking_plot_coordinates(self) -> tuple[int, int]:
+        walking_x, walking_y = self.walking_coordinates
+        return (walking_x, -walking_y)
 
     @property
     def distance_to_blackport(self) -> int:
@@ -374,6 +408,11 @@ class PathEndpoint:
     def display_label(self) -> str:
         if self.kind == 'stop':
             return _display_label(STOPS_BY_VAR[self.key].lbl)
+        if self.kind == 'city_limit':
+            stop_var = _city_limit_stop_var_from_key(self.key)
+            if stop_var in STOPS_BY_VAR:
+                return f'{_display_label(STOPS_BY_VAR[stop_var].lbl)} city limits'
+            return 'City limits'
         path_node = PATH_NODES_BY_KEY.get(self.key)
         if path_node is not None:
             return path_node.display_label
@@ -383,6 +422,11 @@ class PathEndpoint:
     def input_text(self) -> str:
         if self.kind == 'stop':
             return STOPS_BY_VAR[self.key].lbl
+        if self.kind == 'city_limit':
+            stop_var = _city_limit_stop_var_from_key(self.key)
+            if stop_var in STOPS_BY_VAR:
+                return f'City limits: {STOPS_BY_VAR[stop_var].lbl}'
+            return self.key
         path_node = PATH_NODES_BY_KEY.get(self.key)
         if path_node is not None:
             return path_node.input_text
@@ -614,6 +658,14 @@ def _coordinate_endpoint_key(x: int, y: int) -> str:
     return f'{COORDINATE_ENDPOINT_PREFIX}{x},{y}'
 
 
+def _city_limit_endpoint_key(stop_var: str) -> str:
+    return f'{CITY_LIMIT_ENDPOINT_PREFIX}{stop_var}'
+
+
+def _city_limit_stop_var_from_key(endpoint_key: str) -> str:
+    return endpoint_key.removeprefix(CITY_LIMIT_ENDPOINT_PREFIX)
+
+
 def _coerce_int(value: object) -> int | None:
     try:
         if isinstance(value, bool):
@@ -758,10 +810,40 @@ def _all_path_nodes() -> tuple[PathNode, ...]:
     )
 
 
+def _city_limit_world_points(stop: MetroStop) -> tuple[tuple[int, int], ...]:
+    points: list[tuple[int, int]] = []
+    for node_key in stop.city_limit_node_keys:
+        coordinates = _coordinates_from_endpoint_key(node_key)
+        if coordinates is not None:
+            points.append(coordinates)
+    return tuple(points)
+
+
+def _city_limit_centroid_coordinates(stop: MetroStop) -> tuple[int, int] | None:
+    points = _city_limit_world_points(stop)
+    if not points:
+        return None
+    return (
+        round(sum(point[0] for point in points) / len(points)),
+        round(sum(point[1] for point in points) / len(points)),
+    )
+
+
 def _path_endpoint_from_key(endpoint_key: str) -> PathEndpoint | None:
+    if endpoint_key.startswith(CITY_LIMIT_ENDPOINT_PREFIX):
+        stop_var = _city_limit_stop_var_from_key(endpoint_key)
+        stop = STOPS_BY_VAR.get(stop_var)
+        if stop is None:
+            return None
+        coordinates = _city_limit_centroid_coordinates(stop)
+        if coordinates is None:
+            return None
+        return PathEndpoint(kind='city_limit', key=endpoint_key, x=coordinates[0], y=coordinates[1])
+
     if endpoint_key in STOPS_BY_VAR:
         stop = STOPS_BY_VAR[endpoint_key]
-        return PathEndpoint(kind='stop', key=stop.var, x=stop.x, y=stop.y)
+        walking_x, walking_y = stop.walking_coordinates
+        return PathEndpoint(kind='stop', key=stop.var, x=walking_x, y=walking_y)
 
     coordinates = _coordinates_from_endpoint_key(endpoint_key)
     if coordinates is None:
@@ -770,6 +852,20 @@ def _path_endpoint_from_key(endpoint_key: str) -> PathEndpoint | None:
 
 
 def _path_endpoint_from_runtime_identifier(identifier: str) -> PathEndpoint | None:
+    normalized_identifier = identifier.strip()
+    for prefix in ('City limits:', 'City limit:'):
+        if normalized_identifier.lower().startswith(prefix.lower()):
+            stop_var = _resolve_stop_var_runtime(normalized_identifier[len(prefix):].strip())
+            if stop_var is not None:
+                return _path_endpoint_from_key(_city_limit_endpoint_key(stop_var))
+
+    lower_identifier = normalized_identifier.lower()
+    if lower_identifier.endswith(' city limits') or lower_identifier.endswith(' city limit'):
+        suffix = ' city limits' if lower_identifier.endswith(' city limits') else ' city limit'
+        stop_var = _resolve_stop_var_runtime(normalized_identifier[:-len(suffix)].strip())
+        if stop_var is not None:
+            return _path_endpoint_from_key(_city_limit_endpoint_key(stop_var))
+
     stop_var = _resolve_stop_var_runtime(identifier)
     if stop_var is not None:
         return _path_endpoint_from_key(stop_var)
@@ -809,14 +905,15 @@ def _path_endpoint_record_from_identifier(
 def _path_endpoint_record_coordinates(endpoint_record: PathEndpointRecord) -> tuple[int, int]:
     if endpoint_record['kind'] == 'stop':
         stop = STOPS_BY_VAR[endpoint_record['stop_var']]
-        return stop.coordinates
+        return stop.walking_coordinates
     return (int(endpoint_record['x']), int(endpoint_record['y']))
 
 
 def _path_endpoint_from_record(endpoint_record: PathEndpointRecord) -> PathEndpoint:
     if endpoint_record['kind'] == 'stop':
         stop = STOPS_BY_VAR[endpoint_record['stop_var']]
-        return PathEndpoint(kind='stop', key=stop.var, x=stop.x, y=stop.y)
+        walking_x, walking_y = stop.walking_coordinates
+        return PathEndpoint(kind='stop', key=stop.var, x=walking_x, y=walking_y)
 
     x = int(endpoint_record['x'])
     y = int(endpoint_record['y'])
@@ -1484,7 +1581,8 @@ def _build_map_svg(
             (
                 f'  <image x="{world_map_image.left:.2f}" y="{world_map_image.top:.2f}" '
                 f'width="{world_map_image.width}" height="{world_map_image.height}" '
-                f'href="{world_map_image.data_uri}" preserveAspectRatio="none" />'
+                f'href="{world_map_image.data_uri}" preserveAspectRatio="none" '
+                f'style="image-rendering: pixelated;" />'
             )
         )
 
@@ -2610,6 +2708,8 @@ def _missing_station_tasks(stop: MetroStop) -> list[str]:
         tasks.append('façade')
     if not stop.has_full_station:
         tasks.append('station')
+    if not stop.has_walking_paths:
+        tasks.append('walking paths')
     if stop.is_connected and not stop.has_finished_railway:
         tasks.append('finished railway')
     if stop.is_connected and not stop.has_signs:
@@ -3480,7 +3580,7 @@ def _station_has_required_chimes(stop: MetroStop) -> bool:
 
 
 def _station_checkpoint_total(stop: MetroStop) -> int:
-    base_total = 4
+    base_total = 5
     if stop.is_connected:
         base_total += 2
     if stop.is_connected and _station_max_chime_count(stop) > 0:
@@ -3493,6 +3593,7 @@ def _station_checkpoint_count(stop: MetroStop) -> int:
         stop.has_name,
         stop.has_connector,
         stop.has_full_station,
+        stop.has_walking_paths,
         stop.is_connected,
     ))
     if stop.is_connected:
@@ -3858,7 +3959,256 @@ def _graph_nodes_for_endpoint(
     graph: dict[RouteNode, list[RouteEdge]],
     endpoint_key: str,
 ) -> list[RouteNode]:
-    return sorted(node for node in graph if node[0] == endpoint_key)
+    if endpoint_key.startswith(CITY_LIMIT_ENDPOINT_PREFIX):
+        stop_var = _city_limit_stop_var_from_key(endpoint_key)
+        stop = STOPS_BY_VAR.get(stop_var)
+        if stop is None:
+            return []
+        city_nodes: list[RouteNode] = []
+        for node_key in stop.city_limit_node_keys:
+            city_nodes.extend(node for node in graph if node[0] == node_key)
+        return sorted(dict.fromkeys(city_nodes))
+    stop = STOPS_BY_VAR.get(endpoint_key)
+    if stop is not None and (stop.var, STATION_CITY_PATH_CONTEXT) in graph:
+        return [(stop.var, STATION_CITY_PATH_CONTEXT)]
+    return _standard_graph_nodes_for_endpoint(graph, endpoint_key)
+
+
+def _standard_graph_nodes_for_endpoint(
+    graph: dict[RouteNode, list[RouteEdge]],
+    endpoint_key: str,
+) -> list[RouteNode]:
+    return sorted(
+        node
+        for node in graph
+        if node[0] == endpoint_key and node[1] != STATION_CITY_PATH_CONTEXT
+    )
+
+
+def _point_on_world_segment(
+    point: tuple[int, int],
+    segment_start: tuple[int, int],
+    segment_end: tuple[int, int],
+) -> bool:
+    point_x, point_y = point
+    start_x, start_y = segment_start
+    end_x, end_y = segment_end
+    cross_product = ((point_y - start_y) * (end_x - start_x)) - ((point_x - start_x) * (end_y - start_y))
+    if cross_product != 0:
+        return False
+    return (
+        min(start_x, end_x) <= point_x <= max(start_x, end_x)
+        and min(start_y, end_y) <= point_y <= max(start_y, end_y)
+    )
+
+
+def _point_in_world_polygon(point: tuple[int, int], polygon: Sequence[tuple[int, int]]) -> bool:
+    if len(polygon) < 3:
+        return False
+
+    inside = False
+    point_x, point_y = point
+    previous_x, previous_y = polygon[-1]
+    for current_x, current_y in polygon:
+        if _point_on_world_segment(point, (previous_x, previous_y), (current_x, current_y)):
+            return True
+        if (current_y > point_y) != (previous_y > point_y):
+            intersection_x = previous_x + ((point_y - previous_y) * (current_x - previous_x) / (current_y - previous_y))
+            if point_x < intersection_x:
+                inside = not inside
+        previous_x, previous_y = current_x, current_y
+    return inside
+
+
+def _extra_edge_world_points(extra_edge: ExtraEdgeDefinition) -> tuple[tuple[int, int], ...]:
+    if extra_edge.path_points:
+        return extra_edge.path_points
+    return (
+        extra_edge.from_endpoint.coordinates,
+        extra_edge.to_endpoint.coordinates,
+    )
+
+
+def _closest_point_on_world_segment(
+    anchor: tuple[int, int],
+    segment_start: tuple[int, int],
+    segment_end: tuple[int, int],
+) -> tuple[tuple[int, int], float]:
+    anchor_x, anchor_y = anchor
+    start_x, start_y = segment_start
+    end_x, end_y = segment_end
+    delta_x = end_x - start_x
+    delta_y = end_y - start_y
+    segment_length_squared = (delta_x * delta_x) + (delta_y * delta_y)
+    if segment_length_squared <= 0:
+        return (segment_start, 0.0)
+    ratio = (((anchor_x - start_x) * delta_x) + ((anchor_y - start_y) * delta_y)) / segment_length_squared
+    ratio = max(0.0, min(1.0, ratio))
+    return (
+        (
+            round(start_x + (delta_x * ratio)),
+            round(start_y + (delta_y * ratio)),
+        ),
+        ratio,
+    )
+
+
+def _rounded_world_polyline(points: Iterable[tuple[float, float]]) -> tuple[tuple[int, int], ...]:
+    rounded_points: list[tuple[int, int]] = []
+    for point_x, point_y in points:
+        rounded_point = (round(point_x), round(point_y))
+        if rounded_points and rounded_points[-1] == rounded_point:
+            continue
+        rounded_points.append(rounded_point)
+    return tuple(rounded_points)
+
+
+def _world_points_to_plot_points(points: Sequence[tuple[int, int]]) -> tuple[tuple[int, int], ...]:
+    return tuple((point_x, -point_y) for point_x, point_y in points)
+
+
+def _city_path_anchor_candidate_for_edge(
+    stop: MetroStop,
+    city_limit_points: Sequence[tuple[int, int]],
+    extra_edge: ExtraEdgeDefinition,
+) -> tuple[float, float, tuple[int, int]] | None:
+    if extra_edge.kind != 'walk':
+        return None
+
+    world_points = _extra_edge_world_points(extra_edge)
+    if len(world_points) < 2:
+        return None
+
+    anchor_coordinates = stop.walking_coordinates
+    candidates: list[tuple[float, float, tuple[int, int]]] = []
+    traversed_distance = 0.0
+    for start_point, end_point in zip(world_points, world_points[1:]):
+        segment_length = dist(start_point, end_point)
+        for candidate_point, ratio in (
+            (start_point, 0.0),
+            (end_point, 1.0),
+            _closest_point_on_world_segment(anchor_coordinates, start_point, end_point),
+        ):
+            if not _point_in_world_polygon(candidate_point, city_limit_points):
+                continue
+            candidate_distance = dist(anchor_coordinates, candidate_point)
+            candidate_along_distance = traversed_distance + (segment_length * ratio)
+            candidates.append((candidate_distance, candidate_along_distance, candidate_point))
+        traversed_distance += segment_length
+
+    if not candidates:
+        return None
+    return min(candidates, key=lambda candidate: (candidate[0], candidate[1], candidate[2]))
+
+
+def _route_edge_from_city_anchor(
+    anchor_node: RouteNode,
+    target_node: RouteNode,
+    *,
+    distance: int,
+    label: str,
+    world_points: Sequence[tuple[int, int]],
+) -> RouteEdge:
+    return RouteEdge(
+        start=anchor_node,
+        end=target_node,
+        distance=distance,
+        transfer_count=0,
+        kind='walk',
+        label=label,
+        path_points=_world_points_to_plot_points(world_points),
+    )
+
+
+def _append_station_city_path_anchors(graph: dict[RouteNode, list[RouteEdge]]) -> None:
+    for stop in METRO_STOPS:
+        if not stop.has_walking_paths:
+            continue
+        city_limit_points = _city_limit_world_points(stop)
+        if len(city_limit_points) < 3:
+            continue
+
+        best_candidate: tuple[float, float, tuple[int, int], ExtraEdgeDefinition] | None = None
+        for extra_edge in EXTRA_EDGES:
+            if extra_edge.kind != 'walk':
+                continue
+            if not _standard_graph_nodes_for_endpoint(graph, extra_edge.from_endpoint.key):
+                continue
+            if not _standard_graph_nodes_for_endpoint(graph, extra_edge.to_endpoint.key):
+                continue
+            edge_candidate = _city_path_anchor_candidate_for_edge(stop, city_limit_points, extra_edge)
+            if edge_candidate is None:
+                continue
+            candidate = (*edge_candidate, extra_edge)
+            if best_candidate is None or candidate[:3] < best_candidate[:3]:
+                best_candidate = candidate
+
+        if best_candidate is None:
+            continue
+
+        _anchor_distance, anchor_along_distance, anchor_point, extra_edge = best_candidate
+        world_points = _extra_edge_world_points(extra_edge)
+        total_distance = _polyline_distance(world_points)
+        anchor_node = (stop.var, STATION_CITY_PATH_CONTEXT)
+        graph.setdefault(anchor_node, [])
+
+        from_nodes = _standard_graph_nodes_for_endpoint(graph, extra_edge.from_endpoint.key)
+        to_nodes = _standard_graph_nodes_for_endpoint(graph, extra_edge.to_endpoint.key)
+        start_slice = _rounded_world_polyline(
+            reversed(_polyline_slice_between_distances(world_points, 0.0, anchor_along_distance))
+        ) or (anchor_point,)
+        end_slice = _rounded_world_polyline(
+            _polyline_slice_between_distances(world_points, anchor_along_distance, total_distance)
+        ) or (anchor_point,)
+
+        label = extra_edge.display_label
+        start_distance = round(_polyline_distance(start_slice))
+        end_distance = round(_polyline_distance(end_slice))
+        for from_node in from_nodes:
+            from_path = start_slice
+            _append_graph_edge(
+                graph,
+                _route_edge_from_city_anchor(
+                    anchor_node,
+                    from_node,
+                    distance=start_distance,
+                    label=label,
+                    world_points=from_path,
+                ),
+            )
+            _append_graph_edge(
+                graph,
+                _route_edge_from_city_anchor(
+                    from_node,
+                    anchor_node,
+                    distance=start_distance,
+                    label=label,
+                    world_points=tuple(reversed(from_path)),
+                ),
+            )
+
+        for to_node in to_nodes:
+            to_path = end_slice
+            _append_graph_edge(
+                graph,
+                _route_edge_from_city_anchor(
+                    anchor_node,
+                    to_node,
+                    distance=end_distance,
+                    label=label,
+                    world_points=to_path,
+                ),
+            )
+            _append_graph_edge(
+                graph,
+                _route_edge_from_city_anchor(
+                    to_node,
+                    anchor_node,
+                    distance=end_distance,
+                    label=label,
+                    world_points=tuple(reversed(to_path)),
+                ),
+            )
 
 
 def _append_graph_edge(
@@ -3985,6 +4335,9 @@ def _build_route_graph(
                         ),
                     )
 
+    if allow_walk:
+        _append_station_city_path_anchors(graph)
+
     return graph
 
 
@@ -4030,6 +4383,30 @@ def _append_route_step(steps: list[RouteStep], edge: RouteEdge) -> None:
             line_name=previous_step.line_name,
             label=previous_step.label,
             stop_vars=combined_stop_vars,
+            path_points=combined_path_points,
+        )
+        return
+
+    if (
+        steps
+        and edge.kind == 'walk'
+        and steps[-1].kind == 'walk'
+        and (steps[-1].label or '') == (edge.label or '')
+    ):
+        previous_step = steps[-1]
+        combined_path_points = previous_step.path_points
+        if combined_path_points and edge.path_points and combined_path_points[-1] == edge.path_points[0]:
+            combined_path_points = combined_path_points + edge.path_points[1:]
+        else:
+            combined_path_points = combined_path_points + edge.path_points
+        steps[-1] = RouteStep(
+            kind='walk',
+            start_key=previous_step.start_key,
+            end_key=end_key,
+            distance=previous_step.distance + edge.distance,
+            line_name=previous_step.line_name,
+            label=previous_step.label,
+            stop_vars=previous_step.stop_vars + (end_key,),
             path_points=combined_path_points,
         )
         return
@@ -4596,6 +4973,8 @@ def _connected_route_area_world_loops() -> tuple[tuple[tuple[float, float], ...]
 
 
 class MetroMapViewer:
+    _path_detection_applied: ClassVar[bool] = False
+
     def __init__(
         self,
         width: int = PLOT_WIDTH,
@@ -4614,6 +4993,7 @@ class MetroMapViewer:
         self.selected_stop_var: str | None = None
         self.selected_path_node_key: str | None = None
         self.selected_metro_segment_key: tuple[str, str, str] | None = None
+        self.city_limits_edit_stop_var: str | None = None
         self.active_path_edge_id: str | None = None
         self.path_drag_start_endpoint_key: str | None = None
         self.path_drag_current_canvas_point: tuple[int, int] | None = None
@@ -4655,9 +5035,17 @@ class MetroMapViewer:
         self.world_map_render_image_path: Path | None = None
         self.world_map_render_payload: dict[str, object] | None = None
         self.world_map_render_source_image: Image.Image | None = None
+        self._world_map_full_render_image_path: Path | None = None
+        self._world_map_full_render_image_stat: FileStatKey | None = None
+        self._world_map_full_render_source_image: Image.Image | None = None
         self.world_map_render_cache_checked_at = 0.0
         self.world_map_spiral_check_cache_stat: FileStatKey | None = None
         self.world_map_spiral_check_payload: dict[str, object] | None = None
+        self._path_detection_preview: object | None = None
+        self._path_detection_debug_points: tuple[tuple[int, int], ...] = ()
+        self._path_detection_hide_selected_popup = False
+        self._path_detection_session: object | None = None
+        self._path_detection_click_bound = False
         self.overlay_image_refs: list[ImageTk.PhotoImage] = []
         self.hover_canvas_point: tuple[float, float] | None = None
         self.cursor_readout_coordinates: tuple[int, int] | None = None
@@ -4704,10 +5092,14 @@ class MetroMapViewer:
         self.use_flying_routes_var = tk.BooleanVar(master=self.root, value=False)
         self.show_planning_circle_var = tk.BooleanVar(master=self.root, value=False)
         self.show_connected_area_var = tk.BooleanVar(master=self.root, value=False)
+        self.show_city_limits_var = tk.BooleanVar(master=self.root, value=False)
         self.show_alignment_reminders_var = tk.BooleanVar(master=self.root, value=False)
         self.show_frontier_highlights_var = tk.BooleanVar(master=self.root, value=False)
         self.show_labels_var = tk.BooleanVar(master=self.root, value=True)
         self.show_world_map_render_var = tk.BooleanVar(master=self.root, value=True)
+        self.show_suggested_walking_paths_var = tk.BooleanVar(master=self.root, value=False)
+        self.hide_path_nodes_var = tk.BooleanVar(master=self.root, value=False)
+        self.circle_internal_voids_var = tk.BooleanVar(master=self.root, value=False)
         self.export_include_world_map_var = tk.BooleanVar(master=self.root, value=True)
         self.export_include_grid_var = tk.BooleanVar(master=self.root, value=True)
         self.export_include_metro_lines_var = tk.BooleanVar(master=self.root, value=True)
@@ -4896,20 +5288,20 @@ class MetroMapViewer:
         search_status_label.pack(anchor='w', padx=16, pady=(0, 12))
 
         self._make_sidebar_caption('Show/Hide').pack(anchor='w', padx=16)
-        show_world_map_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='World Map',
-            variable=self.show_world_map_render_var,
-            command=self.redraw,
-        )
-        show_world_map_toggle.pack(anchor='w', padx=16, pady=(4, 6))
         connected_area_toggle = self._make_sidebar_checkbox(
             self.sidebar,
             text='Connected area',
             variable=self.show_connected_area_var,
             command=self.redraw,
         )
-        connected_area_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        connected_area_toggle.pack(anchor='w', padx=16, pady=(4, 6))
+        city_limits_toggle = self._make_sidebar_checkbox(
+            self.sidebar,
+            text='City limits',
+            variable=self.show_city_limits_var,
+            command=self.redraw,
+        )
+        city_limits_toggle.pack(anchor='w', padx=16, pady=(0, 6))
         planning_toggle = self._make_sidebar_checkbox(
             self.sidebar,
             text='Planning radius',
@@ -5032,7 +5424,7 @@ class MetroMapViewer:
             self.route_start_var,
             include_nodes=True,
         )
-        self._make_sidebar_hint('Station label / var or x, y', parent=directions_section).pack(anchor='w', padx=16, pady=(0, 10))
+        self._make_sidebar_hint('Station label / var, City limits: label, or x, y', parent=directions_section).pack(anchor='w', padx=16, pady=(0, 10))
 
         self._make_sidebar_caption('To', parent=directions_section).pack(anchor='w', padx=16)
         self.route_end_entry = self._make_sidebar_entry(directions_section, self.route_end_var)
@@ -5043,7 +5435,7 @@ class MetroMapViewer:
             self.route_end_var,
             include_nodes=True,
         )
-        self._make_sidebar_hint('Station label / var or x, y', parent=directions_section).pack(anchor='w', padx=16, pady=(0, 8))
+        self._make_sidebar_hint('Station label / var, City limits: label, or x, y', parent=directions_section).pack(anchor='w', padx=16, pady=(0, 8))
 
         route_type_row = tk.Frame(directions_section, bg=BACKGROUND_COLOR)
         route_type_row.pack(fill='x', padx=16, pady=(0, 12))
@@ -5201,7 +5593,7 @@ class MetroMapViewer:
             wraplength=SIDEBAR_WIDTH - 32,
         ).pack(anchor='w', padx=16, pady=(0, 12))
 
-        self._make_sidebar_caption('Path Edges', parent=pathing_section).pack(anchor='w', padx=16)
+        self._make_sidebar_caption('Active Path Edit', parent=pathing_section).pack(anchor='w', padx=16)
         self.path_edge_list_frame = tk.Frame(
             pathing_section,
             bg=INFO_BOX_BACKGROUND,
@@ -5213,8 +5605,14 @@ class MetroMapViewer:
         self._refresh_path_edge_list()
 
         world_map_section = self._make_collapsible_sidebar_section('World Map', expanded=False)
+        self._make_sidebar_checkbox(
+            world_map_section,
+            text='Show rendered map',
+            variable=self.show_world_map_render_var,
+            command=self.redraw,
+        ).pack(anchor='w', padx=16, pady=(4, 6))
         mode_row = tk.Frame(world_map_section, bg=BACKGROUND_COLOR)
-        mode_row.pack(fill='x', padx=16, pady=(4, 6))
+        mode_row.pack(fill='x', padx=16, pady=(0, 6))
         tk.Label(
             mode_row,
             text='Mode',
@@ -5456,8 +5854,23 @@ class MetroMapViewer:
 
         values = [stop.lbl for stop in self._search_matches(normalized_query)[:8]]
         if include_nodes:
+            values.extend(self._city_limit_suggestion_values(normalized_query))
             values.extend(self._node_suggestion_values(normalized_query))
         return list(dict.fromkeys(values))
+
+    def _city_limit_suggestion_values(self, query: str) -> list[str]:
+        normalized_query = _normalize_stop_identity(query)
+        if not normalized_query:
+            return []
+        values: list[str] = []
+        for stop in METRO_STOPS:
+            if not stop.city_limit_node_keys:
+                continue
+            label = f'City limits: {stop.lbl}'
+            candidates = [label, f'{stop.lbl} city limits', stop.var]
+            if any(normalized_query in _normalize_stop_identity(candidate) for candidate in candidates):
+                values.append(label)
+        return values[:8]
 
     def _node_suggestion_values(self, query: str) -> list[str]:
         normalized_query = _normalize_stop_identity(query)
@@ -6260,10 +6673,16 @@ class MetroMapViewer:
                     f'for {_format_track_distance(step.distance)}.'
                 )
             else:
-                lines.append(
-                    f'{step_number}. Walk from {start_step_label} to {end_step_label} '
-                    f'for {_format_track_distance(step.distance)}.'
-                )
+                if step.label and step.label != 'Walk':
+                    lines.append(
+                        f'{step_number}. Walk on {step.label} from {start_step_label} '
+                        f'to {end_step_label} for {_format_track_distance(step.distance)}.'
+                    )
+                else:
+                    lines.append(
+                        f'{step_number}. Walk from {start_step_label} to {end_step_label} '
+                        f'for {_format_track_distance(step.distance)}.'
+                    )
             step_number += 1
 
         lines.append('')
@@ -6425,6 +6844,41 @@ class MetroMapViewer:
         self.cursor_readout_coordinates = None
         self.show_cursor_guides = False
         self.redraw()
+
+    def _edit_path_edge_label(self, extra_edge: ExtraEdgeDefinition) -> None:
+        from tkinter import messagebox, simpledialog
+
+        new_label = simpledialog.askstring(
+            'Road Name',
+            'Enter a road name for this walking path.\nLeave blank to clear it:',
+            initialvalue=extra_edge.label or '',
+            parent=self.root,
+        )
+        if new_label is None:
+            return
+
+        try:
+            set_extra_edge_label(extra_edge.id, new_label)
+        except ValueError as exc:
+            messagebox.showerror('Could Not Save Road Name', str(exc), parent=self.root)
+            return
+
+        refreshed_edge = self._active_path_edge()
+        if refreshed_edge is not None:
+            self._set_active_path_edge(refreshed_edge)
+        self.route_controls_dirty = True
+        self.route_dirty = True
+        self.priority_dirty = True
+        self.redraw()
+
+    def _export_visible_block_png(self) -> None:
+        from tkinter import messagebox
+
+        messagebox.showinfo(
+            'Export Block PNG',
+            'Block-level PNG export is not available until UI extensions are loaded.',
+            parent=self.root,
+        )
 
     def _add_path_node_from_sidebar(self) -> None:
         from tkinter import messagebox
@@ -7072,6 +7526,12 @@ class MetroMapViewer:
                     text='Edit Points',
                     command=lambda active_edge=extra_edge: self._edit_path_edge_points(active_edge),
                 ).pack(side='left')
+                if extra_edge.kind == 'walk':
+                    self._make_info_button(
+                        edge_actions_row,
+                        text='Road Name',
+                        command=lambda active_edge=extra_edge: self._edit_path_edge_label(active_edge),
+                    ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
                 if extra_edge.shape_label == 'direct':
                     if extra_edge.can_turn:
                         self._make_info_button(
@@ -7133,10 +7593,14 @@ class MetroMapViewer:
             f'Lines: {lines}',
             f'Progress: {stop.checkpoint_count}/{stop.checkpoint_total}',
         ]
+        if stop.station_entry_coordinates is not None:
+            entry_x, entry_y = stop.station_entry_coordinates
+            detail_lines.append(f'Station entry: ({entry_x}, {entry_y})')
+        if stop.city_limit_node_keys:
+            detail_lines.append(f'City limits: {len(stop.city_limit_node_keys)} nodes')
         if stop.is_connected:
             detail_lines.append(f'Chimes: {chime_summary}')
         detail_lines.append(f'Alignments: {alignment_summary}')
-        station_x, station_y = self.station_canvas_positions[stop.var]
         margin = self.padding // 2
         self.info_popup_variables = []
         frame = tk.Frame(
@@ -7194,6 +7658,12 @@ class MetroMapViewer:
         ).pack(anchor='w')
         self._make_info_checkbox(
             checkpoint_frame,
+            text='Walking Paths',
+            checked=stop.has_walking_paths,
+            on_toggle=lambda value: self._update_selected_checkpoint('has_walking_paths', value),
+        ).pack(anchor='w')
+        self._make_info_checkbox(
+            checkpoint_frame,
             text='Connected',
             checked=stop.is_connected,
             on_toggle=lambda value: self._update_selected_checkpoint('is_connected', value),
@@ -7245,6 +7715,27 @@ class MetroMapViewer:
             text='Change Name',
             command=self._edit_selected_label,
         ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
+        self._make_info_button(
+            button_row,
+            text='Station Entry',
+            command=self._edit_selected_station_entry,
+        ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
+        city_limit_button_text = (
+            'Done City Limits'
+            if self.city_limits_edit_stop_var == stop.var
+            else ('Edit City Limits' if stop.city_limit_node_keys else 'Decide City Limits')
+        )
+        self._make_info_button(
+            button_row,
+            text=city_limit_button_text,
+            command=self._toggle_selected_city_limits_edit,
+        ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
+        if stop.city_limit_node_keys:
+            self._make_info_button(
+                button_row,
+                text='Clear City Limits',
+                command=self._clear_selected_city_limits,
+            ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
 
         if reminders:
             reminders_label = tk.Label(
@@ -7277,15 +7768,8 @@ class MetroMapViewer:
         box_width = frame.winfo_reqwidth()
         box_height = frame.winfo_reqheight()
 
-        x0 = station_x + INFO_BOX_OFFSET_X
-        if x0 + box_width > self.width - margin:
-            x0 = station_x - INFO_BOX_OFFSET_X - box_width
-        x0 = max(margin, min(x0, self.width - margin - box_width))
-
-        y0 = station_y - INFO_BOX_OFFSET_Y - box_height
-        if y0 < margin:
-            y0 = station_y + INFO_BOX_OFFSET_Y
-        y0 = max(margin, min(y0, self.height - margin - box_height))
+        x0 = margin
+        y0 = max(margin, self.height - margin - box_height)
 
         self.canvas.create_window(x0, y0, anchor='nw', window=frame)
         self.info_popup_frame = frame
@@ -7364,6 +7848,8 @@ class MetroMapViewer:
                 _update_stop_record(self.selected_stop_var, has_connector=value)
             elif field_name == 'has_full_station':
                 _update_stop_record(self.selected_stop_var, has_full_station=value)
+            elif field_name == 'has_walking_paths':
+                _update_stop_record(self.selected_stop_var, has_walking_paths=value)
             elif field_name == 'is_connected':
                 _update_stop_record(self.selected_stop_var, is_connected=value)
             elif field_name == 'has_finished_railway':
@@ -7486,6 +7972,113 @@ class MetroMapViewer:
         self.priority_dirty = True
         self.redraw()
 
+    def _edit_selected_station_entry(self) -> None:
+        if self.selected_stop_var is None:
+            return
+
+        from tkinter import messagebox, simpledialog
+
+        stop = STOPS_BY_VAR[self.selected_stop_var]
+        initial_coordinates = stop.station_entry_coordinates or stop.coordinates
+        new_coordinates = simpledialog.askstring(
+            'Station Entry',
+            'Enter station-building entry coordinates as x, y.\nLeave blank to clear the entryway:',
+            initialvalue=f'{initial_coordinates[0]}, {initial_coordinates[1]}',
+            parent=self.root,
+        )
+        if new_coordinates is None:
+            return
+
+        normalized_coordinates = new_coordinates.strip()
+        try:
+            if not normalized_coordinates:
+                _update_stop_record(stop.var, station_entry=False)
+            else:
+                parsed_coordinates = _parse_coordinate_text(normalized_coordinates)
+                if parsed_coordinates is None:
+                    raise ValueError('Enter coordinates in the format: x, y')
+                _update_stop_record(stop.var, station_entry=parsed_coordinates)
+        except ValueError as exc:
+            messagebox.showerror('Could Not Save Station Entry', str(exc), parent=self.root)
+            return
+
+        self.route_controls_dirty = True
+        self.route_dirty = True
+        self.priority_dirty = True
+        self.redraw()
+
+    def _toggle_selected_city_limits_edit(self) -> None:
+        if self.selected_stop_var is None:
+            return
+        if self.city_limits_edit_stop_var == self.selected_stop_var:
+            self.city_limits_edit_stop_var = None
+            self.path_click_status_var.set('City limit editing is off.')
+        else:
+            self.city_limits_edit_stop_var = self.selected_stop_var
+            self.show_city_limits_var.set(True)
+            stop_label = _display_label(STOPS_BY_VAR[self.selected_stop_var].lbl)
+            self.path_click_status_var.set(
+                f'Editing city limits for {stop_label}. Click path nodes to add or remove boundary points.'
+            )
+        self.redraw()
+
+    def _clear_selected_city_limits(self) -> None:
+        if self.selected_stop_var is None:
+            return
+
+        from tkinter import messagebox
+
+        try:
+            set_stop_city_limit_node_keys(self.selected_stop_var, ())
+        except ValueError as exc:
+            messagebox.showerror('Could Not Clear City Limits', str(exc), parent=self.root)
+            return
+
+        if self.city_limits_edit_stop_var == self.selected_stop_var:
+            self.city_limits_edit_stop_var = None
+        self.route_controls_dirty = True
+        self.route_dirty = True
+        self.priority_dirty = True
+        self.redraw()
+
+    def _toggle_city_limit_node(self, path_node: PathNode) -> None:
+        if self.city_limits_edit_stop_var is None:
+            return
+
+        from tkinter import messagebox
+
+        stop = STOPS_BY_VAR.get(self.city_limits_edit_stop_var)
+        if stop is None:
+            self.city_limits_edit_stop_var = None
+            return
+
+        node_keys = list(stop.city_limit_node_keys)
+        if path_node.key in node_keys:
+            node_keys.remove(path_node.key)
+            action_text = 'Removed'
+        else:
+            node_keys.append(path_node.key)
+            action_text = 'Added'
+
+        try:
+            set_stop_city_limit_node_keys(stop.var, node_keys)
+        except ValueError as exc:
+            messagebox.showerror('Could Not Save City Limits', str(exc), parent=self.root)
+            return
+
+        refreshed_stop = STOPS_BY_VAR[stop.var]
+        self.selected_stop_var = stop.var
+        self.selected_path_node_key = None
+        self.selected_metro_segment_key = None
+        self.route_controls_dirty = True
+        self.route_dirty = True
+        self.priority_dirty = True
+        self.path_click_status_var.set(
+            f'{action_text} {path_node.display_label} for {_display_label(refreshed_stop.lbl)} city limits '
+            f'({len(refreshed_stop.city_limit_node_keys)} nodes).'
+        )
+        self.redraw()
+
     def _refresh_after_path_edit(self, *, refresh_path_status: bool = True) -> None:
         self.route_controls_dirty = True
         self.route_dirty = True
@@ -7501,10 +8094,11 @@ class MetroMapViewer:
         for child in self.path_edge_list_frame.winfo_children():
             child.destroy()
 
-        if not EXTRA_EDGES:
+        active_edge = self._active_path_edge()
+        if active_edge is None:
             tk.Label(
                 self.path_edge_list_frame,
-                text='No shared path edges yet.',
+                text='No path edge selected. Turn on map add/link mode, then click an existing path edge to edit it.',
                 bg=INFO_BOX_BACKGROUND,
                 fg=TEXT_COLOR,
                 font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
@@ -7516,37 +8110,29 @@ class MetroMapViewer:
             ).pack(fill='x')
             return
 
-        for extra_edge in EXTRA_EDGES:
-            edge_frame = tk.Frame(self.path_edge_list_frame, bg=INFO_BOX_BACKGROUND)
-            edge_frame.pack(fill='x', padx=12, pady=(12, 0))
-            edge_summary = _extra_edge_full_summary(extra_edge)
-            if extra_edge.id == self.active_path_edge_id:
-                edge_summary = f'Editing: {edge_summary}'
-            tk.Label(
-                edge_frame,
-                text=edge_summary,
-                bg=INFO_BOX_BACKGROUND,
-                fg=TEXT_COLOR,
-                font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-                anchor='w',
-                justify='left',
-                wraplength=SIDEBAR_WIDTH - 80,
-            ).pack(anchor='w')
-            edge_actions_row = tk.Frame(edge_frame, bg=INFO_BOX_BACKGROUND)
-            edge_actions_row.pack(anchor='w', pady=(6, 0))
+        edge_frame = tk.Frame(self.path_edge_list_frame, bg=INFO_BOX_BACKGROUND)
+        edge_frame.pack(fill='x', padx=12, pady=12)
+        tk.Label(
+            edge_frame,
+            text=f'Editing: {_extra_edge_full_summary(active_edge)}',
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=SIDEBAR_WIDTH - 80,
+        ).pack(anchor='w')
+        self._make_sidebar_button(
+            edge_frame,
+            text='Stop Editing',
+            command=lambda: self._edit_path_edge_points_off(),
+        ).pack(anchor='w', pady=(6, 0))
+        if active_edge.kind == 'walk':
             self._make_sidebar_button(
-                edge_actions_row,
-                text='Edit Points',
-                command=lambda active_edge=extra_edge: self._edit_path_edge_points(active_edge),
-            ).pack(side='left')
-            if extra_edge.id == self.active_path_edge_id:
-                self._make_sidebar_button(
-                    edge_actions_row,
-                    text='Stop Editing',
-                    command=lambda: self._edit_path_edge_points_off(),
-                ).pack(side='left', padx=(10, 0))
-
-        tk.Frame(self.path_edge_list_frame, bg=INFO_BOX_BACKGROUND, height=12).pack(fill='x')
+                edge_frame,
+                text='Road Name',
+                command=lambda active_edge=active_edge: self._edit_path_edge_label(active_edge),
+            ).pack(anchor='w', pady=(6, 0))
 
     def _edit_path_edge_points_off(self) -> None:
         self.path_click_mode_var.set(False)
@@ -7852,6 +8438,8 @@ class MetroMapViewer:
 
         if self.selected_stop_var not in STOPS_BY_VAR:
             self.selected_stop_var = None
+        if self.city_limits_edit_stop_var not in STOPS_BY_VAR:
+            self.city_limits_edit_stop_var = None
         if self.selected_path_node_key is not None and self._selected_path_node() is None:
             self.selected_path_node_key = None
         if self.selected_metro_segment_key is not None and self._selected_metro_segment() is None:
@@ -8140,6 +8728,7 @@ class MetroMapViewer:
 
         self._draw_planning_circle()
         self._draw_connected_area()
+        self._draw_city_limits()
 
         self._draw_metro_lines(visible_line_names)
 
@@ -8739,6 +9328,52 @@ class MetroMapViewer:
             draw.polygon(polygon_points, fill=AREA_OVERLAY_RGBA)
         self._draw_overlay_image(overlay)
 
+    def _draw_city_limits(self) -> None:
+        active_stop_var = self.city_limits_edit_stop_var
+        if not self.show_city_limits_var.get() and active_stop_var is None:
+            return
+
+        for stop in METRO_STOPS:
+            world_points = _city_limit_world_points(stop)
+            if not world_points:
+                continue
+            is_active = active_stop_var == stop.var
+            if not self.show_city_limits_var.get() and not is_active:
+                continue
+
+            canvas_points = [self.world_to_canvas((point_x, -point_y)) for point_x, point_y in world_points]
+            flat_points = [coordinate for point in canvas_points for coordinate in point]
+            fill_color = CITY_LIMIT_ACTIVE_FILL if is_active else CITY_LIMIT_FILL
+            outline_color = CITY_LIMIT_ACTIVE_OUTLINE if is_active else CITY_LIMIT_OUTLINE
+            if len(canvas_points) >= 3:
+                self.canvas.create_polygon(
+                    *flat_points,
+                    fill=fill_color,
+                    outline=outline_color,
+                    width=CITY_LIMIT_WIDTH,
+                    stipple='gray25',
+                )
+            if len(canvas_points) >= 2:
+                self.canvas.create_line(
+                    *flat_points,
+                    fill=outline_color,
+                    width=CITY_LIMIT_WIDTH,
+                    dash=CITY_LIMIT_DASH,
+                    capstyle='round',
+                    joinstyle='round',
+                )
+            for canvas_x, canvas_y in canvas_points:
+                radius = 5 if is_active else 3
+                self.canvas.create_oval(
+                    canvas_x - radius,
+                    canvas_y - radius,
+                    canvas_x + radius,
+                    canvas_y + radius,
+                    fill=outline_color,
+                    outline=BACKGROUND_COLOR,
+                    width=1,
+                )
+
     def _plot_points_to_canvas_line_points(
         self,
         plot_points: Sequence[tuple[float, float]],
@@ -9228,6 +9863,17 @@ class MetroMapViewer:
             self._clear_path_drag()
 
         if not self.is_dragging:
+            if self.city_limits_edit_stop_var is not None:
+                selected_path_node = self._path_node_hit_test(release_x, release_y)
+                if selected_path_node is not None:
+                    self._toggle_city_limit_node(selected_path_node)
+                else:
+                    self.path_click_status_var.set('Click a path node to add or remove it from the active city limits.')
+                    self.redraw()
+                self.drag_start = None
+                self.drag_origin = None
+                self.is_dragging = False
+                return
             if self._handle_path_click_edit(release_x, release_y):
                 self.drag_start = None
                 self.drag_origin = None
@@ -9614,6 +10260,10 @@ def _payload_endpoint_coordinates(
             for stop_record in payload['stops']
         }
         stop_record = stop_lookup[endpoint_record['stop_var']]
+        station_entry_x = _coerce_int(stop_record.get('station_entry_x'))
+        station_entry_y = _coerce_int(stop_record.get('station_entry_y'))
+        if station_entry_x is not None and station_entry_y is not None:
+            return (station_entry_x, station_entry_y)
         return (int(stop_record['x']), int(stop_record['y']))
 
     return (int(endpoint_record['x']), int(endpoint_record['y']))
@@ -9890,6 +10540,68 @@ def _normalize_extra_edges(payload: MetroNetworkPayload) -> bool:
     return payload_changed
 
 
+def _path_node_keys_in_payload(payload: MetroNetworkPayload) -> set[str]:
+    node_keys: set[str] = set()
+    for raw_node in payload.get('path_nodes', []):
+        if not isinstance(raw_node, dict):
+            continue
+        node_x = _coerce_int(raw_node.get('x'))
+        node_y = _coerce_int(raw_node.get('y'))
+        if node_x is None or node_y is None:
+            continue
+        node_keys.add(_coordinate_endpoint_key(node_x, node_y))
+
+    for raw_edge in payload.get('extra_edges', []):
+        if not isinstance(raw_edge, dict):
+            continue
+        for field_name in ('from_endpoint', 'to_endpoint'):
+            raw_endpoint = raw_edge.get(field_name)
+            if not isinstance(raw_endpoint, dict):
+                continue
+            endpoint = _normalize_path_endpoint_record(payload, raw_endpoint)
+            if endpoint is None or endpoint['kind'] != 'coord':
+                continue
+            node_keys.add(_coordinate_endpoint_key(int(endpoint['x']), int(endpoint['y'])))
+    return node_keys
+
+
+def _normalize_city_limits(payload: MetroNetworkPayload) -> bool:
+    payload_changed = False
+    valid_node_keys = _path_node_keys_in_payload(payload)
+    for stop_record in payload['stops']:
+        raw_node_keys = stop_record.get('city_limit_node_keys')
+        if raw_node_keys is None:
+            continue
+        if not isinstance(raw_node_keys, list):
+            stop_record.pop('city_limit_node_keys', None)
+            payload_changed = True
+            continue
+
+        normalized_node_keys: list[str] = []
+        seen_node_keys: set[str] = set()
+        for raw_node_key in raw_node_keys:
+            node_key = str(raw_node_key).strip()
+            if node_key not in valid_node_keys:
+                coordinates = _parse_coordinate_text(node_key)
+                if coordinates is not None:
+                    node_key = _coordinate_endpoint_key(coordinates[0], coordinates[1])
+            if node_key not in valid_node_keys or node_key in seen_node_keys:
+                payload_changed = True
+                continue
+            normalized_node_keys.append(node_key)
+            seen_node_keys.add(node_key)
+
+        if normalized_node_keys:
+            if raw_node_keys != normalized_node_keys:
+                stop_record['city_limit_node_keys'] = normalized_node_keys
+                payload_changed = True
+        else:
+            stop_record.pop('city_limit_node_keys', None)
+            payload_changed = True
+
+    return payload_changed
+
+
 def _normalize_railway_finish_progress(payload: MetroNetworkPayload) -> bool:
     payload_changed = False
     had_progress_key = 'railway_finish_progress' in payload
@@ -9979,14 +10691,25 @@ def _load_network_payload() -> MetroNetworkPayload:
 
     for stop_record in payload['stops']:
         for field_name in CHECKPOINT_FIELDS:
-            if field_name not in stop_record:
-                stop_record[field_name] = False
-                payload_changed = True
-                continue
-
-            normalized_value = bool(stop_record[field_name])
-            if stop_record[field_name] != normalized_value:
+            raw_checkpoint_value = stop_record.get(field_name, False)
+            normalized_value = bool(raw_checkpoint_value)
+            if raw_checkpoint_value != normalized_value or field_name not in stop_record:
                 stop_record[field_name] = normalized_value
+                payload_changed = True
+
+        station_entry_x = _coerce_int(stop_record.get('station_entry_x'))
+        station_entry_y = _coerce_int(stop_record.get('station_entry_y'))
+        if station_entry_x is None or station_entry_y is None:
+            if 'station_entry_x' in stop_record or 'station_entry_y' in stop_record:
+                stop_record.pop('station_entry_x', None)
+                stop_record.pop('station_entry_y', None)
+                payload_changed = True
+        else:
+            if stop_record.get('station_entry_x') != station_entry_x:
+                stop_record['station_entry_x'] = station_entry_x
+                payload_changed = True
+            if stop_record.get('station_entry_y') != station_entry_y:
+                stop_record['station_entry_y'] = station_entry_y
                 payload_changed = True
 
         normalized_chime_directions = list(
@@ -10001,6 +10724,8 @@ def _load_network_payload() -> MetroNetworkPayload:
     if _normalize_alignment_reminders(payload):
         payload_changed = True
     if _normalize_extra_edges(payload):
+        payload_changed = True
+    if _normalize_city_limits(payload):
         payload_changed = True
     if _normalize_railway_finish_progress(payload):
         payload_changed = True
@@ -10041,10 +10766,14 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
             y=int(stop_record['y']),
             has_connector=bool(stop_record.get('has_connector', False)),
             has_full_station=bool(stop_record.get('has_full_station', False)),
+            has_walking_paths=bool(stop_record.get('has_walking_paths', False)),
             is_connected=bool(stop_record.get('is_connected', False)),
             has_finished_railway=bool(stop_record.get('has_finished_railway', False)),
             has_signs=bool(stop_record.get('has_signs', False)),
             chime_directions=_normalized_chime_directions(stop_record.get('chime_directions', [])),
+            station_entry_x=_coerce_int(stop_record.get('station_entry_x')),
+            station_entry_y=_coerce_int(stop_record.get('station_entry_y')),
+            city_limit_node_keys=tuple(str(key) for key in stop_record.get('city_limit_node_keys', [])),
         )
         for stop_record in payload['stops']
     )
@@ -10184,10 +10913,12 @@ def _update_stop_record(
     y: int | None = None,
     has_connector: bool | None = None,
     has_full_station: bool | None = None,
+    has_walking_paths: bool | None = None,
     is_connected: bool | None = None,
     has_finished_railway: bool | None = None,
     has_signs: bool | None = None,
     chime_directions: Sequence[ChimeDirection] | None = None,
+    station_entry: tuple[int, int] | None | Literal[False] = None,
 ) -> None:
     payload = _load_network_payload()
 
@@ -10204,6 +10935,8 @@ def _update_stop_record(
             stop_record['has_connector'] = bool(has_connector)
         if has_full_station is not None:
             stop_record['has_full_station'] = bool(has_full_station)
+        if has_walking_paths is not None:
+            stop_record['has_walking_paths'] = bool(has_walking_paths)
         if is_connected is not None:
             stop_record['is_connected'] = bool(is_connected)
         if has_finished_railway is not None:
@@ -10212,11 +10945,35 @@ def _update_stop_record(
             stop_record['has_signs'] = bool(has_signs)
         if chime_directions is not None:
             stop_record['chime_directions'] = list(_normalized_chime_directions(chime_directions))
+        if station_entry is False:
+            stop_record.pop('station_entry_x', None)
+            stop_record.pop('station_entry_y', None)
+        elif station_entry is not None:
+            stop_record['station_entry_x'] = int(station_entry[0])
+            stop_record['station_entry_y'] = int(station_entry[1])
         _normalize_alignment_reminders(payload)
+        _normalize_extra_edges(payload)
         _write_network_payload(payload)
         _apply_network_payload(payload)
         return
 
+    raise ValueError(f'Unknown stop: {stop_var}')
+
+
+def set_stop_city_limit_node_keys(stop_var: str, node_keys: Sequence[str]) -> None:
+    payload = _load_network_payload()
+    normalized_node_keys = list(dict.fromkeys(str(node_key) for node_key in node_keys))
+    for stop_record in payload['stops']:
+        if str(stop_record['var']) != stop_var:
+            continue
+        if normalized_node_keys:
+            stop_record['city_limit_node_keys'] = normalized_node_keys
+        else:
+            stop_record.pop('city_limit_node_keys', None)
+        _normalize_city_limits(payload)
+        _write_network_payload(payload)
+        _apply_network_payload(payload)
+        return
     raise ValueError(f'Unknown stop: {stop_var}')
 
 
@@ -10786,6 +11543,19 @@ def set_extra_edge_path_points(
     edge_record = _find_extra_edge_record(payload, edge_id)
     _sync_alignment_reminder_for_edge_record(payload, edge_record)
     _normalize_alignment_reminders(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+
+
+def set_extra_edge_label(edge_id: str, label: str | None) -> None:
+    payload = _load_network_payload()
+    edge_record = _find_extra_edge_record(payload, edge_id)
+    normalized_label = None if label is None else (label.strip() or None)
+    if normalized_label is None:
+        edge_record.pop('label', None)
+    else:
+        edge_record['label'] = normalized_label
+    _normalize_extra_edges(payload)
     _write_network_payload(payload)
     _apply_network_payload(payload)
 

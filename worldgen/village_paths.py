@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
-from math import dist
-from typing import Any
+from math import dist, inf
+from typing import Any, Iterable
 
 import numpy as np
 
@@ -17,8 +17,6 @@ from . import render as render_mod
 PATH_BLOCK_NAMES = frozenset((
     "dirt_path",
     "grass_path",
-    "minecraft:dirt_path",
-    "minecraft:grass_path",
 ))
 WATERLIKE_BLOCK_NAMES = frozenset((
     "water",
@@ -77,6 +75,20 @@ class SurfaceScan:
     surface_points: dict[tuple[int, int], SurfacePoint]
 
 
+@dataclass(frozen=True, slots=True)
+class UnknownRuntimeBlockGroup:
+    block_name: str
+    count: int
+    coordinates: tuple[tuple[int, int], ...]
+
+
+class PathDetectionError(RuntimeError):
+    def __init__(self, message: str, *, scan: SurfaceScan, seed_points: list[tuple[int, int]]) -> None:
+        super().__init__(message)
+        self.scan = scan
+        self.seed_points = seed_points
+
+
 def infer_mode_key_from_render_payload(payload: dict[str, object]) -> str:
     render_style = str(payload.get("render_style", "surface") or "surface")
     fixed_y = payload.get("fixed_y")
@@ -95,6 +107,7 @@ def build_preview_from_seeds(
     seed_points: list[tuple[int, int]],
     render_payload: dict[str, object],
     config: WorldgenConfig | None = None,
+    extra_path_block_names: Iterable[str] = (),
 ) -> DetectedVillagePreview:
     mode_key = infer_mode_key_from_render_payload(render_payload)
     if mode_key == LAN_Y40:
@@ -103,20 +116,17 @@ def build_preview_from_seeds(
     if not seed_points:
         raise RuntimeError("Add a seed first.")
 
+    scan_center = seed_points[0]
     active_config = config or load_config()
     scan = load_surface_scan(
         config=active_config,
         mode_key=mode_key,
-        center=stop_coordinates,
+        center=scan_center,
         radius=DEFAULT_SCAN_RADIUS,
     )
-    path_points = {
-        coordinates
-        for coordinates, surface_point in scan.surface_points.items()
-        if _is_path_block(surface_point.block_name)
-    }
+    path_points = _path_points_from_scan(scan, extra_path_block_names=extra_path_block_names)
     if not path_points:
-        raise RuntimeError("No true path blocks were found in the scanned village area.")
+        raise PathDetectionError(_no_path_blocks_message(scan, seed_points), scan=scan, seed_points=seed_points)
 
     union_component: set[tuple[int, int]] = set()
     snapped_seeds: list[tuple[int, int]] = []
@@ -182,15 +192,13 @@ def load_surface_scan(
                 )
             )
 
-    packet_records = ()
-    if mode.is_lan or not persistent_records:
-        packet_records = render_mod._iter_cached_packet_subchunk_records(  # type: ignore[attr-defined]
-            mode_paths.headless_chunk_packet_path,
-            min_chunk_x=min_chunk_x,
-            max_chunk_x=max_chunk_x,
-            min_chunk_z=min_chunk_z,
-            max_chunk_z=max_chunk_z,
-        )
+    packet_records = render_mod._iter_cached_packet_subchunk_records(  # type: ignore[attr-defined]
+        mode_paths.headless_chunk_packet_path,
+        min_chunk_x=min_chunk_x,
+        max_chunk_x=max_chunk_x,
+        min_chunk_z=min_chunk_z,
+        max_chunk_z=max_chunk_z,
+    )
 
     if persistent_records and packet_records:
         packet_records = render_mod._filter_packet_records_against_persistent_columns(  # type: ignore[attr-defined]
@@ -263,23 +271,129 @@ def _collect_surface_points(
                 block_info = subchunk.visible_block_info(local_x, local_y, local_z)
                 if block_info is None:
                     continue
-                block_name = render_mod._resolve_block_name_for_render(block_info.name)  # type: ignore[attr-defined]
+                render_block_name = render_mod._resolve_block_name_for_render(block_info.name)  # type: ignore[attr-defined]
                 block_y = subchunk.min_y + local_y
-                if render_mod._is_chunk_touch_marker(block_name, block_y):  # type: ignore[attr-defined]
+                if render_mod._is_chunk_touch_marker(render_block_name, block_y):  # type: ignore[attr-defined]
                     continue
-                if render_mod._is_non_rendering_block(block_name):  # type: ignore[attr-defined]
+                if render_mod._is_non_rendering_block(render_block_name):  # type: ignore[attr-defined]
                     continue
                 surface_points[world_key] = SurfacePoint(
                     x=world_x,
                     z=world_z,
                     y=block_y,
-                    block_name=block_name,
+                    block_name=block_info.name,
                 )
                 break
 
 
-def _is_path_block(block_name: str) -> bool:
-    return block_name.lower() in PATH_BLOCK_NAMES
+def _normalized_block_name(block_name: str) -> str:
+    return block_name.strip().lower().removeprefix("minecraft:")
+
+
+def _is_path_block(block_name: str, *, extra_path_block_names: Iterable[str] = ()) -> bool:
+    normalized = _normalized_block_name(block_name)
+    extra_names = {_normalized_block_name(name) for name in extra_path_block_names}
+    if normalized in extra_names:
+        return True
+    if _normalized_block_name(block_name) in PATH_BLOCK_NAMES:
+        return True
+    render_block_name = render_mod._resolve_block_name_for_render(block_name)  # type: ignore[attr-defined]
+    return _normalized_block_name(render_block_name) in PATH_BLOCK_NAMES or _normalized_block_name(render_block_name) in extra_names
+
+
+def _path_points_from_scan(
+    scan: SurfaceScan,
+    *,
+    extra_path_block_names: Iterable[str] = (),
+) -> set[tuple[int, int]]:
+    return {
+        coordinates
+        for coordinates, surface_point in scan.surface_points.items()
+        if _is_path_block(surface_point.block_name, extra_path_block_names=extra_path_block_names)
+    }
+
+
+def unknown_runtime_block_groups(
+    scan: SurfaceScan,
+    *,
+    focus_points: Iterable[tuple[int, int]] = (),
+    focus_radius: int | None = None,
+) -> tuple[UnknownRuntimeBlockGroup, ...]:
+    grouped: dict[str, list[tuple[int, int]]] = {}
+    focus_point_tuple = tuple(focus_points)
+    focused_grouped: dict[str, list[tuple[int, int]]] = {}
+    for coordinates, surface_point in scan.surface_points.items():
+        normalized = _normalized_block_name(surface_point.block_name)
+        if not normalized.startswith("unknown_runtime_"):
+            continue
+        grouped.setdefault(surface_point.block_name, []).append(coordinates)
+        if focus_point_tuple and focus_radius is not None:
+            nearest_distance = min(dist(coordinates, focus_point) for focus_point in focus_point_tuple)
+            if nearest_distance <= focus_radius:
+                focused_grouped.setdefault(surface_point.block_name, []).append(coordinates)
+
+    active_grouped = focused_grouped or grouped
+
+    def nearest_focus_distance(coordinates: list[tuple[int, int]]) -> float:
+        if not focus_point_tuple:
+            return inf
+        return min(dist(coordinate, focus_point) for coordinate in coordinates for focus_point in focus_point_tuple)
+
+    return tuple(
+        UnknownRuntimeBlockGroup(
+            block_name=block_name,
+            count=len(coordinates),
+            coordinates=tuple(sorted(coordinates)),
+        )
+        for block_name, coordinates in sorted(
+            active_grouped.items(),
+            key=lambda item: (
+                nearest_focus_distance(item[1]),
+                -len(item[1]),
+                item[0],
+            ),
+        )
+    )
+
+
+def _block_name_summary(scan: SurfaceScan, *, limit: int = 8) -> str:
+    counts = Counter(_normalized_block_name(point.block_name) for point in scan.surface_points.values())
+    if not counts:
+        return "none"
+    return ", ".join(f"{name} ({count})" for name, count in counts.most_common(limit))
+
+
+def _seed_block_summary(scan: SurfaceScan, seed_points: list[tuple[int, int]]) -> str:
+    summaries = []
+    for seed_x, seed_z in seed_points[:4]:
+        surface_point = scan.surface_points.get((seed_x, seed_z))
+        if surface_point is None:
+            block_name = f"not loaded; chunk {seed_x // 16},{seed_z // 16} is missing from the scan cache"
+        else:
+            block_name = surface_point.block_name
+        summaries.append(f"({seed_x}, {seed_z})={block_name}")
+    if not summaries:
+        return "no seeds"
+    return ", ".join(summaries)
+
+
+def _loaded_bounds_summary(scan: SurfaceScan) -> str:
+    if not scan.surface_points:
+        return "no loaded surface columns"
+    xs = [point[0] for point in scan.surface_points]
+    zs = [point[1] for point in scan.surface_points]
+    return f"x {min(xs)}..{max(xs)}, z {min(zs)}..{max(zs)}"
+
+
+def _no_path_blocks_message(scan: SurfaceScan, seed_points: list[tuple[int, int]]) -> str:
+    return (
+        "No Dirt Path blocks were found in the scanned village area. "
+        "Bedrock may report the Dirt Path block as minecraft:grass_path; that name is accepted. "
+        f"Scanned center {scan.center} with radius {scan.radius}. "
+        f"Loaded surface columns: {_loaded_bounds_summary(scan)}. "
+        f"Seed blocks: {_seed_block_summary(scan, seed_points)}. "
+        f"Most common scanned blocks: {_block_name_summary(scan)}."
+    )
 
 
 def _is_waterlike(block_name: str) -> bool:
@@ -690,7 +804,8 @@ def _build_preview_from_component(
 
     for node_pixel in sorted(node_set):
         for neighbor_pixel in _global_neighbors(skeleton_set, node_pixel):
-            segment_key = tuple(sorted((node_pixel, neighbor_pixel)))
+            segment_endpoints = sorted((node_pixel, neighbor_pixel))
+            segment_key = (segment_endpoints[0], segment_endpoints[1])
             if segment_key in visited_segments:
                 continue
             visited_segments.add(segment_key)
@@ -702,7 +817,8 @@ def _build_preview_from_component(
                 if not neighbors:
                     break
                 next_pixel = neighbors[0]
-                visited_segments.add(tuple(sorted((current, next_pixel))))
+                next_segment_endpoints = sorted((current, next_pixel))
+                visited_segments.add((next_segment_endpoints[0], next_segment_endpoints[1]))
                 path.append(next_pixel)
                 previous, current = current, next_pixel
 
@@ -711,7 +827,8 @@ def _build_preview_from_component(
             if endpoint_a == endpoint_b:
                 continue
 
-            normalized_key = tuple(sorted((endpoint_a, endpoint_b)))
+            normalized_endpoints = sorted((endpoint_a, endpoint_b))
+            normalized_key = (normalized_endpoints[0], normalized_endpoints[1])
             if normalized_key in edge_map:
                 if len(path) < len(edge_map[normalized_key]):
                     edge_map[normalized_key] = path

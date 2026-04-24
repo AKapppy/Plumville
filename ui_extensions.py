@@ -47,6 +47,11 @@ def _append_world_map_extensions(self: "base.MetroMapViewer", parent: tk.Misc) -
         variable=self.circle_internal_voids_var,
         command=self.redraw,
     ).pack(anchor='w', padx=16, pady=(0, 12))
+    self._make_sidebar_button(
+        parent,
+        text='Export Block PNG',
+        command=self._export_visible_block_png,
+    ).pack(anchor='w', padx=16, pady=(0, 12))
 
 
 def _patched_build_route_panel(self: "base.MetroMapViewer") -> None:

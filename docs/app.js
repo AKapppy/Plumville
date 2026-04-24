@@ -16,6 +16,7 @@ const clearRouteButton = document.querySelector('#clearRouteButton');
 const routeSummary = document.querySelector('#routeSummary');
 const routeSteps = document.querySelector('#routeSteps');
 const resetViewButton = document.querySelector('#resetViewButton');
+const fitMapButton = document.querySelector('#fitMapButton');
 const blackportButton = document.querySelector('#blackportButton');
 const clearSelectionButton = document.querySelector('#clearSelectionButton');
 const showWorldMapInput = document.querySelector('#showWorldMapInput');
@@ -271,6 +272,7 @@ function bindEvents() {
     resetView();
     render();
   });
+  fitMapButton.addEventListener('click', fitRenderedMap);
   blackportButton.addEventListener('click', showBlackportView);
   clearSelectionButton.addEventListener('click', clearSelection);
 
@@ -327,6 +329,20 @@ function showBlackportView() {
     maxX: center.x + CONSTANTS.blackportViewRadius,
     minY: center.y - CONSTANTS.blackportViewRadius,
     maxY: center.y + CONSTANTS.blackportViewRadius,
+  });
+  render();
+}
+
+function fitRenderedMap() {
+  const bounds = currentTerrainBounds();
+  if (!bounds) {
+    return;
+  }
+  setViewToPlotBounds({
+    minX: bounds.minX,
+    maxX: bounds.maxX,
+    minY: -bounds.maxZ,
+    maxY: -bounds.minZ,
   });
   render();
 }

@@ -5,7 +5,7 @@ from pathlib import Path
 import threading
 import tkinter as tk
 from tkinter import messagebox
-from typing import Any
+from typing import Any, Callable, cast
 
 import legacy_core as base
 from worldgen import village_paths
@@ -18,15 +18,18 @@ PATH_PREVIEW_NODE_FILL = "#ffffff"
 PATH_PREVIEW_NODE_OUTLINE = "#7df9ff"
 SEED_MARKER_FILL = "#ffea00"
 SEED_MARKER_OUTLINE = "#ffffff"
+DEBUG_BLOCK_FILL = "#ff4fd8"
+DEBUG_BLOCK_OUTLINE = "#ffffff"
 VILLAGE_ZOOM_RADIUS = 96
+DEBUG_UNKNOWN_RUNTIME_FOCUS_RADIUS = 48
 DIALOG_BG = "#111315"
 DIALOG_FG = "#f5f7fa"
 DIALOG_MUTED = "#c9d1d9"
 
-_ORIGINAL_DRAW_EXTRA_EDGES = None
-_ORIGINAL_DRAW_PATH_NODES = None
-_ORIGINAL_DRAW_SELECTED_STOP_INFO = None
-_ORIGINAL_REFRESH_STATION_STATS = None
+_ORIGINAL_DRAW_EXTRA_EDGES: Callable[[base.MetroMapViewer], None] | None = None
+_ORIGINAL_DRAW_PATH_NODES: Callable[[base.MetroMapViewer], None] | None = None
+_ORIGINAL_DRAW_SELECTED_STOP_INFO: Callable[[base.MetroMapViewer], None] | None = None
+_ORIGINAL_REFRESH_STATION_STATS: Callable[[base.MetroMapViewer], None] | None = None
 
 
 class SeedDetectionSession:
@@ -34,6 +37,8 @@ class SeedDetectionSession:
         self.viewer = viewer
         self.stop_var = stop_var
         self.seed_points: list[tuple[int, int]] = []
+        self.extra_path_block_names: set[str] = _runtime_path_block_names()
+        self.debug_block_groups: tuple[village_paths.UnknownRuntimeBlockGroup, ...] = ()
         self.preview: village_paths.DetectedVillagePreview | None = None
         self.running = False
         self.awaiting_map_click = False
@@ -49,8 +54,8 @@ class SeedDetectionSession:
         root_x = viewer.root.winfo_rootx()
         root_y = viewer.root.winfo_rooty()
         root_width = viewer.root.winfo_width()
-        dialog_width = 430
-        dialog_height = 300
+        dialog_width = 520
+        dialog_height = 520
         self.dialog.geometry(
             f"{dialog_width}x{dialog_height}+{root_x + max(12, root_width - dialog_width - 24)}+{root_y + 48}"
         )
@@ -132,6 +137,50 @@ class SeedDetectionSession:
             anchor="w",
         ).pack(anchor="w", fill="x")
 
+        self.debug_frame = tk.Frame(body, bg=DIALOG_BG)
+        self.debug_title_var = tk.StringVar(master=self.dialog, value="")
+        tk.Label(
+            self.debug_frame,
+            textvariable=self.debug_title_var,
+            bg=DIALOG_BG,
+            fg=DIALOG_FG,
+            font=("Helvetica", 11, "bold"),
+            anchor="w",
+        ).pack(anchor="w", fill="x", pady=(12, 4))
+        self.debug_listbox = tk.Listbox(
+            self.debug_frame,
+            height=5,
+            exportselection=False,
+            bg="#1b1f24",
+            fg=DIALOG_FG,
+            selectbackground="#36506b",
+            selectforeground="#ffffff",
+        )
+        self.debug_listbox.pack(fill="x")
+        self.debug_listbox.bind("<<ListboxSelect>>", lambda _event: self.highlight_selected_unknown_block())
+
+        debug_button_row = tk.Frame(self.debug_frame, bg=DIALOG_BG)
+        debug_button_row.pack(fill="x", pady=(6, 0))
+        tk.Button(debug_button_row, text="Highlight", command=self.highlight_selected_unknown_block).pack(side="left")
+        tk.Button(debug_button_row, text="Copy ID", command=self.copy_selected_unknown_block).pack(side="left", padx=(6, 0))
+        tk.Button(
+            debug_button_row,
+            text="Save as Dirt Path and Retry",
+            command=self.treat_selected_unknown_as_path,
+        ).pack(side="left", padx=(6, 0))
+
+        self.debug_hint_var = tk.StringVar(master=self.dialog, value="")
+        tk.Label(
+            self.debug_frame,
+            textvariable=self.debug_hint_var,
+            bg=DIALOG_BG,
+            fg=DIALOG_MUTED,
+            font=("Helvetica", 10),
+            justify="left",
+            anchor="w",
+            wraplength=dialog_width - 44,
+        ).pack(anchor="w", fill="x", pady=(6, 0))
+
         self.dialog.protocol("WM_DELETE_WINDOW", self.cancel)
 
     def update_seed_label(self) -> None:
@@ -194,6 +243,7 @@ class SeedDetectionSession:
         if not self.seed_points:
             self.preview = None
             self.viewer._path_detection_preview = None
+            self.clear_debug_ui()
             self.status_var.set(
                 "All seeds removed.\n"
                 "Add a new seed by clicking the map or entering coordinates."
@@ -208,6 +258,7 @@ class SeedDetectionSession:
             return
         self.set_running(True)
         self.viewer._path_detection_preview = None
+        self.viewer._path_detection_debug_points = ()
         self.viewer.redraw()
 
         outcome: dict[str, Any] = {"done": False}
@@ -223,6 +274,10 @@ class SeedDetectionSession:
             return
         payload, _image = render_underlay
         stop = base.STOPS_BY_VAR.get(self.stop_var)
+        if stop is None:
+            self.set_running(False)
+            messagebox.showerror("Unknown Village", f"Could not find stop {self.stop_var}.", parent=self.dialog)
+            return
 
         def worker() -> None:
             try:
@@ -231,7 +286,11 @@ class SeedDetectionSession:
                     stop_coordinates=stop.coordinates,
                     seed_points=list(self.seed_points),
                     render_payload=payload,
+                    extra_path_block_names=self.extra_path_block_names,
                 )
+            except village_paths.PathDetectionError as exc:
+                outcome["error"] = str(exc)
+                outcome["debug_error"] = exc
             except Exception as exc:  # noqa: BLE001
                 outcome["error"] = str(exc)
             finally:
@@ -256,17 +315,23 @@ class SeedDetectionSession:
     def finish_detection(self, outcome: dict[str, Any]) -> None:
         self.set_running(False)
         error_text = outcome.get("error")
-        preview = outcome.get("preview")
+        preview = cast(village_paths.DetectedVillagePreview | None, outcome.get("preview"))
 
         if error_text:
             self.status_var.set(f"Detection failed:\n{error_text}")
-            messagebox.showerror("Village Path Detection Failed", str(error_text), parent=self.dialog)
+            self.show_debug_ui(outcome.get("debug_error"))
             self.viewer._path_detection_preview = None
             self.viewer.redraw()
             return
 
         self.preview = preview
+        if preview is None:
+            self.status_var.set("Detection failed:\nNo preview was returned.")
+            self.save_button.configure(state="disabled")
+            self.viewer.redraw()
+            return
         self.viewer._path_detection_preview = preview
+        self.clear_debug_ui()
         _fit_preview_bounds(self.viewer, preview.bounds)
         self.viewer.redraw()
 
@@ -278,6 +343,82 @@ class SeedDetectionSession:
             "Add another seed if it missed part of the village, or Save Paths."
         )
         self.save_button.configure(state="normal")
+
+    def show_debug_ui(self, debug_error: object) -> None:
+        if not isinstance(debug_error, village_paths.PathDetectionError):
+            self.clear_debug_ui()
+            messagebox.showerror("Village Path Detection Failed", self.status_var.get(), parent=self.dialog)
+            return
+
+        self.debug_block_groups = village_paths.unknown_runtime_block_groups(
+            debug_error.scan,
+            focus_points=debug_error.seed_points,
+            focus_radius=DEBUG_UNKNOWN_RUNTIME_FOCUS_RADIUS,
+        )
+        self.debug_listbox.delete(0, "end")
+        for group in self.debug_block_groups:
+            self.debug_listbox.insert("end", f"{group.block_name}  ({group.count})")
+
+        if not self.debug_block_groups:
+            self.clear_debug_ui()
+            messagebox.showerror("Village Path Detection Failed", str(debug_error), parent=self.dialog)
+            return
+
+        self.debug_title_var.set("Unknown runtime blocks found")
+        self.debug_hint_var.set(
+            "Select a runtime block to highlight it on the map. Copy ID gives you the exact number. "
+            "Save as Dirt Path stores that runtime as a path block for future detection runs."
+        )
+        if not self.debug_frame.winfo_ismapped():
+            self.debug_frame.pack(fill="x")
+        self.debug_listbox.selection_clear(0, "end")
+        self.debug_listbox.selection_set(0)
+        self.highlight_selected_unknown_block()
+
+    def clear_debug_ui(self) -> None:
+        self.debug_block_groups = ()
+        self.debug_listbox.delete(0, "end")
+        self.viewer._path_detection_debug_points = ()
+        if self.debug_frame.winfo_ismapped():
+            self.debug_frame.pack_forget()
+
+    def selected_debug_group(self) -> village_paths.UnknownRuntimeBlockGroup | None:
+        selection = self.debug_listbox.curselection()
+        if not selection:
+            return None
+        index = int(selection[0])
+        if index < 0 or index >= len(self.debug_block_groups):
+            return None
+        return self.debug_block_groups[index]
+
+    def highlight_selected_unknown_block(self) -> None:
+        group = self.selected_debug_group()
+        if group is None:
+            return
+        self.viewer._path_detection_debug_points = group.coordinates
+        self.status_var.set(
+            f"Highlighting {group.block_name}\n"
+            f"Loaded columns: {group.count}. Use Copy ID to send the number, or retry treating it as Dirt Path."
+        )
+        self.viewer.redraw()
+
+    def copy_selected_unknown_block(self) -> None:
+        group = self.selected_debug_group()
+        if group is None:
+            return
+        runtime_id = group.block_name.removeprefix("minecraft:").removeprefix("unknown_runtime_")
+        self.dialog.clipboard_clear()
+        self.dialog.clipboard_append(runtime_id)
+        self.status_var.set(f"Copied runtime ID {runtime_id} from {group.block_name}.")
+
+    def treat_selected_unknown_as_path(self) -> None:
+        group = self.selected_debug_group()
+        if group is None:
+            return
+        self.extra_path_block_names.add(group.block_name)
+        _add_runtime_path_block_name(group.block_name)
+        self.status_var.set(f"Saved {group.block_name} as a Dirt Path block and retrying detection.")
+        self.run_detection()
 
     def save_paths(self) -> None:
         if self.preview is None:
@@ -295,6 +436,7 @@ class SeedDetectionSession:
     def close(self) -> None:
         self.viewer.canvas.configure(cursor="")
         self.viewer._path_detection_preview = None
+        self.viewer._path_detection_debug_points = ()
         self.viewer._path_detection_hide_selected_popup = False
         self.viewer._path_detection_session = None
         try:
@@ -304,7 +446,7 @@ class SeedDetectionSession:
         self.viewer.redraw()
 
 
-def _current_render_payload(viewer: "base.MetroMapViewer") -> tuple[dict[str, Any], Any] | None:
+def _current_render_payload(viewer: "base.MetroMapViewer") -> tuple[dict[str, object], Any] | None:
     if not hasattr(viewer, "_current_world_map_render_underlay"):
         return None
     return viewer._current_world_map_render_underlay()
@@ -320,11 +462,15 @@ def _current_visible_bounds(viewer: "base.MetroMapViewer") -> tuple[int, int, in
         if bounds is not None:
             return bounds
     try:
+        min_x = base._render_cache_int(payload, "min_x")
+        max_x = base._render_cache_int(payload, "max_x")
+        min_z = base._render_cache_int(payload, "min_z")
+        max_z = base._render_cache_int(payload, "max_z")
         return (
-            int(payload["min_x"]),
-            int(payload["max_x"]),
-            int(payload["min_z"]),
-            int(payload["max_z"]),
+            min_x,
+            max_x,
+            min_z,
+            max_z,
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -342,7 +488,8 @@ def _load_state() -> dict[str, Any]:
     villages = payload.get("villages")
     if not isinstance(villages, dict):
         villages = {}
-    return {"villages": villages}
+    payload["villages"] = villages
+    return payload
 
 
 def _save_state(payload: dict[str, Any]) -> None:
@@ -350,6 +497,24 @@ def _save_state(payload: dict[str, Any]) -> None:
         json.dumps(payload, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
+
+
+def _runtime_path_block_names() -> set[str]:
+    path_block_names = _load_state().get("runtime_path_block_names", [])
+    if not isinstance(path_block_names, list):
+        return set()
+    return {str(name) for name in path_block_names if str(name).strip()}
+
+
+def _add_runtime_path_block_name(block_name: str) -> None:
+    payload = _load_state()
+    path_block_names = payload.get("runtime_path_block_names", [])
+    if not isinstance(path_block_names, list):
+        path_block_names = []
+    existing = {str(name) for name in path_block_names if str(name).strip()}
+    existing.add(block_name)
+    payload["runtime_path_block_names"] = sorted(existing)
+    _save_state(payload)
 
 
 def _village_state(stop_var: str) -> dict[str, Any] | None:
@@ -370,7 +535,7 @@ def _set_village_state(stop_var: str, record: dict[str, Any] | None) -> None:
     _save_state(payload)
 
 
-def _remove_existing_detection(payload: dict[str, Any], stop_var: str) -> None:
+def _remove_existing_detection(payload: Any, stop_var: str) -> None:
     record = _village_state(stop_var)
     if record is None:
         return
@@ -400,7 +565,7 @@ def _remove_existing_detection(payload: dict[str, Any], stop_var: str) -> None:
     _set_village_state(stop_var, None)
 
 
-def _existing_path_node_coordinates(payload: dict[str, Any]) -> set[tuple[int, int]]:
+def _existing_path_node_coordinates(payload: Any) -> set[tuple[int, int]]:
     coordinates = set()
     for path_node in payload.get("path_nodes", []):
         if not isinstance(path_node, dict):
@@ -409,7 +574,7 @@ def _existing_path_node_coordinates(payload: dict[str, Any]) -> set[tuple[int, i
     return coordinates
 
 
-def _stop_coordinate_map(payload: dict[str, Any]) -> dict[tuple[int, int], str]:
+def _stop_coordinate_map(payload: Any) -> dict[tuple[int, int], str]:
     mapping = {}
     for stop_record in payload.get("stops", []):
         if not isinstance(stop_record, dict):
@@ -429,7 +594,7 @@ def _path_endpoint_record_for_coordinate(
     return {"kind": "coord", "x": int(coordinate[0]), "y": int(coordinate[1])}
 
 
-def _edge_exists(payload: dict[str, Any], endpoint_a: dict[str, Any], endpoint_b: dict[str, Any]) -> bool:
+def _edge_exists(payload: Any, endpoint_a: dict[str, Any], endpoint_b: dict[str, Any]) -> bool:
     def normalized_endpoint(endpoint: dict[str, Any]) -> tuple[str, tuple[int, int] | str]:
         if endpoint.get("kind") == "stop":
             return ("stop", str(endpoint.get("stop_var", "")))
@@ -479,7 +644,7 @@ def _commit_preview(stop_var: str, preview: village_paths.DetectedVillagePreview
         if is_pier_node:
             node_record["label"] = "Pier"
         node_id_index += 1
-        payload.setdefault("path_nodes", []).append(node_record)
+        payload.setdefault("path_nodes", []).append(cast(base.PathNodeRecord, node_record))
         existing_node_coordinates.add(coordinate)
         added_node_coordinates.append([int(coordinate[0]), int(coordinate[1])])
 
@@ -511,7 +676,7 @@ def _commit_preview(stop_var: str, preview: village_paths.DetectedVillagePreview
             ],
             "label": "Village pier" if preview_edge.is_pier else "Village path",
         }
-        payload.setdefault("extra_edges", []).append(edge_record)
+        payload.setdefault("extra_edges", []).append(cast(base.ExtraEdgeRecord, edge_record))
         added_edge_ids.append(edge_id)
 
     base._normalize_path_nodes(payload)
@@ -597,8 +762,9 @@ def _ensure_click_binding(viewer: "base.MetroMapViewer") -> None:
 
 
 def detect_paths_for_stop(viewer: "base.MetroMapViewer", stop_var: str) -> None:
-    if getattr(viewer, "_path_detection_session", None) is not None:
-        viewer._path_detection_session.close()
+    active_session = getattr(viewer, "_path_detection_session", None)
+    if isinstance(active_session, SeedDetectionSession):
+        active_session.close()
 
     stop = base.STOPS_BY_VAR.get(stop_var)
     if stop is None:
@@ -671,6 +837,23 @@ def _draw_preview_edges(self: "base.MetroMapViewer") -> None:
         )
 
 
+def _draw_debug_points(self: "base.MetroMapViewer") -> None:
+    points = getattr(self, "_path_detection_debug_points", ())
+    if not points:
+        return
+    for point_x, point_z in points:
+        canvas_x, canvas_y = self.world_to_canvas((point_x, -point_z))
+        self.canvas.create_rectangle(
+            canvas_x - 3,
+            canvas_y - 3,
+            canvas_x + 3,
+            canvas_y + 3,
+            fill=DEBUG_BLOCK_FILL,
+            outline=DEBUG_BLOCK_OUTLINE,
+            width=1,
+        )
+
+
 def _draw_preview_nodes(self: "base.MetroMapViewer") -> None:
     preview = getattr(self, "_path_detection_preview", None)
     if preview is None:
@@ -689,16 +872,20 @@ def _draw_preview_nodes(self: "base.MetroMapViewer") -> None:
 
 
 def _patched_draw_extra_edges(self: "base.MetroMapViewer") -> None:
+    assert _ORIGINAL_DRAW_EXTRA_EDGES is not None
     _ORIGINAL_DRAW_EXTRA_EDGES(self)
+    _draw_debug_points(self)
     _draw_preview_edges(self)
 
 
 def _patched_draw_path_nodes(self: "base.MetroMapViewer") -> None:
+    assert _ORIGINAL_DRAW_PATH_NODES is not None
     _ORIGINAL_DRAW_PATH_NODES(self)
     _draw_preview_nodes(self)
 
 
 def _patched_refresh_station_stats(self: "base.MetroMapViewer") -> None:
+    assert _ORIGINAL_REFRESH_STATION_STATS is not None
     _ORIGINAL_REFRESH_STATION_STATS(self)
     summary_lines = [
         line
@@ -714,6 +901,7 @@ def _patched_draw_selected_stop_info(self: "base.MetroMapViewer") -> None:
     if getattr(self, "_path_detection_hide_selected_popup", False):
         return
 
+    assert _ORIGINAL_DRAW_SELECTED_STOP_INFO is not None
     _ORIGINAL_DRAW_SELECTED_STOP_INFO(self)
     stop_var = getattr(self, "selected_stop_var", None)
     frame = getattr(self, "info_popup_frame", None)

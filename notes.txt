@@ -3,28 +3,23 @@ Minecraft Metro Map Notes
 
 Desktop App
 -----------
-[] Add a high-resolution export path for SVG or raster output when a block-level map is needed.
-[] When zoomed in far enough, consider switching the world-map underlay to a sharper block-level rendering mode.
-[] Add a small smoke-test script for launching the Tk app far enough to build the sidebar and verify default section state.
-[] Review whether the World Map section can own more of its controls so the Show/Hide area stays focused on visual layers only.
+|- we need an "edit note" button in the popup UI. this would just move the current node to a different coordinate input by the user. it would keep all connections to/from that node in tact, just move them
+|- when paths are drawn using click-and-drag, it shouldn't leave the path highlighted. it should automatically go to the default dotted lines once the hold is released
+|- node UI behavior should match station UI behavior - where it kinda sticks to the bottom left of the screen. can we put a little x on those popups to close it
+|- the UI seems to be a little laggy. can we try to smooth it out and speed it up?
 
 Web Viewer
 ----------
-[] Add a lightweight browser smoke test that confirms the canvas, network JSON, and terrain image all load.
-[] Add a regression check for world-map image bounds so the rendered image continues to match the true image dimensions.
-[] Consider exposing a simple "fit rendered map" action if the full network view makes the terrain hard to inspect.
 
 World Map / Generation
 ----------------------
-[] Improve the terrain palette after coverage is reliable.
-[] Keep Auto Fill focused on one clear flow: choose the next blank target, load chunks, render, then update status.
-[] If server-side teleports stop persisting chunk areas, make the headless client move itself or reconnect at the next target.
-[] Consider moving generated world data out of iCloud Drive if performance or sync weirdness becomes a problem.
-[] Remember that changing the seed later will not regenerate an existing saved world.
-[] Remember that Bedrock only saves chunks that have actually been generated or visited.
-[] figure out how to connect to live playstation server that i would be playing in to get a map of the actual world and not just the generic seed im in
+|- Improve the terrain palette after coverage is reliable. Coverage is now 100%
+|- If server-side teleports stop persisting chunk areas, make the headless client move itself or reconnect at the next target.
+|- Remember that changing the seed later will not regenerate an existing saved world.
+|- Remember that Bedrock only saves chunks that have actually been generated or visited.
+|- figure out how to connect to live playstation server that i would be playing in to get a map of the actual world and not just the generic seed im in
 
 Cleanup Candidates
 ------------------
-[] Keep an eye on patch modules such as worldgen_speedups.py and world_map_overrides.py; consolidate only when their behavior is stable.
-[] Leave small public launch wrappers in place unless there is a clear replacement entrypoint.
+|- Keep an eye on patch modules such as worldgen_speedups.py and world_map_overrides.py; consolidate only when their behavior is stable.
+|- Leave small public launch wrappers in place unless there is a clear replacement entrypoint.

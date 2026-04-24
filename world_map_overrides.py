@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from math import ceil, floor
+from pathlib import Path
 from typing import Any, cast
 
 from PIL import Image, ImageTk
@@ -11,6 +12,7 @@ import world_map_analysis
 
 
 UNDERLAY_SEAM_OVERSCAN_PIXELS = 1
+SHARP_UNDERLAY_UPSCALE_THRESHOLD = 1.5
 BOUNDARY_EDGE_COLOR = "#e5e7eb"
 BOUNDARY_EDGE_WIDTH = 1
 EDGE_TOUCH_BAND = 2
@@ -87,6 +89,155 @@ def _compute_underlay_draw_plan(
         padded_source_bottom,
     )
     return (draw_left, draw_top, target_width, target_height, source_box)
+
+
+def _underlay_resampling_filter(
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+) -> int:
+    source_left, source_top, source_right, source_bottom = source_box
+    source_width = max(1, source_right - source_left)
+    source_height = max(1, source_bottom - source_top)
+    upscale = max(target_width / source_width, target_height / source_height)
+    if upscale >= SHARP_UNDERLAY_UPSCALE_THRESHOLD:
+        try:
+            return Image.Resampling.NEAREST
+        except AttributeError:
+            return cast(Any, Image).NEAREST
+    try:
+        return Image.Resampling.BILINEAR
+    except AttributeError:
+        return cast(Any, Image).BILINEAR
+
+
+def _native_block_image_size(payload: dict[str, object]) -> tuple[int, int] | None:
+    try:
+        render_min_x = base._render_cache_int(payload, "min_x")
+        render_max_x = base._render_cache_int(payload, "max_x")
+        render_min_z = base._render_cache_int(payload, "min_z")
+        render_max_z = base._render_cache_int(payload, "max_z")
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (render_max_x - render_min_x + 1, render_max_z - render_min_z + 1)
+
+
+def _image_is_native_block_resolution(payload: dict[str, object], image: Image.Image) -> bool:
+    native_size = _native_block_image_size(payload)
+    return native_size is not None and image.size == native_size
+
+
+def _full_resolution_image_candidates(
+    viewer: "base.MetroMapViewer",
+    payload: dict[str, object],
+) -> list[Path]:
+    candidates: list[Path] = []
+    payload_image_path = payload.get("image_path")
+    if isinstance(payload_image_path, str) and payload_image_path:
+        candidates.append(Path(payload_image_path))
+
+    try:
+        from worldgen.config import load_config
+        from worldgen.generator import BedrockWorldGenerator
+
+        config = load_config()
+        mode_paths = BedrockWorldGenerator(config).paths_for_mode(viewer._selected_world_map_mode_key())
+        candidates.extend(
+            [
+                mode_paths.render_image_path,
+                mode_paths.docs_render_image_path,
+                config.repo_root / "worldgen_output" / mode_paths.render_image_path.name,
+                config.repo_root / "docs" / "assets" / mode_paths.render_image_path.name,
+            ]
+        )
+    except Exception:
+        pass
+
+    return candidates
+
+
+def _full_resolution_render_source(
+    viewer: "base.MetroMapViewer",
+    payload: dict[str, object],
+    source_image: Image.Image,
+) -> Image.Image:
+    if _image_is_native_block_resolution(payload, source_image):
+        return source_image
+
+    native_size = _native_block_image_size(payload)
+    if native_size is None:
+        return source_image
+
+    candidates = _full_resolution_image_candidates(viewer, payload)
+    resolved_candidates: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved_candidates.add(candidate.resolve())
+        except OSError:
+            resolved_candidates.add(candidate)
+
+    cached_path = getattr(viewer, "_world_map_full_render_image_path", None)
+    cached_stat = getattr(viewer, "_world_map_full_render_image_stat", None)
+    cached_image = getattr(viewer, "_world_map_full_render_source_image", None)
+    if isinstance(cached_path, Path) and isinstance(cached_image, Image.Image):
+        try:
+            resolved_cached_path = cached_path.resolve()
+        except OSError:
+            resolved_cached_path = cached_path
+        image_stat = base._file_stat_key(cached_path)
+        if (
+            resolved_cached_path in resolved_candidates
+            and image_stat is not None
+            and image_stat == cached_stat
+            and cached_image.size == native_size
+        ):
+            return cached_image
+
+    seen_paths: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved_candidate = candidate.resolve()
+        except OSError:
+            resolved_candidate = candidate
+        if resolved_candidate in seen_paths:
+            continue
+        seen_paths.add(resolved_candidate)
+
+        image_stat = base._file_stat_key(candidate)
+        if image_stat is None:
+            continue
+        try:
+            with Image.open(candidate) as candidate_image:
+                if candidate_image.size != native_size:
+                    continue
+                full_source = candidate_image.convert("RGBA")
+        except OSError:
+            continue
+
+        viewer._world_map_full_render_image_path = candidate
+        viewer._world_map_full_render_image_stat = image_stat
+        viewer._world_map_full_render_source_image = full_source
+        return full_source
+
+    return source_image
+
+
+def _draw_plan_is_upscaled(
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+) -> bool:
+    source_left, source_top, source_right, source_bottom = source_box
+    source_width = max(1, source_right - source_left)
+    source_height = max(1, source_bottom - source_top)
+    return max(target_width / source_width, target_height / source_height) >= SHARP_UNDERLAY_UPSCALE_THRESHOLD
+
+
+def _alpha_limited_copy(image: Image.Image) -> Image.Image:
+    underlay = image.convert("RGBA")
+    alpha = underlay.getchannel("A").point(base._limit_world_map_alpha)
+    underlay.putalpha(alpha)
+    return underlay
 
 
 def _edge_runs(edge_mask: np.ndarray) -> list[tuple[int, int]]:
@@ -214,14 +365,18 @@ def _patched_draw_world_map_render_underlay(self: "base.MetroMapViewer") -> None
         return
 
     draw_left, draw_top, target_width, target_height, source_box = draw_plan
+    if _draw_plan_is_upscaled(target_width, target_height, source_box):
+        full_source_image = _full_resolution_render_source(self, payload, source_image)
+        if full_source_image is not source_image:
+            full_draw_plan = _compute_underlay_draw_plan(self, payload, full_source_image)
+            if full_draw_plan is not None:
+                source_image = full_source_image
+                draw_left, draw_top, target_width, target_height, source_box = full_draw_plan
+
     underlay = source_image.crop(source_box)
-    try:
-        resampling_filter = Image.Resampling.BILINEAR
-    except AttributeError:
-        resampling_filter = cast(Any, Image).BILINEAR
+    resampling_filter = _underlay_resampling_filter(target_width, target_height, source_box)
     underlay = underlay.resize((target_width, target_height), resampling_filter)
-    alpha = underlay.getchannel("A").point(base._limit_world_map_alpha)
-    underlay.putalpha(alpha)
+    underlay = _alpha_limited_copy(underlay)
     underlay_image = ImageTk.PhotoImage(underlay)
     self.overlay_image_refs.append(underlay_image)
     self.canvas.create_image(draw_left, draw_top, anchor="nw", image=underlay_image)
@@ -239,15 +394,13 @@ def _patched_current_world_map_svg_image(self: "base.MetroMapViewer") -> base.Sv
     if draw_plan is None:
         return None
 
+    source_image = _full_resolution_render_source(self, payload, source_image)
+    draw_plan = _compute_underlay_draw_plan(self, payload, source_image)
+    if draw_plan is None:
+        return None
+
     draw_left, draw_top, target_width, target_height, source_box = draw_plan
-    underlay = source_image.crop(source_box)
-    try:
-        resampling_filter = Image.Resampling.BILINEAR
-    except AttributeError:
-        resampling_filter = cast(Any, Image).BILINEAR
-    underlay = underlay.resize((target_width, target_height), resampling_filter)
-    alpha = underlay.getchannel("A").point(base._limit_world_map_alpha)
-    underlay.putalpha(alpha)
+    underlay = _alpha_limited_copy(source_image.crop(source_box))
 
     import base64
     import io
@@ -264,6 +417,48 @@ def _patched_current_world_map_svg_image(self: "base.MetroMapViewer") -> base.Sv
     )
 
 
+def _export_visible_block_png(self: "base.MetroMapViewer") -> None:
+    from datetime import datetime
+    from tkinter import messagebox
+
+    self.root.update_idletasks()
+    self.width = self.canvas.winfo_width()
+    self.height = self.canvas.winfo_height()
+
+    render_underlay = self._current_world_map_render_underlay()
+    if render_underlay is None:
+        messagebox.showerror(
+            "Export Failed",
+            "Render the world map first, then export the visible block-level PNG.",
+            parent=self.root,
+        )
+        return
+
+    payload, source_image = render_underlay
+    source_image = _full_resolution_render_source(self, payload, source_image)
+    draw_plan = _compute_underlay_draw_plan(self, payload, source_image)
+    if draw_plan is None:
+        messagebox.showerror(
+            "Export Failed",
+            "No rendered world-map blocks are visible in the current view.",
+            parent=self.root,
+        )
+        return
+
+    _draw_left, _draw_top, _target_width, _target_height, source_box = draw_plan
+    try:
+        block_image = _alpha_limited_copy(source_image.crop(source_box))
+        base.EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        export_path = base.EXPORTS_DIR / f"world-map-blocks-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
+        block_image.save(export_path, format="PNG")
+    except Exception as exc:  # noqa: BLE001
+        messagebox.showerror("Export Failed", f"Could not write the block PNG export.\n\n{exc}", parent=self.root)
+        return
+
+    messagebox.showinfo("Map Exported", f"Saved block-level PNG to:\n{export_path}", parent=self.root)
+
+
 def apply() -> None:
     base.MetroMapViewer._draw_world_map_render_underlay = _patched_draw_world_map_render_underlay
     base.MetroMapViewer._current_world_map_svg_image = _patched_current_world_map_svg_image
+    base.MetroMapViewer._export_visible_block_png = _export_visible_block_png

@@ -1,5 +1,10 @@
 {
   "name": "plumville",
+  "scripts": {
+    "smoke:docs": "node docs/smoke_test.js",
+    "smoke:tk": "python3 scripts/smoke_tk_sidebar.py",
+    "test:paths": "python3 -m unittest tests.test_village_paths"
+  },
   "dependencies": {
     "bedrock-protocol": "^3.55.0"
   }

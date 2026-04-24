@@ -12,7 +12,22 @@
       "has_signs": true,
       "chime_directions": [
         "north"
-      ]
+      ],
+      "has_walking_paths": true,
+      "city_limit_node_keys": [
+        "coord:268,276",
+        "coord:233,331",
+        "coord:233,351",
+        "coord:270,370",
+        "coord:281,369",
+        "coord:295,398",
+        "coord:312,400",
+        "coord:327,373",
+        "coord:327,341",
+        "coord:340,321"
+      ],
+      "station_entry_x": 319,
+      "station_entry_y": 339
     },
     {
       "var": "P_B2",
@@ -27,7 +42,21 @@
       "chime_directions": [
         "east",
         "west"
-      ]
+      ],
+      "has_walking_paths": true,
+      "city_limit_node_keys": [
+        "coord:692,94",
+        "coord:715,98",
+        "coord:774,138",
+        "coord:744,164",
+        "coord:741,168",
+        "coord:721,179",
+        "coord:707,170",
+        "coord:693,141",
+        "coord:692,118"
+      ],
+      "station_entry_x": 776,
+      "station_entry_y": 115
     },
     {
       "var": "P_E2",
@@ -42,7 +71,8 @@
       "chime_directions": [
         "east",
         "south"
-      ]
+      ],
+      "has_walking_paths": false
     },
     {
       "var": "P_D2",
@@ -54,7 +84,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_A2",
@@ -69,6 +100,15 @@
       "chime_directions": [
         "east",
         "west"
+      ],
+      "has_walking_paths": false,
+      "city_limit_node_keys": [
+        "coord:89,-524",
+        "coord:140,-534",
+        "coord:155,-487",
+        "coord:155,-451",
+        "coord:60,-451",
+        "coord:60,-459"
       ]
     },
     {
@@ -81,7 +121,15 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": true,
+      "city_limit_node_keys": [
+        "coord:617,1344",
+        "coord:688,1311",
+        "coord:703,1311",
+        "coord:790,1354",
+        "coord:700,1433"
+      ]
     },
     {
       "var": "P_B3",
@@ -96,6 +144,17 @@
       "chime_directions": [
         "east",
         "west"
+      ],
+      "has_walking_paths": true,
+      "city_limit_node_keys": [
+        "coord:1279,105",
+        "coord:1278,154",
+        "coord:1282,157",
+        "coord:1300,155",
+        "coord:1350,168",
+        "coord:1350,144",
+        "coord:1330,49",
+        "coord:1296,85"
       ]
     },
     {
@@ -108,7 +167,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_AP",
@@ -123,7 +183,8 @@
       "chime_directions": [
         "north",
         "south"
-      ]
+      ],
+      "has_walking_paths": false
     },
     {
       "var": "P_P2",
@@ -135,7 +196,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_D3",
@@ -147,7 +209,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_N2",
@@ -159,7 +222,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_E4",
@@ -171,7 +235,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_C3",
@@ -183,7 +248,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_A4",
@@ -198,7 +264,8 @@
       "chime_directions": [
         "east",
         "west"
-      ]
+      ],
+      "has_walking_paths": false
     },
     {
       "var": "P_B4",
@@ -212,7 +279,8 @@
       "has_signs": true,
       "chime_directions": [
         "west"
-      ]
+      ],
+      "has_walking_paths": false
     },
     {
       "var": "P_P3",
@@ -224,7 +292,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_DN",
@@ -236,7 +305,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_B5",
@@ -248,7 +318,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_N3",
@@ -260,7 +331,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_E5",
@@ -272,7 +344,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_A5",
@@ -286,7 +359,8 @@
       "has_signs": true,
       "chime_directions": [
         "south"
-      ]
+      ],
+      "has_walking_paths": false
     },
     {
       "var": "P_F5",
@@ -298,7 +372,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_CN",
@@ -310,7 +385,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_F4",
@@ -322,7 +398,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_P4",
@@ -334,7 +411,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_FG",
@@ -346,7 +424,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_D5",
@@ -358,7 +437,8 @@
       "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_A6",
@@ -370,7 +450,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_E6",
@@ -382,7 +463,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_C5",
@@ -394,7 +476,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_G2",
@@ -406,7 +489,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_N6",
@@ -418,7 +502,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_F3",
@@ -430,7 +515,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_F7",
@@ -442,7 +528,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_A9",
@@ -454,7 +541,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_KL",
@@ -466,7 +554,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_AF",
@@ -478,7 +567,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_F2",
@@ -490,7 +580,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_BK",
@@ -502,7 +593,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_K3",
@@ -514,7 +606,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_A8",
@@ -526,7 +619,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_P5",
@@ -538,7 +632,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_G3",
@@ -550,7 +645,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_D6",
@@ -562,7 +658,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_K5",
@@ -574,7 +671,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_HKM",
@@ -586,7 +684,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_D7",
@@ -598,7 +697,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_K9",
@@ -610,7 +710,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_C6",
@@ -622,7 +723,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_H10",
@@ -634,7 +736,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_HL",
@@ -646,7 +749,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_P6",
@@ -658,7 +762,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_KN",
@@ -670,7 +775,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_H5",
@@ -682,7 +788,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_FH",
@@ -694,7 +801,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_EPRV",
@@ -706,7 +814,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_S2",
@@ -718,7 +827,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_H8",
@@ -730,7 +840,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_V2",
@@ -742,7 +853,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_G4",
@@ -754,7 +866,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_N8",
@@ -766,7 +879,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_K7",
@@ -778,7 +892,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_K8",
@@ -790,7 +905,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_C7",
@@ -802,7 +918,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_H3",
@@ -814,7 +931,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_BH",
@@ -826,7 +944,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_E8",
@@ -838,7 +957,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_H7",
@@ -850,7 +970,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_R2",
@@ -862,7 +983,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_RS",
@@ -874,7 +996,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_LM",
@@ -886,7 +1009,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_M6",
@@ -898,7 +1022,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_G5",
@@ -910,7 +1035,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_P8",
@@ -922,7 +1048,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_S3",
@@ -934,7 +1061,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_M5",
@@ -946,7 +1074,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_M2",
@@ -958,7 +1087,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_ET",
@@ -970,7 +1100,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_J2",
@@ -982,7 +1113,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_J3",
@@ -994,7 +1126,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_PT",
@@ -1006,7 +1139,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_M7",
@@ -1018,7 +1152,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_D8",
@@ -1030,7 +1165,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_H2",
@@ -1042,7 +1178,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_L4",
@@ -1054,7 +1191,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_C8",
@@ -1066,7 +1204,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_G6",
@@ -1078,7 +1217,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_B8",
@@ -1090,7 +1230,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_T2",
@@ -1102,7 +1243,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_S4",
@@ -1114,7 +1256,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_TV",
@@ -1126,7 +1269,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_CD",
@@ -1138,7 +1282,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_MN",
@@ -1150,7 +1295,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_GJ",
@@ -1162,7 +1308,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_R4",
@@ -1174,7 +1321,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_BJ",
@@ -1186,7 +1334,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_GH",
@@ -1198,7 +1347,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_CT",
@@ -1210,7 +1360,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_J6",
@@ -1222,7 +1373,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_J4",
@@ -1234,7 +1386,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_G8",
@@ -1246,7 +1399,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_E10",
@@ -1258,7 +1412,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_G10",
@@ -1270,7 +1425,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_V4",
@@ -1282,7 +1438,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_R5",
@@ -1294,7 +1451,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_B10",
@@ -1306,7 +1464,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_R6",
@@ -1318,7 +1477,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     },
     {
       "var": "P_B11",
@@ -1330,7 +1490,8 @@
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
-      "chime_directions": []
+      "chime_directions": [],
+      "has_walking_paths": false
     }
   ],
   "line_colors": {
@@ -3062,8 +3223,3571 @@
       "axis": "y"
     }
   ],
-  "extra_edges": [],
-  "path_nodes": [],
+  "extra_edges": [
+    {
+      "id": "walk_coord_327_341_coord_327_373_1",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 327,
+        "y": 341
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 327,
+        "y": 373
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_327_373_coord_482_450_2",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 327,
+        "y": 373
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 482,
+        "y": 450
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_482_450_coord_548_450_3",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 482,
+        "y": 450
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 548,
+        "y": 450
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_327_341_coord_310_341_4",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 327,
+        "y": 341
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 310,
+        "y": 341
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_310_341_coord_310_351_5",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 310,
+        "y": 341
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 310,
+        "y": 351
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_310_341_coord_310_336_6",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 310,
+        "y": 341
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 310,
+        "y": 336
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_310_336_coord_320_336_7",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 310,
+        "y": 336
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 320,
+        "y": 336
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_310_336_coord_305_336_8",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 310,
+        "y": 336
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 336
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_305_336_coord_305_331_9",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 336
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 331
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_305_331_coord_305_326_10",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 331
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 326
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_305_326_coord_305_321_11",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 326
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 321
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_305_321_coord_340_321_12",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 321
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 340,
+        "y": 321
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_275_321_coord_280_321_13",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 275,
+        "y": 321
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 321
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_280_321_coord_280_331_14",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 321
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 331
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_280_321_coord_305_321_15",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 321
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 321
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_280_331_coord_291_331_16",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 331
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 291,
+        "y": 331
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_291_331_coord_291_326_17",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 291,
+        "y": 331
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 291,
+        "y": 326
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_291_326_coord_305_326_18",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 291,
+        "y": 326
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 305,
+        "y": 326
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_233_331_coord_233_351_19",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 233,
+        "y": 331
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 233,
+        "y": 351
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_233_331_coord_269_331_20",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 233,
+        "y": 331
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 331
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_269_331_coord_280_331_21",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 331
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 331
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_269_341_coord_279_341_22",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 341
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 279,
+        "y": 341
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_269_331_coord_269_341_23",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 331
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 341
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_269_341_coord_270_370_24",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 341
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 270,
+        "y": 370
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_268_276_coord_268_302_25",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 268,
+        "y": 276
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 268,
+        "y": 302
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_268_302_coord_269_306_26",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 268,
+        "y": 302
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 306
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_269_306_coord_269_331_27",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 306
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 269,
+        "y": 331
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_281_359_coord_281_364_28",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 281,
+        "y": 359
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 281,
+        "y": 364
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_281_364_coord_281_369_29",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 281,
+        "y": 364
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 281,
+        "y": 369
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_295_398_coord_295_385_30",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 398
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 385
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_295_385_coord_312_385_31",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 385
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 312,
+        "y": 385
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_312_385_coord_312_400_32",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 312,
+        "y": 385
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 312,
+        "y": 400
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_295_364_coord_300_364_33",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 364
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 300,
+        "y": 364
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_295_364_coord_295_385_34",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 364
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 385
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_281_364_coord_295_364_35",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 281,
+        "y": 364
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 364
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_285_344_coord_295_344_36",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 285,
+        "y": 344
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 344
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_295_344_coord_295_364_37",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 344
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 364
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_295_335_coord_295_344_38",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 335
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 344
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_295_335_coord_291_331_39",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 295,
+        "y": 335
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 291,
+        "y": 331
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_692_118_coord_692_94_40",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 692,
+        "y": 118
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 692,
+        "y": 94
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_693_119_coord_692_118_41",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 119
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 692,
+        "y": 118
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_693_141_coord_693_119_42",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 119
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_753_138_coord_774_138_43",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 753,
+        "y": 138
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 774,
+        "y": 138
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_749_141_coord_753_138_44",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 749,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 753,
+        "y": 138
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_715_141_coord_715_98_46",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 98
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_705_141_coord_715_141_47",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 705,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_693_141_coord_705_141_48",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 705,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_707_146_coord_705_141_49",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 146
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 705,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_741_146_coord_741_150_50",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 146
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 150
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_741_150_coord_744_150_51",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 150
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 744,
+        "y": 150
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_731_150_coord_741_150_53",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 150
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 150
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_741_164_coord_744_164_54",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 164
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 744,
+        "y": 164
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_741_164_coord_741_150_55",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 164
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 150
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_741_168_coord_741_164_56",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 168
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 164
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_737_164_coord_741_164_57",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 737,
+        "y": 164
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 164
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_731_157_coord_731_150_58",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 157
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 150
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_731_161_coord_731_157_59",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 161
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_720_157_coord_731_157_60",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 720,
+        "y": 157
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_729_170_coord_737_164_61",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 729,
+        "y": 170
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 737,
+        "y": 164
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_721_162_coord_720_157_62",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 162
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 720,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_721_170_coord_721_162_63",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 170
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 162
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_721_170_coord_729_170_64",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 170
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 729,
+        "y": 170
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_721_179_coord_721_170_65",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 179
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 170
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_715_162_coord_715_157_66",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 162
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_715_157_coord_720_157_67",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 157
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 720,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_710_157_coord_715_157_68",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 710,
+        "y": 157
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_710_162_coord_715_162_69",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 710,
+        "y": 162
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 162
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_710_162_coord_710_157_70",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 710,
+        "y": 162
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 710,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_707_162_coord_710_162_71",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 162
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 710,
+        "y": 162
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_707_170_coord_707_162_72",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 170
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 162
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_707_170_coord_721_170_73",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 170
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 170
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_707_162_coord_707_146_74",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 162
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 146
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1330_85_coord_1330_49_75",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 85
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 49
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1330_85_coord_1296_85_76",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 85
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1296,
+        "y": 85
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1330_85_coord_1330_133_77",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 85
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1330_144_coord_1350_144_78",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 144
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1350,
+        "y": 144
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1350_154_coord_1350_144_79",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1350,
+        "y": 154
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1350,
+        "y": 144
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1350_168_coord_1350_154_80",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1350,
+        "y": 168
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1350,
+        "y": 154
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1345_154_coord_1350_154_81",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1345,
+        "y": 154
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1350,
+        "y": 154
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1345_158_coord_1345_154_82",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1345,
+        "y": 158
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1345,
+        "y": 154
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1330_144_coord_1330_133_83",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 144
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1322_133_coord_1330_133_84",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1322,
+        "y": 133
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1317_139_coord_1322_133_85",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1317,
+        "y": 139
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1322,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1317_139_coord_1311_133_86",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1317,
+        "y": 139
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1311,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1311_133_coord_1298_133_87",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1311,
+        "y": 133
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1298,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1298_133_coord_1296_127_88",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1298,
+        "y": 133
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1296,
+        "y": 127
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1298_144_coord_1298_133_89",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1298,
+        "y": 144
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1298,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1298_133_coord_1282_133_90",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1298,
+        "y": 133
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1282_133_coord_1282_115_91",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 133
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 115
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1282_115_coord_1279_111_92",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 115
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1279,
+        "y": 111
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1279_111_coord_1279_105_93",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1279,
+        "y": 111
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1279,
+        "y": 105
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1282_154_coord_1282_133_94",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 154
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 133
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1278_154_coord_1282_154_95",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1278,
+        "y": 154
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 154
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1282_154_coord_1282_157_96",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 154
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1282_154_coord_1286_154_97",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1282,
+        "y": 154
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1286,
+        "y": 154
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1296_152_coord_1300_152_98",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1296,
+        "y": 152
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1300,
+        "y": 152
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1300_155_coord_1300_152_99",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1300,
+        "y": 155
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1300,
+        "y": 152
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1300_152_coord_1300_149_100",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1300,
+        "y": 152
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1300,
+        "y": 149
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1300_149_coord_1302_147_101",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1300,
+        "y": 149
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1302,
+        "y": 147
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1302_147_coord_1306_144_102",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1302,
+        "y": 147
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1306,
+        "y": 144
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1306_144_coord_1318_144_103",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1306,
+        "y": 144
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1318,
+        "y": 144
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1318_144_coord_1330_144_104",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1318,
+        "y": 144
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1330,
+        "y": 144
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1318_144_coord_1317_139_105",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1318,
+        "y": 144
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1317,
+        "y": 139
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_140_-492_coord_140_-534_106",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 140,
+        "y": -492
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 140,
+        "y": -534
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_123_-492_coord_140_-492_107",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -492
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 140,
+        "y": -492
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_123_-492_coord_123_-502_108",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -492
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -502
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_89_-492_coord_123_-492_109",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -492
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -492
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_89_-492_coord_89_-524_110",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -492
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -524
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_155_-451_coord_155_-487_111",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 155,
+        "y": -451
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 155,
+        "y": -487
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_116_-451_coord_155_-451_112",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 116,
+        "y": -451
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 155,
+        "y": -451
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_123_-469_coord_123_-492_113",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -492
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_123_-464_coord_123_-469_114",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -464
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -469
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_115_-469_coord_123_-469_115",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 115,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 123,
+        "y": -469
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_110_-469_coord_115_-469_116",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 110,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 115,
+        "y": -469
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_110_-469_coord_109_-474_117",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 110,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 109,
+        "y": -474
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_115_-469_coord_115_-454_118",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 115,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 115,
+        "y": -454
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_115_-454_coord_116_-451_119",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 115,
+        "y": -454
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 116,
+        "y": -451
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_110_-469_coord_89_-469_120",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 110,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -469
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_89_-469_coord_89_-473_121",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -473
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_89_-469_coord_89_-465_122",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -465
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_89_-469_coord_84_-469_123",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -469
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 84,
+        "y": -469
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_116_-451_coord_60_-451_124",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 116,
+        "y": -451
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 60,
+        "y": -451
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_60_-451_coord_60_-459_125",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 60,
+        "y": -451
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 60,
+        "y": -459
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_710_1356_coord_711_1355_126",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 710,
+        "y": 1356
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 711,
+        "y": 1355
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1356_coord_710_1356_127",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1356
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 710,
+        "y": 1356
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1328_coord_724_1328_128",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1328
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 724,
+        "y": 1328
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_698_1328_coord_703_1328_129",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 698,
+        "y": 1328
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1328
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_698_1333_coord_698_1328_130",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 698,
+        "y": 1333
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 698,
+        "y": 1328
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_698_1333_coord_703_1333_131",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 698,
+        "y": 1333
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1333
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1328_coord_703_1333_132",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1328
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1333
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1333_coord_725_1333_133",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1333
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 725,
+        "y": 1333
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_693_1333_coord_698_1333_134",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 1333
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 698,
+        "y": 1333
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_690_1333_coord_693_1333_135",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 690,
+        "y": 1333
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 1333
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_693_1333_coord_693_1344_136",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 1333
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 1344
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_693_1344_coord_700_1344_137",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 1344
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1344
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_1344_coord_704_1344_138",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1344
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 704,
+        "y": 1344
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_1344_coord_700_1353_139",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1344
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1353
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_1353_coord_703_1353_140",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1353
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1353
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1353_coord_703_1356_141",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1353
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1356
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1356_coord_703_1359_142",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1356
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1359
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_697_1353_coord_700_1353_143",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1353
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1353
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_1359_coord_703_1359_144",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1359
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1359
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_697_1359_coord_700_1359_145",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1359
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1359
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_697_1356_coord_697_1353_146",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1356
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1353
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_697_1359_coord_697_1356_147",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1359
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1356
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_1363_coord_700_1359_148",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1363
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1359
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_1363_coord_703_1363_149",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1363
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1363
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_697_1363_coord_700_1363_150",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1363
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1363
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_653_1356_coord_697_1356_151",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 653,
+        "y": 1356
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 697,
+        "y": 1356
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_653_1356_coord_653_1351_152",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 653,
+        "y": 1356
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 653,
+        "y": 1351
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_653_1361_coord_653_1356_153",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 653,
+        "y": 1361
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 653,
+        "y": 1356
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1328_coord_703_1311_154",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1328
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1311
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_703_1311_coord_688_1311_155",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 703,
+        "y": 1311
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 688,
+        "y": 1311
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_693_1344_coord_617_1344_156",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 693,
+        "y": 1344
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 617,
+        "y": 1344
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_653_1351_coord_657_1351_157",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 653,
+        "y": 1351
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 657,
+        "y": 1351
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_1363_coord_700_1433_158",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1363
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 1433
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_775_1355_coord_776_1354_159",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 775,
+        "y": 1355
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 776,
+        "y": 1354
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_711_1355_coord_775_1355_160",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 711,
+        "y": 1355
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 775,
+        "y": 1355
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_776_1354_coord_790_1354_161",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 776,
+        "y": 1354
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 790,
+        "y": 1354
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_548_450_coord_548_420_162",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 548,
+        "y": 450
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 548,
+        "y": 420
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_721_216_coord_721_179_163",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 216
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 179
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_721_216_coord_700_258_164",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 721,
+        "y": 216
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 258
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_548_420_coord_629_420_165",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 548,
+        "y": 420
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 629,
+        "y": 420
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_629_420_coord_700_349_166",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 629,
+        "y": 420
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 349
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_700_349_coord_700_258_167",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 349
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 700,
+        "y": 258
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_715_141_coord_731_141_167",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 715,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_731_141_coord_740_141_168",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 740,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_740_141_coord_749_141_169",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 740,
+        "y": 141
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 749,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_741_146_coord_740_144_171",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 741,
+        "y": 146
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 740,
+        "y": 144
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_740_144_coord_740_141_172",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 740,
+        "y": 144
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 740,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_731_150_coord_731_141_171",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 150
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 731,
+        "y": 141
+      },
+      "bidirectional": true,
+      "path_points": []
+    }
+  ],
+  "path_nodes": [
+    {
+      "id": "node_1",
+      "x": 327,
+      "y": 341
+    },
+    {
+      "id": "node_2",
+      "x": 327,
+      "y": 373
+    },
+    {
+      "id": "node_3",
+      "x": 548,
+      "y": 450
+    },
+    {
+      "id": "node_4",
+      "x": 482,
+      "y": 450
+    },
+    {
+      "id": "node_5",
+      "x": 310,
+      "y": 341
+    },
+    {
+      "id": "node_6",
+      "x": 310,
+      "y": 351
+    },
+    {
+      "id": "node_7",
+      "x": 310,
+      "y": 336
+    },
+    {
+      "id": "node_8",
+      "x": 320,
+      "y": 336
+    },
+    {
+      "id": "node_9",
+      "x": 305,
+      "y": 336
+    },
+    {
+      "id": "node_10",
+      "x": 305,
+      "y": 331
+    },
+    {
+      "id": "node_11",
+      "x": 305,
+      "y": 326
+    },
+    {
+      "id": "node_12",
+      "x": 305,
+      "y": 321
+    },
+    {
+      "id": "node_13",
+      "x": 340,
+      "y": 321
+    },
+    {
+      "id": "node_15",
+      "x": 275,
+      "y": 321
+    },
+    {
+      "id": "node_17",
+      "x": 291,
+      "y": 331
+    },
+    {
+      "id": "node_18",
+      "x": 291,
+      "y": 326
+    },
+    {
+      "id": "node_22",
+      "x": 280,
+      "y": 331
+    },
+    {
+      "id": "node_23",
+      "x": 280,
+      "y": 321
+    },
+    {
+      "id": "node_19",
+      "x": 269,
+      "y": 331
+    },
+    {
+      "id": "node_20",
+      "x": 233,
+      "y": 331
+    },
+    {
+      "id": "node_21",
+      "x": 233,
+      "y": 351
+    },
+    {
+      "id": "node_22_22",
+      "x": 269,
+      "y": 341
+    },
+    {
+      "id": "node_23_23",
+      "x": 279,
+      "y": 341
+    },
+    {
+      "id": "node_24",
+      "x": 270,
+      "y": 370
+    },
+    {
+      "id": "node_25",
+      "x": 269,
+      "y": 306
+    },
+    {
+      "id": "node_26",
+      "x": 268,
+      "y": 302
+    },
+    {
+      "id": "node_27",
+      "x": 268,
+      "y": 276
+    },
+    {
+      "id": "node_28",
+      "x": 312,
+      "y": 385
+    },
+    {
+      "id": "node_29",
+      "x": 312,
+      "y": 400
+    },
+    {
+      "id": "node_30",
+      "x": 295,
+      "y": 385
+    },
+    {
+      "id": "node_31",
+      "x": 295,
+      "y": 398
+    },
+    {
+      "id": "node_32",
+      "x": 295,
+      "y": 364
+    },
+    {
+      "id": "node_33",
+      "x": 300,
+      "y": 364
+    },
+    {
+      "id": "node_34",
+      "x": 281,
+      "y": 364
+    },
+    {
+      "id": "node_35",
+      "x": 281,
+      "y": 369
+    },
+    {
+      "id": "node_36",
+      "x": 281,
+      "y": 359
+    },
+    {
+      "id": "node_37",
+      "x": 295,
+      "y": 344
+    },
+    {
+      "id": "node_38",
+      "x": 285,
+      "y": 344
+    },
+    {
+      "id": "node_39",
+      "x": 295,
+      "y": 335
+    },
+    {
+      "id": "node_40",
+      "x": 692,
+      "y": 94
+    },
+    {
+      "id": "node_41",
+      "x": 692,
+      "y": 118
+    },
+    {
+      "id": "node_42",
+      "x": 693,
+      "y": 119
+    },
+    {
+      "id": "node_43",
+      "x": 693,
+      "y": 141
+    },
+    {
+      "id": "node_44",
+      "x": 705,
+      "y": 141
+    },
+    {
+      "id": "node_45",
+      "x": 715,
+      "y": 141
+    },
+    {
+      "id": "node_46",
+      "x": 749,
+      "y": 141
+    },
+    {
+      "id": "node_47",
+      "x": 715,
+      "y": 98
+    },
+    {
+      "id": "node_48",
+      "x": 753,
+      "y": 138
+    },
+    {
+      "id": "node_49",
+      "x": 774,
+      "y": 138
+    },
+    {
+      "id": "node_50",
+      "x": 707,
+      "y": 146
+    },
+    {
+      "id": "node_51",
+      "x": 707,
+      "y": 170
+    },
+    {
+      "id": "node_52",
+      "x": 721,
+      "y": 170
+    },
+    {
+      "id": "node_53",
+      "x": 729,
+      "y": 170
+    },
+    {
+      "id": "node_54",
+      "x": 721,
+      "y": 179
+    },
+    {
+      "id": "node_55",
+      "x": 721,
+      "y": 162
+    },
+    {
+      "id": "node_56",
+      "x": 737,
+      "y": 164
+    },
+    {
+      "id": "node_57",
+      "x": 741,
+      "y": 164
+    },
+    {
+      "id": "node_58",
+      "x": 744,
+      "y": 164
+    },
+    {
+      "id": "node_59",
+      "x": 741,
+      "y": 168
+    },
+    {
+      "id": "node_60",
+      "x": 741,
+      "y": 150
+    },
+    {
+      "id": "node_61",
+      "x": 741,
+      "y": 146
+    },
+    {
+      "id": "node_62",
+      "x": 731,
+      "y": 150
+    },
+    {
+      "id": "node_63",
+      "x": 744,
+      "y": 150
+    },
+    {
+      "id": "node_65",
+      "x": 731,
+      "y": 157
+    },
+    {
+      "id": "node_66",
+      "x": 731,
+      "y": 161
+    },
+    {
+      "id": "node_67",
+      "x": 720,
+      "y": 157
+    },
+    {
+      "id": "node_68",
+      "x": 715,
+      "y": 157
+    },
+    {
+      "id": "node_69",
+      "x": 715,
+      "y": 162
+    },
+    {
+      "id": "node_70",
+      "x": 710,
+      "y": 162
+    },
+    {
+      "id": "node_71",
+      "x": 710,
+      "y": 157
+    },
+    {
+      "id": "node_72",
+      "x": 707,
+      "y": 162
+    },
+    {
+      "id": "node_73",
+      "x": 1330,
+      "y": 49
+    },
+    {
+      "id": "node_74",
+      "x": 1330,
+      "y": 85
+    },
+    {
+      "id": "node_75",
+      "x": 1296,
+      "y": 85
+    },
+    {
+      "id": "node_76",
+      "x": 1330,
+      "y": 133
+    },
+    {
+      "id": "node_77",
+      "x": 1350,
+      "y": 144
+    },
+    {
+      "id": "node_78",
+      "x": 1350,
+      "y": 154
+    },
+    {
+      "id": "node_79",
+      "x": 1350,
+      "y": 168
+    },
+    {
+      "id": "node_80",
+      "x": 1345,
+      "y": 154
+    },
+    {
+      "id": "node_81",
+      "x": 1345,
+      "y": 158
+    },
+    {
+      "id": "node_82",
+      "x": 1330,
+      "y": 144
+    },
+    {
+      "id": "node_83",
+      "x": 1322,
+      "y": 133
+    },
+    {
+      "id": "node_84",
+      "x": 1317,
+      "y": 139
+    },
+    {
+      "id": "node_85",
+      "x": 1311,
+      "y": 133
+    },
+    {
+      "id": "node_86",
+      "x": 1296,
+      "y": 127
+    },
+    {
+      "id": "node_87",
+      "x": 1298,
+      "y": 133
+    },
+    {
+      "id": "node_88",
+      "x": 1298,
+      "y": 144
+    },
+    {
+      "id": "node_89",
+      "x": 1279,
+      "y": 105
+    },
+    {
+      "id": "node_90",
+      "x": 1279,
+      "y": 111
+    },
+    {
+      "id": "node_91",
+      "x": 1282,
+      "y": 115
+    },
+    {
+      "id": "node_92",
+      "x": 1282,
+      "y": 133
+    },
+    {
+      "id": "node_93",
+      "x": 1282,
+      "y": 154
+    },
+    {
+      "id": "node_94",
+      "x": 1286,
+      "y": 154
+    },
+    {
+      "id": "node_95",
+      "x": 1278,
+      "y": 154
+    },
+    {
+      "id": "node_96",
+      "x": 1282,
+      "y": 157
+    },
+    {
+      "id": "node_97",
+      "x": 1318,
+      "y": 144
+    },
+    {
+      "id": "node_98",
+      "x": 1306,
+      "y": 144
+    },
+    {
+      "id": "node_99",
+      "x": 1302,
+      "y": 147
+    },
+    {
+      "id": "node_100",
+      "x": 1300,
+      "y": 149
+    },
+    {
+      "id": "node_101",
+      "x": 1300,
+      "y": 152
+    },
+    {
+      "id": "node_102",
+      "x": 1300,
+      "y": 155
+    },
+    {
+      "id": "node_103",
+      "x": 1296,
+      "y": 152
+    },
+    {
+      "id": "node_104",
+      "x": 89,
+      "y": -492
+    },
+    {
+      "id": "node_105",
+      "x": 89,
+      "y": -524
+    },
+    {
+      "id": "node_106",
+      "x": 123,
+      "y": -492
+    },
+    {
+      "id": "node_107",
+      "x": 140,
+      "y": -492
+    },
+    {
+      "id": "node_108",
+      "x": 140,
+      "y": -534
+    },
+    {
+      "id": "node_109",
+      "x": 123,
+      "y": -502
+    },
+    {
+      "id": "node_110",
+      "x": 123,
+      "y": -469
+    },
+    {
+      "id": "node_111",
+      "x": 123,
+      "y": -464
+    },
+    {
+      "id": "node_112",
+      "x": 115,
+      "y": -469
+    },
+    {
+      "id": "node_113",
+      "x": 110,
+      "y": -469
+    },
+    {
+      "id": "node_114",
+      "x": 109,
+      "y": -474
+    },
+    {
+      "id": "node_115",
+      "x": 89,
+      "y": -469
+    },
+    {
+      "id": "node_116",
+      "x": 89,
+      "y": -473
+    },
+    {
+      "id": "node_117",
+      "x": 89,
+      "y": -465
+    },
+    {
+      "id": "node_118",
+      "x": 84,
+      "y": -469
+    },
+    {
+      "id": "node_119",
+      "x": 155,
+      "y": -487
+    },
+    {
+      "id": "node_120",
+      "x": 155,
+      "y": -451
+    },
+    {
+      "id": "node_121",
+      "x": 115,
+      "y": -454
+    },
+    {
+      "id": "node_122",
+      "x": 116,
+      "y": -451
+    },
+    {
+      "id": "node_123",
+      "x": 60,
+      "y": -451
+    },
+    {
+      "id": "node_124",
+      "x": 60,
+      "y": -459
+    },
+    {
+      "id": "node_125",
+      "x": 697,
+      "y": 1353
+    },
+    {
+      "id": "node_126",
+      "x": 697,
+      "y": 1359
+    },
+    {
+      "id": "node_127",
+      "x": 703,
+      "y": 1359
+    },
+    {
+      "id": "node_128",
+      "x": 703,
+      "y": 1353
+    },
+    {
+      "id": "node_129",
+      "x": 700,
+      "y": 1353
+    },
+    {
+      "id": "node_130",
+      "x": 703,
+      "y": 1356
+    },
+    {
+      "id": "node_131",
+      "x": 700,
+      "y": 1359
+    },
+    {
+      "id": "node_132",
+      "x": 697,
+      "y": 1356
+    },
+    {
+      "id": "node_133",
+      "x": 700,
+      "y": 1363
+    },
+    {
+      "id": "node_134",
+      "x": 703,
+      "y": 1363
+    },
+    {
+      "id": "node_135",
+      "x": 697,
+      "y": 1363
+    },
+    {
+      "id": "node_136",
+      "x": 700,
+      "y": 1344
+    },
+    {
+      "id": "node_137",
+      "x": 653,
+      "y": 1356
+    },
+    {
+      "id": "node_138",
+      "x": 653,
+      "y": 1361
+    },
+    {
+      "id": "node_139",
+      "x": 653,
+      "y": 1351
+    },
+    {
+      "id": "node_140",
+      "x": 710,
+      "y": 1356
+    },
+    {
+      "id": "node_141",
+      "x": 711,
+      "y": 1355
+    },
+    {
+      "id": "node_142",
+      "x": 704,
+      "y": 1344
+    },
+    {
+      "id": "node_143",
+      "x": 693,
+      "y": 1344
+    },
+    {
+      "id": "node_144",
+      "x": 693,
+      "y": 1333
+    },
+    {
+      "id": "node_145",
+      "x": 690,
+      "y": 1333
+    },
+    {
+      "id": "node_146",
+      "x": 698,
+      "y": 1333
+    },
+    {
+      "id": "node_147",
+      "x": 703,
+      "y": 1333
+    },
+    {
+      "id": "node_148",
+      "x": 725,
+      "y": 1333
+    },
+    {
+      "id": "node_149",
+      "x": 724,
+      "y": 1328
+    },
+    {
+      "id": "node_150",
+      "x": 703,
+      "y": 1328
+    },
+    {
+      "id": "node_151",
+      "x": 698,
+      "y": 1328
+    },
+    {
+      "id": "node_152",
+      "x": 617,
+      "y": 1344
+    },
+    {
+      "id": "node_153",
+      "x": 703,
+      "y": 1311
+    },
+    {
+      "id": "node_154",
+      "x": 688,
+      "y": 1311
+    },
+    {
+      "id": "node_155",
+      "x": 657,
+      "y": 1351
+    },
+    {
+      "id": "node_156",
+      "x": 700,
+      "y": 1433
+    },
+    {
+      "id": "node_157",
+      "x": 775,
+      "y": 1355
+    },
+    {
+      "id": "node_158",
+      "x": 776,
+      "y": 1354
+    },
+    {
+      "id": "node_159",
+      "x": 790,
+      "y": 1354
+    },
+    {
+      "id": "node_160",
+      "x": 806,
+      "y": 1379
+    },
+    {
+      "id": "node_161",
+      "x": 548,
+      "y": 420
+    },
+    {
+      "id": "node_162",
+      "x": 721,
+      "y": 216
+    },
+    {
+      "id": "node_163",
+      "x": 700,
+      "y": 258
+    },
+    {
+      "id": "node_164",
+      "x": 731,
+      "y": 141
+    },
+    {
+      "id": "node_165",
+      "x": 740,
+      "y": 144
+    },
+    {
+      "id": "node_166",
+      "x": 740,
+      "y": 141
+    }
+  ],
   "railway_finish_progress": {
     "B": {
       "x": 2270,

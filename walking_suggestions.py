@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import heapq
 from math import dist, hypot
-from typing import Iterable
+from typing import Any, Iterable, cast
 
 from PIL import Image
 
@@ -37,6 +37,15 @@ class _RouteCandidate:
     first_component: int
     second_component: int
     path_coordinates: tuple[tuple[int, int], ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _VillageAnchor:
+    stop_var: str
+    key: str
+    coordinates: tuple[int, int]
+    label: str
+    component_keys: tuple[str, ...] = ()
 
 
 _CACHE_KEY: tuple[object, ...] | None = None
@@ -100,7 +109,7 @@ class TerrainGrid:
 
                 for py in range(px_top, px_bottom):
                     for px in range(px_left, px_right):
-                        red, green, blue, alpha = pixels[px, py]
+                        red, green, blue, alpha = cast(tuple[int, int, int, int], pixels[px, py])
                         total_alpha += alpha
                         total_red += red
                         total_green += green
@@ -387,14 +396,70 @@ def _is_pier_node(node: object) -> bool:
     return "_pier_" in node_key or "pier" in node_label
 
 
-def _display_label_for(base: object, endpoint_key: str) -> str:
+def _display_label_for(base: Any, endpoint_key: str) -> str:
+    if not hasattr(base, "_path_endpoint_from_key"):
+        return endpoint_key
     endpoint = base._path_endpoint_from_key(endpoint_key)
     if endpoint is None:
         return endpoint_key
     return endpoint.display_label
 
 
-def _choose_anchor_key_for_stop(base: object, stop: object) -> str:
+def _city_path_anchor_for_stop(base: Any, stop: object) -> _VillageAnchor | None:
+    if not bool(getattr(stop, "has_walking_paths", False)):
+        return None
+    if not tuple(getattr(stop, "city_limit_node_keys", ()) or ()):
+        return None
+    if not all(
+        hasattr(base, helper_name)
+        for helper_name in (
+            "_city_limit_world_points",
+            "_city_path_anchor_candidate_for_edge",
+            "_coordinate_endpoint_key",
+            "_display_label",
+        )
+    ):
+        return None
+
+    city_limit_points = base._city_limit_world_points(stop)
+    if len(city_limit_points) < 3:
+        return None
+
+    best_candidate = None
+    best_edge = None
+    for edge in base.EXTRA_EDGES:
+        if getattr(edge, "kind", None) != "walk":
+            continue
+        candidate = base._city_path_anchor_candidate_for_edge(stop, city_limit_points, edge)
+        if candidate is None:
+            continue
+        if best_candidate is None or candidate < best_candidate:
+            best_candidate = candidate
+            best_edge = edge
+
+    if best_candidate is None or best_edge is None:
+        return None
+
+    _anchor_distance, _anchor_along_distance, anchor_point = best_candidate
+    anchor_key = base._coordinate_endpoint_key(anchor_point[0], anchor_point[1])
+    component_keys = (
+        str(getattr(getattr(best_edge, "from_endpoint"), "key")),
+        str(getattr(getattr(best_edge, "to_endpoint"), "key")),
+    )
+    return _VillageAnchor(
+        stop_var=str(getattr(stop, "var")),
+        key=anchor_key,
+        coordinates=anchor_point,
+        label=base._display_label(str(getattr(stop, "lbl", getattr(stop, "var")))),
+        component_keys=tuple(dict.fromkeys(component_keys)),
+    )
+
+
+def _choose_anchor_for_stop(base: Any, stop: object) -> _VillageAnchor:
+    city_anchor = _city_path_anchor_for_stop(base, stop)
+    if city_anchor is not None:
+        return city_anchor
+
     stop_coordinates = tuple(getattr(stop, "coordinates"))
     best_node = None
     best_distance = None
@@ -410,29 +475,77 @@ def _choose_anchor_key_for_stop(base: object, stop: object) -> str:
             best_node = node
 
     if best_node is None:
-        return str(getattr(stop, "var"))
-    return str(getattr(best_node, "key"))
+        stop_var = str(getattr(stop, "var"))
+        endpoint = base._path_endpoint_from_key(stop_var) if hasattr(base, "_path_endpoint_from_key") else None
+        coordinates = tuple(endpoint.coordinates) if endpoint is not None else cast(tuple[int, int], stop_coordinates)
+        return _VillageAnchor(
+            stop_var=stop_var,
+            key=stop_var,
+            coordinates=coordinates,
+            label=_display_label_for(base, stop_var),
+        )
+
+    node_key = str(getattr(best_node, "key"))
+    return _VillageAnchor(
+        stop_var=str(getattr(stop, "var")),
+        key=node_key,
+        coordinates=tuple(getattr(best_node, "coordinates")),
+        label=_display_label_for(base, node_key),
+    )
 
 
-def village_anchor_keys(base: object) -> dict[str, str]:
-    return {
-        str(getattr(stop, "var")): _choose_anchor_key_for_stop(base, stop)
+def _eligible_suggestion_stop_vars(base: Any) -> frozenset[str]:
+    connected_stop_vars = {
+        str(getattr(stop, "var"))
         for stop in base.METRO_STOPS
+        if bool(getattr(stop, "is_connected", False))
+    }
+    frontier_stop_vars: set[str] = set()
+    frontier_highlight_stop_vars = getattr(base, "_frontier_highlight_stop_vars", None)
+    if callable(frontier_highlight_stop_vars):
+        frontier_values = cast(Iterable[object], frontier_highlight_stop_vars())
+        frontier_stop_vars.update(str(stop_var) for stop_var in frontier_values)
+    return frozenset(connected_stop_vars | frontier_stop_vars)
+
+
+def village_anchor_keys(base: Any) -> dict[str, str]:
+    return {
+        stop_var: anchor.key
+        for stop_var, anchor in village_anchors(base).items()
     }
 
 
-def _walk_component_index(base: object, anchor_keys: Iterable[str]) -> dict[str, int]:
-    relevant_keys = set(anchor_keys)
-    adjacency: dict[str, set[str]] = {key: set() for key in relevant_keys}
+def village_anchors(base: Any) -> dict[str, _VillageAnchor]:
+    eligible_stop_vars = _eligible_suggestion_stop_vars(base)
+    return {
+        str(getattr(stop, "var")): _choose_anchor_for_stop(base, stop)
+        for stop in base.METRO_STOPS
+        if str(getattr(stop, "var")) in eligible_stop_vars
+    }
+
+
+def _walk_component_index(base: Any, anchors: Iterable[_VillageAnchor]) -> dict[str, int]:
+    anchor_tuple = tuple(anchors)
+    adjacency: dict[str, set[str]] = {}
+
+    def ensure_key(endpoint_key: str) -> None:
+        adjacency.setdefault(endpoint_key, set())
 
     for edge in base.EXTRA_EDGES:
         if getattr(edge, "kind", None) != "walk":
             continue
         from_key = str(getattr(getattr(edge, "from_endpoint"), "key"))
         to_key = str(getattr(getattr(edge, "to_endpoint"), "key"))
-        if from_key in adjacency and to_key in adjacency:
-            adjacency[from_key].add(to_key)
-            adjacency[to_key].add(from_key)
+        ensure_key(from_key)
+        ensure_key(to_key)
+        adjacency[from_key].add(to_key)
+        adjacency[to_key].add(from_key)
+    for anchor in anchor_tuple:
+        ensure_key(anchor.key)
+        for component_key in anchor.component_keys:
+            ensure_key(component_key)
+            adjacency[anchor.key].add(component_key)
+            adjacency[component_key].add(anchor.key)
 
     component_by_key: dict[str, int] = {}
     next_component = 0
@@ -452,14 +565,14 @@ def _walk_component_index(base: object, anchor_keys: Iterable[str]) -> dict[str,
     return component_by_key
 
 
-def _endpoint_coordinates(base: object, endpoint_key: str) -> tuple[int, int]:
+def _endpoint_coordinates(base: Any, endpoint_key: str) -> tuple[int, int]:
     endpoint = base._path_endpoint_from_key(endpoint_key)
     if endpoint is None:
         raise KeyError(endpoint_key)
     return tuple(endpoint.coordinates)
 
 
-def _terrain_from_viewer(viewer: object) -> TerrainGrid | None:
+def _terrain_from_viewer(viewer: Any) -> TerrainGrid | None:
     if not hasattr(viewer, "_current_world_map_render_underlay"):
         return None
     render_underlay = viewer._current_world_map_render_underlay()
@@ -486,9 +599,17 @@ def _terrain_from_viewer(viewer: object) -> TerrainGrid | None:
     )
 
 
-def _network_signature(base: object) -> tuple[object, ...]:
+def _network_signature(base: Any) -> tuple[object, ...]:
     stop_signature = tuple(
-        (str(stop.var), int(stop.x), int(stop.y))
+        (
+            str(stop.var),
+            int(stop.x),
+            int(stop.y),
+            tuple(getattr(stop, "station_entry_coordinates", None) or ()),
+            bool(getattr(stop, "is_connected", False)),
+            bool(getattr(stop, "has_walking_paths", False)),
+            tuple(getattr(stop, "city_limit_node_keys", ()) or ()),
+        )
         for stop in sorted(base.METRO_STOPS, key=lambda stop: str(stop.var))
     )
     node_signature = tuple(
@@ -517,7 +638,7 @@ def _network_signature(base: object) -> tuple[object, ...]:
 
 
 def _component_pair_candidates(
-    base: object,
+    base: Any,
     grouped_keys: dict[int, list[str]],
     first_component: int,
     second_component: int,
@@ -533,7 +654,7 @@ def _component_pair_candidates(
 
 
 def _candidate_routes(
-    base: object,
+    base: Any,
     terrain: TerrainGrid,
     grouped_keys: dict[int, list[str]],
 ) -> list[_RouteCandidate]:
@@ -571,19 +692,27 @@ def _candidate_routes(
     return candidates
 
 
-def build_suggested_segments(base: object, viewer: object | None = None) -> tuple[SuggestedSegment, ...]:
+def build_suggested_segments(base: Any, viewer: Any | None = None) -> tuple[SuggestedSegment, ...]:
     global _CACHE_KEY
     global _CACHE_VALUE
 
-    anchors_by_stop = village_anchor_keys(base)
-    anchor_keys = tuple(dict.fromkeys(anchors_by_stop.values()))
+    anchors_by_stop = village_anchors(base)
+    anchor_keys = tuple(dict.fromkeys(anchor.key for anchor in anchors_by_stop.values()))
     if len(anchor_keys) < 2:
         return ()
 
-    component_by_key = _walk_component_index(base, anchor_keys)
+    component_by_key = _walk_component_index(base, anchors_by_stop.values())
+    anchor_component_ids = {
+        component_by_key[anchor.key]
+        for anchor in anchors_by_stop.values()
+    }
     grouped_keys: dict[int, list[str]] = {}
-    for endpoint_key in anchor_keys:
-        grouped_keys.setdefault(component_by_key[endpoint_key], []).append(endpoint_key)
+    for endpoint_key, component_id in component_by_key.items():
+        if component_id not in anchor_component_ids:
+            continue
+        grouped_keys.setdefault(component_id, []).append(endpoint_key)
+    for component_id in grouped_keys:
+        grouped_keys[component_id].sort()
 
     if len(grouped_keys) < 2:
         return ()
