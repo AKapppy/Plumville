@@ -58,7 +58,7 @@ def _patched_build_route_panel(self: "base.MetroMapViewer") -> None:
     if not hasattr(self, "show_suggested_walking_paths_var"):
         self.show_suggested_walking_paths_var = tk.BooleanVar(master=self.root, value=False)
     if not hasattr(self, "hide_path_nodes_var"):
-        self.hide_path_nodes_var = tk.BooleanVar(master=self.root, value=False)
+        self.hide_path_nodes_var = tk.BooleanVar(master=self.root, value=True)
     if not hasattr(self, "circle_internal_voids_var"):
         self.circle_internal_voids_var = tk.BooleanVar(master=self.root, value=False)
 

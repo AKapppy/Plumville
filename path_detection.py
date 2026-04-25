@@ -693,20 +693,6 @@ def _commit_preview(stop_var: str, preview: village_paths.DetectedVillagePreview
     )
 
 
-def _path_detection_progress_text(viewer: "base.MetroMapViewer") -> str:
-    visible_bounds = _current_visible_bounds(viewer)
-    if visible_bounds is None:
-        return "Paths Detected: 0/0"
-    min_x, max_x, min_z, max_z = visible_bounds
-    villages_inside = [
-        stop
-        for stop in base.METRO_STOPS
-        if min_x <= stop.x <= max_x and min_z <= stop.y <= max_z
-    ]
-    detected_count = sum(1 for stop in villages_inside if _village_state(stop.var) is not None)
-    return f"Paths Detected: {detected_count}/{len(villages_inside)}"
-
-
 def _fit_preview_bounds(viewer: "base.MetroMapViewer", bounds: tuple[int, int, int, int]) -> None:
     min_x, max_x, min_z, max_z = bounds
     viewer._set_view_to_plot_bounds(min_x, max_x, -max_z, -min_z)
@@ -887,14 +873,6 @@ def _patched_draw_path_nodes(self: "base.MetroMapViewer") -> None:
 def _patched_refresh_station_stats(self: "base.MetroMapViewer") -> None:
     assert _ORIGINAL_REFRESH_STATION_STATS is not None
     _ORIGINAL_REFRESH_STATION_STATS(self)
-    summary_lines = [
-        line
-        for line in self.stats_summary_var.get().splitlines()
-        if not line.startswith("Paths Detected:")
-    ]
-    summary_text = "\n".join(summary_lines).rstrip()
-    extra = _path_detection_progress_text(self)
-    self.stats_summary_var.set(f"{summary_text}\n{extra}" if summary_text else extra)
 
 
 def _patched_draw_selected_stop_info(self: "base.MetroMapViewer") -> None:

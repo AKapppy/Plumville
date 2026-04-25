@@ -36,8 +36,15 @@ def _patched_draw_extra_edges(self: "base.MetroMapViewer") -> None:
 
 
 def _patched_draw_path_nodes(self: "base.MetroMapViewer") -> None:
-    if self.show_suggested_walking_paths_var.get() and self.hide_path_nodes_var.get():
+    if self.hide_path_nodes_var.get():
         self.path_node_canvas_positions = {}
+        should_keep_hit_targets = (
+            self.path_click_mode_var.get()
+            or self.city_limits_edit_stop_var is not None
+            or self.selected_path_node_key is not None
+        )
+        if not should_keep_hit_targets:
+            return
         for path_node in base._all_path_nodes():
             canvas_x, canvas_y = self.world_to_canvas(path_node.plot_coordinates)
             self.path_node_canvas_positions[path_node.key] = (canvas_x, canvas_y)

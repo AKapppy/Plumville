@@ -7,6 +7,9 @@ Desktop App
 |- when paths are drawn using click-and-drag, it shouldn't leave the path highlighted. it should automatically go to the default dotted lines once the hold is released
 |- node UI behavior should match station UI behavior - where it kinda sticks to the bottom left of the screen. can we put a little x on those popups to close it
 |- the UI seems to be a little laggy. can we try to smooth it out and speed it up?
+|- hide nodes doesnt actually hide the nodes from view
+|- "paths detected" in the checklist should be changed to the village's walking paths, the checkbox in the villages UI
+|- we also need a checklist for the village boundaries
 
 Web Viewer
 ----------

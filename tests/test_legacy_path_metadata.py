@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest import mock
 
 import legacy_core
 
@@ -54,8 +55,142 @@ class LegacyPathMetadataTests(unittest.TestCase):
         incomplete = legacy_core.MetroStop(var="P_A", lbl="A", x=0, y=0)
         complete = legacy_core.MetroStop(var="P_A", lbl="A", x=0, y=0, has_walking_paths=True)
 
-        self.assertIn("walking paths", legacy_core._missing_station_tasks(incomplete))
+        self.assertIn("paths", legacy_core._missing_station_tasks(incomplete))
         self.assertEqual(complete.checkpoint_count, incomplete.checkpoint_count + 1)
+
+    def test_station_entry_appears_in_checklist_summary(self) -> None:
+        previous_metro_stops = legacy_core.METRO_STOPS
+        try:
+            legacy_core.METRO_STOPS = (
+                legacy_core.MetroStop(var="P_A", lbl="A", x=0, y=0, station_entry_x=1, station_entry_y=2),
+                legacy_core.MetroStop(var="P_B", lbl="B", x=10, y=10),
+            )
+            with mock.patch.object(
+                legacy_core,
+                "_world_map_checklist_completion_line",
+                return_value=None,
+            ):
+                summary = legacy_core._station_progress_summary_text()
+
+            self.assertIn("Station Entrances: 1/2", summary)
+        finally:
+            legacy_core.METRO_STOPS = previous_metro_stops
+
+    def test_completed_checklist_items_disappear(self) -> None:
+        previous_metro_stops = legacy_core.METRO_STOPS
+        previous_stop_line_names = legacy_core.STOP_LINE_NAMES
+        try:
+            stop = legacy_core.MetroStop(
+                var="P_A",
+                lbl="Alpha",
+                x=0,
+                y=0,
+                has_connector=True,
+                has_full_station=True,
+                has_walking_paths=True,
+                is_connected=True,
+                has_finished_railway=True,
+                has_signs=True,
+                station_entry_x=1,
+                station_entry_y=2,
+                city_limit_node_keys=("coord:1,1", "coord:2,2", "coord:3,3"),
+            )
+            legacy_core.METRO_STOPS = (stop,)
+            legacy_core.STOP_LINE_NAMES = {stop.var: ()}
+            with mock.patch.object(
+                legacy_core,
+                "_world_map_checklist_completion_line",
+                return_value=None,
+            ):
+                summary = legacy_core._station_progress_summary_text()
+
+            self.assertEqual(summary, "")
+        finally:
+            legacy_core.METRO_STOPS = previous_metro_stops
+            legacy_core.STOP_LINE_NAMES = previous_stop_line_names
+
+    def test_waiting_for_connections_checklist_items_hide_until_needed(self) -> None:
+        previous_metro_stops = legacy_core.METRO_STOPS
+        try:
+            legacy_core.METRO_STOPS = (
+                legacy_core.MetroStop(var="P_A", lbl="A", x=0, y=0),
+            )
+            with mock.patch.object(
+                legacy_core,
+                "_world_map_checklist_completion_line",
+                return_value=None,
+            ):
+                summary = legacy_core._station_progress_summary_text()
+
+            self.assertNotIn("Finished Railway:", summary)
+            self.assertNotIn("Signs:", summary)
+            self.assertNotIn("Chimes:", summary)
+        finally:
+            legacy_core.METRO_STOPS = previous_metro_stops
+
+    def test_station_priority_entry_includes_station_village_tasks(self) -> None:
+        previous_metro_stops = legacy_core.METRO_STOPS
+        previous_stops_by_var = legacy_core.STOPS_BY_VAR
+        previous_stop_line_names = legacy_core.STOP_LINE_NAMES
+        previous_line_stop_vars = legacy_core.LINE_STOP_VARS
+        try:
+            stop = legacy_core.MetroStop(
+                var="P_V",
+                lbl="Village",
+                x=0,
+                y=0,
+                is_connected=True,
+                has_connector=True,
+                has_full_station=True,
+                has_finished_railway=True,
+                has_signs=True,
+            )
+            legacy_core.METRO_STOPS = (stop,)
+            legacy_core.STOPS_BY_VAR = {stop.var: stop}
+            legacy_core.STOP_LINE_NAMES = {stop.var: ("A",)}
+            legacy_core.LINE_STOP_VARS = {"A": (stop.var,)}
+
+            with mock.patch.object(
+                legacy_core,
+                "_route_costs_from_endpoint_key",
+                return_value={stop.var: (0, 0)},
+            ):
+                entries = legacy_core._priority_list_entries(stop.var)
+
+            self.assertEqual(len(entries), 1)
+            self.assertEqual(entries[0][0], stop.var)
+            self.assertIn("needs station entrance, paths, and city limits", entries[0][1])
+        finally:
+            legacy_core.METRO_STOPS = previous_metro_stops
+            legacy_core.STOPS_BY_VAR = previous_stops_by_var
+            legacy_core.STOP_LINE_NAMES = previous_stop_line_names
+            legacy_core.LINE_STOP_VARS = previous_line_stop_vars
+
+    def test_checklist_uses_paths_and_city_limits_labels(self) -> None:
+        previous_metro_stops = legacy_core.METRO_STOPS
+        try:
+            legacy_core.METRO_STOPS = (
+                legacy_core.MetroStop(var="P_A", lbl="Alpha", x=0, y=0),
+                legacy_core.MetroStop(
+                    var="P_B",
+                    lbl="Bravo",
+                    x=10,
+                    y=10,
+                    has_walking_paths=True,
+                    city_limit_node_keys=("coord:1,1", "coord:2,2", "coord:3,3"),
+                ),
+            )
+            with mock.patch.object(
+                legacy_core,
+                "_world_map_checklist_completion_line",
+                return_value=None,
+            ):
+                summary = legacy_core._station_progress_summary_text()
+
+            self.assertIn("Paths: 1/2", summary)
+            self.assertIn("City Limits: 1/2", summary)
+        finally:
+            legacy_core.METRO_STOPS = previous_metro_stops
 
     def test_adjacent_same_named_walk_edges_merge_into_one_step(self) -> None:
         steps: list[legacy_core.RouteStep] = []
