@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 from pathlib import Path
 import random
+from typing import Any, cast
 
 _APPLIED = False
 
@@ -59,11 +60,21 @@ def _render_chunk_bounds(config) -> tuple[int, int, int, int]:
 
 
 def _colored_chunk_bounds(metadata: dict[str, object]) -> tuple[int, int, int, int] | None:
+    def _metadata_int(key: str) -> int:
+        value = metadata[key]
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            return int(value)
+        raise TypeError(key)
+
     try:
-        colored_min_x = int(metadata['colored_min_x']) // 16
-        colored_max_x = int(metadata['colored_max_x']) // 16
-        colored_min_z = int(metadata['colored_min_z']) // 16
-        colored_max_z = int(metadata['colored_max_z']) // 16
+        colored_min_x = _metadata_int('colored_min_x') // 16
+        colored_max_x = _metadata_int('colored_max_x') // 16
+        colored_min_z = _metadata_int('colored_min_z') // 16
+        colored_max_z = _metadata_int('colored_max_z') // 16
     except (KeyError, TypeError, ValueError):
         return None
     return (colored_min_x, colored_max_x, colored_min_z, colored_max_z)
@@ -265,6 +276,7 @@ def _largest_first_render_area_teleport_points(
     world_path=None,
     blank_coverage=None,
 ):
+    assert _ORIGINAL_RENDER_AREA_TELEPORT_POINTS is not None
     original_points = _ORIGINAL_RENDER_AREA_TELEPORT_POINTS(
         config,
         world_path=world_path,
@@ -338,6 +350,7 @@ def _largest_first_next_undercovered_teleport_index(
             return first_positive
         return normalized_start_index
 
+    assert _ORIGINAL_NEXT_UNDERCOVERED is not None
     return _ORIGINAL_NEXT_UNDERCOVERED(
         config,
         teleport_points,
@@ -360,7 +373,7 @@ def apply() -> None:
     _ORIGINAL_NEXT_UNDERCOVERED = generator._next_undercovered_teleport_index
     _ORIGINAL_RENDER_AREA_TELEPORT_POINTS = generator._render_area_teleport_points
 
-    generator._render_area_teleport_points = _largest_first_render_area_teleport_points
-    generator._next_undercovered_teleport_index = _largest_first_next_undercovered_teleport_index
+    generator._render_area_teleport_points = cast(Any, _largest_first_render_area_teleport_points)
+    generator._next_undercovered_teleport_index = cast(Any, _largest_first_next_undercovered_teleport_index)
 
     _APPLIED = True

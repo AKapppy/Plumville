@@ -131,6 +131,8 @@ WORLD_MAP_SPIRAL_BLANK_MIN_CANVAS_SIZE: Final[int] = 18
 SIDEBAR_SCROLL_PIXELS: Final[int] = 36
 SIDEBAR_SCROLL_FRAMES: Final[int] = 3
 SIDEBAR_SCROLL_FRAME_DELAY_MS: Final[int] = 8
+VIEWPORT_REDRAW_BATCH_DELAY_MS: Final[int] = 16
+VIEWPORT_INTERACTION_FULL_REDRAW_DELAY_MS: Final[int] = 120
 SIDEBAR_WIDTH: Final[int] = 340
 SIDEBAR_TITLE_FONT_SIZE: Final[int] = 20
 SIDEBAR_TEXT_FONT_SIZE: Final[int] = 12
@@ -5089,6 +5091,8 @@ class MetroMapViewer:
         self.route_dirty = True
         self.priority_dirty = True
         self.stats_dirty = True
+        self.railway_finish_dirty = True
+        self.path_edge_list_dirty = True
         self.route_controls_updating = False
         self.search_match_stop_vars: list[str] = []
         self.route_start_entry: tk.Entry
@@ -5137,6 +5141,8 @@ class MetroMapViewer:
         self.suggestion_active_entry: tk.Entry | None = None
         self.suggestion_select_callback: Callable[[str], None] | None = None
         self.redraw_after_id: str | None = None
+        self.full_redraw_after_id: str | None = None
+        self.defer_expensive_viewport_layers = False
 
         self.root: tk.Tk = tk.Tk()
         self.root.title('Minecraft Metro Stops')
@@ -6106,7 +6112,18 @@ class MetroMapViewer:
     def _schedule_redraw(self) -> None:
         if self.redraw_after_id is not None:
             return
-        self.redraw_after_id = self.root.after_idle(self._run_scheduled_redraw)
+        self.redraw_after_id = self.root.after(
+            VIEWPORT_REDRAW_BATCH_DELAY_MS,
+            self._run_scheduled_redraw,
+        )
+
+    def _schedule_full_redraw(self) -> None:
+        if self.full_redraw_after_id is not None:
+            self.root.after_cancel(self.full_redraw_after_id)
+        self.full_redraw_after_id = self.root.after(
+            VIEWPORT_INTERACTION_FULL_REDRAW_DELAY_MS,
+            self._run_full_redraw,
+        )
 
     def _cancel_scheduled_redraw(self) -> None:
         if self.redraw_after_id is None:
@@ -6114,8 +6131,24 @@ class MetroMapViewer:
         self.root.after_cancel(self.redraw_after_id)
         self.redraw_after_id = None
 
+    def _begin_viewport_interaction(self) -> None:
+        self.defer_expensive_viewport_layers = True
+        self._schedule_full_redraw()
+
+    def _finish_viewport_interaction(self) -> None:
+        self.defer_expensive_viewport_layers = False
+        if self.full_redraw_after_id is None:
+            return
+        self.root.after_cancel(self.full_redraw_after_id)
+        self.full_redraw_after_id = None
+
     def _run_scheduled_redraw(self) -> None:
         self.redraw_after_id = None
+        self.redraw()
+
+    def _run_full_redraw(self) -> None:
+        self.full_redraw_after_id = None
+        self.defer_expensive_viewport_layers = False
         self.redraw()
 
     def _focused_typing_widget(self) -> tk.Widget | None:
@@ -6441,7 +6474,9 @@ class MetroMapViewer:
         self.railway_finish_progress_var.set(_railway_finish_progress_summary_text())
 
     def _on_railway_finish_mode_changed(self) -> None:
+        self.railway_finish_dirty = True
         self._refresh_railway_finish_controls()
+        self.railway_finish_dirty = False
         if self.railway_finish_mode_var.get():
             self.show_railway_finish_unfinished_view()
             return
@@ -6493,6 +6528,7 @@ class MetroMapViewer:
         self.priority_dirty = True
         self.route_controls_dirty = True
         self.route_dirty = True
+        self.railway_finish_dirty = True
         if self.railway_finish_mode_var.get():
             self.show_railway_finish_unfinished_view()
             return
@@ -6516,7 +6552,9 @@ class MetroMapViewer:
             messagebox.showerror('Could Not Switch Origin', str(exc), parent=self.root)
             return
 
+        self.railway_finish_dirty = True
         self._refresh_railway_finish_controls()
+        self.railway_finish_dirty = False
         self.redraw()
 
     def _connected_stop_labels(self) -> list[str]:
@@ -6893,6 +6931,7 @@ class MetroMapViewer:
 
     def _set_active_path_edge(self, extra_edge: ExtraEdgeDefinition | None) -> None:
         self.active_path_edge_id = None if extra_edge is None else extra_edge.id
+        self.path_edge_list_dirty = True
         if extra_edge is None:
             self.path_click_status_var.set('Turn on map pathing to add nodes and drag paths on the map.')
             return
@@ -7038,6 +7077,7 @@ class MetroMapViewer:
         if path_node is None:
             return
 
+        connected_edge_count = len(_extra_edges_for_endpoint_key(path_node.key))
         try:
             remove_path_node(path_node.input_text if path_node.is_explicit else f'{path_node.x}, {path_node.y}')
         except ValueError as exc:
@@ -7048,6 +7088,10 @@ class MetroMapViewer:
         self.route_controls_dirty = True
         self.route_dirty = True
         self.priority_dirty = True
+        self.path_click_status_var.set(
+            f'Removed {path_node.display_label}. '
+            f'Also deleted {connected_edge_count} connected path{"s" if connected_edge_count != 1 else ""}.'
+        )
         self.redraw()
 
     def _edit_selected_path_node_coordinates(self) -> None:
@@ -7919,9 +7963,12 @@ class MetroMapViewer:
             relief='solid',
             highlightthickness=0,
         )
-        button.bind('<Enter>', lambda _event: button.configure(bg=INFO_BUTTON_ACTIVE_BACKGROUND))
-        button.bind('<Leave>', lambda _event: button.configure(bg=INFO_BUTTON_BACKGROUND))
-        button.bind('<Button-1>', lambda _event: command())
+        self._bind_info_clickable(
+            button,
+            command=command,
+            normal_background=INFO_BUTTON_BACKGROUND,
+            active_background=INFO_BUTTON_ACTIVE_BACKGROUND,
+        )
         return button
 
     def _dismiss_info_selection(self) -> None:
@@ -7941,10 +7988,50 @@ class MetroMapViewer:
             pady=2,
             cursor='hand2',
         )
-        close_button.bind('<Enter>', lambda _event: close_button.configure(fg=TEXT_COLOR))
-        close_button.bind('<Leave>', lambda _event: close_button.configure(fg=INFO_CHECKBOX_TEXT_COLOR))
-        close_button.bind('<Button-1>', lambda _event: self._dismiss_info_selection())
+        self._bind_info_clickable(
+            close_button,
+            command=self._dismiss_info_selection,
+            normal_foreground=INFO_CHECKBOX_TEXT_COLOR,
+            active_foreground=TEXT_COLOR,
+        )
         close_button.place(relx=1.0, x=-4, y=4, anchor='ne')
+
+    def _bind_info_clickable(
+        self,
+        widget: tk.Label,
+        *,
+        command: Callable[[], None],
+        normal_background: str | None = None,
+        active_background: str | None = None,
+        normal_foreground: str | None = None,
+        active_foreground: str | None = None,
+    ) -> None:
+        def _restore_normal_style(_event: object | None = None) -> None:
+            if normal_background is not None:
+                widget.configure(bg=normal_background)
+            if normal_foreground is not None:
+                widget.configure(fg=normal_foreground)
+
+        def _apply_active_style(_event: object | None = None) -> None:
+            if active_background is not None:
+                widget.configure(bg=active_background)
+            if active_foreground is not None:
+                widget.configure(fg=active_foreground)
+
+        def _on_press(_event: object) -> str:
+            _apply_active_style()
+            command()
+            return 'break'
+
+        def _swallow_mouse_event(_event: object) -> str:
+            return 'break'
+
+        widget.bind('<Enter>', _apply_active_style)
+        widget.bind('<Leave>', _restore_normal_style)
+        widget.bind('<ButtonPress-1>', _on_press)
+        widget.bind('<ButtonRelease-1>', _swallow_mouse_event)
+        widget.bind('<B1-Motion>', _swallow_mouse_event)
+        _restore_normal_style()
 
     def _make_info_checkbox(
         self,
@@ -8230,6 +8317,7 @@ class MetroMapViewer:
         self.route_controls_dirty = True
         self.route_dirty = True
         self.priority_dirty = True
+        self.path_edge_list_dirty = True
         if refresh_path_status and self.active_path_edge_id is not None:
             self._set_active_path_edge(self._active_path_edge())
         self.redraw()
@@ -8807,6 +8895,7 @@ class MetroMapViewer:
         )
 
     def redraw(self) -> None:
+        defer_expensive_layers = self.defer_expensive_viewport_layers
         self._clear_info_popup()
         if self.stats_dirty:
             self._refresh_station_stats()
@@ -8820,7 +8909,9 @@ class MetroMapViewer:
         if self.priority_dirty:
             self._refresh_priority_list()
             self.priority_dirty = False
-        self._refresh_railway_finish_controls()
+        if self.railway_finish_dirty:
+            self._refresh_railway_finish_controls()
+            self.railway_finish_dirty = False
         if self.selected_stop_var not in STOPS_BY_VAR:
             self.selected_stop_var = None
         if self.selected_path_node_key is not None and self._selected_path_node() is None:
@@ -8829,7 +8920,9 @@ class MetroMapViewer:
             self.selected_metro_segment_key = None
         if self.active_path_edge_id is not None and self._active_path_edge() is None:
             self._set_active_path_edge(None)
-        self._refresh_path_edge_list()
+        if self.path_edge_list_dirty:
+            self._refresh_path_edge_list()
+            self.path_edge_list_dirty = False
         self.canvas.delete('all')
         self.station_canvas_positions = {}
         self.path_node_canvas_positions = {}
@@ -8846,7 +8939,8 @@ class MetroMapViewer:
         label_font_size = _label_font_size(self.zoom)
         label_offset_x, label_offset_y = self._label_offset()
 
-        self._draw_world_map_render_underlay()
+        if not defer_expensive_layers:
+            self._draw_world_map_render_underlay()
         if min_x <= 0 <= max_x:
             zero_x = self.world_to_canvas((0, min_y))[0]
             zero_top = self.world_to_canvas((0, max_y))[1]
@@ -8872,8 +8966,9 @@ class MetroMapViewer:
                 dash=(4, 4),
             )
 
-        self._draw_planning_circle()
-        self._draw_connected_area()
+        if not defer_expensive_layers:
+            self._draw_planning_circle()
+            self._draw_connected_area()
         self._draw_city_limits()
 
         self._draw_metro_lines(visible_line_names)
@@ -9775,6 +9870,7 @@ class MetroMapViewer:
         self.pan_x = anchor_x - center_x - ((anchor_x - center_x - self.pan_x) * ratio)
         self.pan_y = anchor_y - center_y - ((anchor_y - center_y - self.pan_y) * ratio)
         self.zoom = new_zoom
+        self._begin_viewport_interaction()
         self._schedule_redraw()
 
     def _set_view_to_plot_bounds(
@@ -9881,6 +9977,20 @@ class MetroMapViewer:
             current_widget = current_widget.nametowidget(parent_name)
         return False
 
+    def _widget_is_in_info_popup(self, widget: object) -> bool:
+        if self.info_popup_frame is None:
+            return False
+
+        current_widget = widget
+        while isinstance(current_widget, tk.Misc):
+            if current_widget is self.info_popup_frame:
+                return True
+            parent_name = current_widget.winfo_parent()
+            if not parent_name:
+                break
+            current_widget = current_widget.nametowidget(parent_name)
+        return False
+
     def _scroll_sidebar_units(self, units: int) -> None:
         if units == 0:
             return
@@ -9923,6 +10033,8 @@ class MetroMapViewer:
             return
         if self._widget_is_in_sidebar(widget):
             return
+        if self._widget_is_in_info_popup(widget):
+            return
         self.root.after_idle(self.canvas.focus_set)
 
     def _on_global_mousewheel(self, event: object) -> None:
@@ -9947,6 +10059,8 @@ class MetroMapViewer:
         self._scroll_sidebar_units(1)
 
     def _on_drag_start(self, event: object) -> None:
+        if self._widget_is_in_info_popup(getattr(event, 'widget', None)):
+            return
         self._hide_suggestion_popup()
         point = (int(getattr(event, 'x', 0)), int(getattr(event, 'y', 0)))
         self.drag_start = point
@@ -9960,6 +10074,8 @@ class MetroMapViewer:
                 self.path_drag_current_canvas_point = point
 
     def _on_drag(self, event: object) -> None:
+        if self._widget_is_in_info_popup(getattr(event, 'widget', None)):
+            return
         if self.drag_start is None:
             return
         current = (int(getattr(event, 'x', 0)), int(getattr(event, 'y', 0)))
@@ -9975,6 +10091,7 @@ class MetroMapViewer:
                 self.hover_canvas_point = None
                 self.cursor_readout_coordinates = None
                 self.show_cursor_guides = False
+            self._begin_viewport_interaction()
             self._schedule_redraw()
             return
 
@@ -9991,12 +10108,21 @@ class MetroMapViewer:
         self.pan_x += current[0] - self.drag_start[0]
         self.pan_y += current[1] - self.drag_start[1]
         self.drag_start = current
+        self._begin_viewport_interaction()
         self._schedule_redraw()
 
     def _on_drag_end(self, event: object) -> None:
+        if self._widget_is_in_info_popup(getattr(event, 'widget', None)):
+            self._finish_viewport_interaction()
+            self.drag_start = None
+            self.drag_origin = None
+            self.is_dragging = False
+            self._clear_path_drag()
+            return
         release_x = int(getattr(event, 'x', 0))
         release_y = int(getattr(event, 'y', 0))
         self._cancel_scheduled_redraw()
+        self._finish_viewport_interaction()
         if self.path_click_mode_var.get() and self.path_drag_start_endpoint_key is not None:
             was_path_dragging = self.is_dragging
             if was_path_dragging:
@@ -11591,11 +11717,13 @@ def remove_path_node(identifier: str) -> None:
     else:
         coordinates = (int(path_node['x']), int(path_node['y']))
 
-    endpoint_key = _coordinate_endpoint_key(coordinates[0], coordinates[1])
+    filtered_edges: list[ExtraEdgeRecord] = []
     for extra_edge in payload.get('extra_edges', []):
+        if not isinstance(extra_edge, dict):
+            continue
         from_endpoint = extra_edge.get('from_endpoint', {})
         to_endpoint = extra_edge.get('to_endpoint', {})
-        if (
+        uses_coordinates = (
             isinstance(from_endpoint, dict)
             and from_endpoint.get('kind') == 'coord'
             and (int(from_endpoint.get('x', 0)), int(from_endpoint.get('y', 0))) == coordinates
@@ -11603,11 +11731,13 @@ def remove_path_node(identifier: str) -> None:
             isinstance(to_endpoint, dict)
             and to_endpoint.get('kind') == 'coord'
             and (int(to_endpoint.get('x', 0)), int(to_endpoint.get('y', 0))) == coordinates
-        ):
-            raise ValueError(
-                f'Cannot remove path node {endpoint_key} while path edges still use it.'
-            )
+        )
+        if uses_coordinates:
+            _remove_alignment_reminder_for_edge_record(payload, cast(ExtraEdgeRecord, extra_edge))
+            continue
+        filtered_edges.append(cast(ExtraEdgeRecord, extra_edge))
 
+    payload['extra_edges'] = filtered_edges
     payload['path_nodes'] = [
         cast(PathNodeRecord, raw_node)
         for raw_node in payload.get('path_nodes', [])
@@ -11615,6 +11745,9 @@ def remove_path_node(identifier: str) -> None:
         and (int(raw_node.get('x', 0)), int(raw_node.get('y', 0))) != coordinates
     ]
     _normalize_path_nodes(payload)
+    _normalize_extra_edges(payload)
+    _normalize_alignment_reminders(payload)
+    _normalize_city_limits(payload)
     _write_network_payload(payload)
     _apply_network_payload(payload)
 

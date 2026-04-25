@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Callable
+from typing import Any, Callable, cast
 
 import legacy_core as base
 
@@ -28,6 +28,7 @@ def _patched_render_map(
     import worldgen.generator as generator
     from worldgen.modes import worldgen_mode
 
+    assert _ORIGINAL_RENDER_MAP is not None
     mode = worldgen_mode(mode_key)
     if mode.is_lan:
         return _ORIGINAL_RENDER_MAP(
@@ -80,6 +81,7 @@ def _patched_render_loaded_target_map(
 
     packet_cache_paths = self._incremental_render_packet_cache_paths()
     if not packet_cache_paths:
+        assert _ORIGINAL_RENDER_LOADED_TARGET_MAP is not None
         return _ORIGINAL_RENDER_LOADED_TARGET_MAP(
             self,
             target,
@@ -108,6 +110,7 @@ def _patched_render_loaded_target_map(
 def _patched_render_cached_blank_pixel_batch(self, *, batch_size=None):
     import worldgen.generator as generator
 
+    assert _ORIGINAL_RENDER_CACHED_BLANK_PIXEL_BATCH is not None
     effective_batch_size = batch_size
     if effective_batch_size is None:
         effective_batch_size = max(generator.INCREMENTAL_RENDER_BATCH_PIXELS, 100_000)
@@ -286,8 +289,9 @@ def _stop_generator_after_auto_fill() -> None:
         return
 
 
-def _patched_finish_auto_fill_world_map(self, succeeded: bool, message: str) -> None:
-    _ORIGINAL_FINISH_AUTO_FILL_WORLD_MAP(self, succeeded, message)
+def _patched_finish_auto_fill_world_map(self, _succeeded: bool, _message: str) -> None:
+    assert _ORIGINAL_FINISH_AUTO_FILL_WORLD_MAP is not None
+    _ORIGINAL_FINISH_AUTO_FILL_WORLD_MAP(self, _succeeded, _message)
     threading.Thread(target=_stop_generator_after_auto_fill, daemon=True).start()
 
 
@@ -310,11 +314,11 @@ def apply() -> None:
     _ORIGINAL_AUTO_FILL_STEP_TEXT = base._world_map_auto_fill_step_text_for_generator
     _ORIGINAL_FINISH_AUTO_FILL_WORLD_MAP = base.MetroMapViewer._finish_auto_fill_world_map
 
-    generator.BedrockWorldGenerator.render_map = _patched_render_map
-    generator.BedrockWorldGenerator.render_loaded_target_map = _patched_render_loaded_target_map
-    generator.BedrockWorldGenerator.render_cached_blank_pixel_batch = _patched_render_cached_blank_pixel_batch
-    base._world_map_auto_fill_step_text_for_generator = _patched_auto_fill_step_text_for_generator
-    base.MetroMapViewer._finish_auto_fill_world_map = _patched_finish_auto_fill_world_map
+    generator.BedrockWorldGenerator.render_map = cast(Any, _patched_render_map)
+    generator.BedrockWorldGenerator.render_loaded_target_map = cast(Any, _patched_render_loaded_target_map)
+    generator.BedrockWorldGenerator.render_cached_blank_pixel_batch = cast(Any, _patched_render_cached_blank_pixel_batch)
+    base._world_map_auto_fill_step_text_for_generator = cast(Any, _patched_auto_fill_step_text_for_generator)
+    base.MetroMapViewer._finish_auto_fill_world_map = cast(Any, _patched_finish_auto_fill_world_map)
 
     generator.INCREMENTAL_RENDER_BATCH_PIXELS = max(generator.INCREMENTAL_RENDER_BATCH_PIXELS, 100_000)
     generator.INCREMENTAL_RENDER_MAX_SCAN_PIXELS = max(generator.INCREMENTAL_RENDER_MAX_SCAN_PIXELS, 15_000_000)

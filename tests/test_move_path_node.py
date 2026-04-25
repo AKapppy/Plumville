@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import legacy_core as base
@@ -33,11 +34,11 @@ class MovePathNodeTests(unittest.TestCase):
             patcher.stop()
         base._reload_network_data()
 
-    def _write_payload(self, payload: dict[str, object]) -> None:
+    def _write_payload(self, payload: dict[str, Any]) -> None:
         self.network_path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
         base._reload_network_data()
 
-    def _load_temp_payload(self) -> dict[str, object]:
+    def _load_temp_payload(self) -> dict[str, Any]:
         return json.loads(self.network_path.read_text(encoding="utf-8"))
 
     def test_move_path_node_updates_edges_and_city_limits(self) -> None:
