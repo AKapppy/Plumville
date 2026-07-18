@@ -14,10 +14,10 @@
   <body>
     <main class="viewer-shell">
       <aside class="side-panel" aria-label="Map controls and station details">
-        <details class="collapsible-section" open>
-          <summary>Checklist</summary>
+        <section class="control-section" aria-label="Network">
+          <h1>Plumville Metro</h1>
           <p id="summaryText" class="summary">Loading the network...</p>
-        </details>
+        </section>
 
         <section class="control-section" aria-label="Search">
           <label class="field-label section-heading" for="searchInput">Search</label>
@@ -29,7 +29,7 @@
         </section>
 
         <section class="control-section" aria-labelledby="showHideHeading">
-          <p id="showHideHeading" class="section-heading">Show/Hide</p>
+          <p id="showHideHeading" class="section-heading">View</p>
           <label class="check-row">
             <input id="showWorldMapInput" type="checkbox" checked>
             <span>World Map</span>
@@ -39,34 +39,22 @@
             <span>Station labels</span>
           </label>
           <label class="check-row">
-            <input id="showAlignmentInput" type="checkbox">
-            <span>Alignment ellipses</span>
-          </label>
-          <label class="check-row">
-            <input id="showFrontierInput" type="checkbox">
-            <span>Frontier highlights</span>
+            <input id="showSuggestedWalkingPathsInput" type="checkbox">
+            <span>Suggested walking paths</span>
           </label>
         </section>
 
-        <details class="collapsible-section">
+        <details class="collapsible-section" open>
           <summary>Directions</summary>
           <section class="control-section">
             <label class="field-label" for="routeStartInput">From</label>
-            <input id="routeStartInput" class="sidebar-input" type="text" autocomplete="off" placeholder="Blackport">
+            <input id="routeStartInput" class="sidebar-input" type="search" autocomplete="off" list="stationSuggestions" placeholder="Blackport">
             <p class="hint">Station label / var</p>
 
             <label class="field-label spaced" for="routeEndInput">To</label>
-            <input id="routeEndInput" class="sidebar-input" type="text" autocomplete="off" placeholder="Dicton">
+            <input id="routeEndInput" class="sidebar-input" type="search" autocomplete="off" list="stationSuggestions" placeholder="Dicton">
             <p class="hint">Station label / var</p>
-
-            <label class="check-row">
-              <input id="useMetroInput" type="checkbox" checked>
-              <span>Use metro</span>
-            </label>
-            <label class="check-row">
-              <input id="useFlyingInput" type="checkbox">
-              <span>Use flying</span>
-            </label>
+            <datalist id="stationSuggestions"></datalist>
 
             <div class="actions" aria-label="Route actions">
               <button id="routeButton" type="button">Route</button>
@@ -85,21 +73,22 @@
           <button id="resetViewButton" type="button">Reset view</button>
           <button id="fitMapButton" type="button">Fit map</button>
           <button id="blackportButton" type="button">Blackport</button>
-          <button id="clearSelectionButton" type="button">Clear</button>
+          <button id="clearSelectionButton" type="button">Clear selection</button>
         </div>
-
-        <section class="text-panel">
-          <p id="readOnlyNotice">Read-only viewer. Station names, coordinates, progress, and railway finishing are locked on this site.</p>
-        </section>
       </aside>
 
       <section class="map-stage" aria-label="Interactive Plumville metro map">
         <canvas id="metroCanvas" aria-label="Metro map canvas"></canvas>
+        <div class="map-controls" aria-label="Map zoom controls">
+          <button id="mapZoomInButton" type="button" aria-label="Zoom in">+</button>
+          <button id="mapZoomOutButton" type="button" aria-label="Zoom out">−</button>
+          <button id="mapFitButton" type="button" aria-label="Fit map">Fit</button>
+        </div>
         <div id="tooltip" class="tooltip" hidden></div>
         <div id="infoPopup" class="info-popup" hidden></div>
       </section>
     </main>
 
-    <script src="app.js?v=20260420-hotkeys" defer></script>
+    <script src="app.js?v=20260716-suggested-walks" defer></script>
   </body>
 </html>

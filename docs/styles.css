@@ -46,6 +46,8 @@ input {
 }
 
 .side-panel {
+  position: relative;
+  z-index: 4;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -76,6 +78,28 @@ input {
 
 #metroCanvas.dragging {
   cursor: grabbing;
+}
+
+.map-controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 2;
+  display: grid;
+  gap: 6px;
+}
+
+.map-controls button {
+  width: 36px;
+  min-height: 34px;
+  padding: 0;
+  border-color: rgba(247, 247, 247, 0.22);
+  background: rgba(17, 17, 17, 0.88);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+.map-controls #mapFitButton {
+  width: 44px;
 }
 
 h1,
@@ -282,28 +306,6 @@ button:focus-visible {
 
 .info-popup h2 {
   margin-bottom: 5px;
-}
-
-.info-popup .readonly-checks {
-  display: grid;
-  gap: 2px;
-  margin-top: 7px;
-}
-
-.readonly-checks label {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--ink);
-  font-size: 12px;
-}
-
-.readonly-checks input {
-  width: 13px;
-  height: 13px;
-  margin: 0;
-  pointer-events: none;
-  accent-color: var(--panel-3);
 }
 
 .info-popup .section-label {

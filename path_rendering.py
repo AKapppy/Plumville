@@ -36,7 +36,7 @@ def _patched_draw_extra_edges(self: "base.MetroMapViewer") -> None:
 
 
 def _patched_draw_path_nodes(self: "base.MetroMapViewer") -> None:
-    if self.hide_path_nodes_var.get():
+    if not self.show_path_nodes_var.get():
         self.path_node_canvas_positions = {}
         should_keep_hit_targets = (
             self.path_click_mode_var.get()

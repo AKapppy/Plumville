@@ -28,8 +28,8 @@ def _append_pathing_extensions(self: "base.MetroMapViewer", parent: tk.Misc) -> 
     ).pack(anchor='w', padx=16, pady=(0, 6))
     self._make_sidebar_checkbox(
         parent,
-        text='Hide path nodes',
-        variable=self.hide_path_nodes_var,
+        text='Show path nodes',
+        variable=self.show_path_nodes_var,
         command=self.redraw,
     ).pack(anchor='w', padx=16, pady=(0, 12))
 
@@ -57,8 +57,8 @@ def _append_world_map_extensions(self: "base.MetroMapViewer", parent: tk.Misc) -
 def _patched_build_route_panel(self: "base.MetroMapViewer") -> None:
     if not hasattr(self, "show_suggested_walking_paths_var"):
         self.show_suggested_walking_paths_var = tk.BooleanVar(master=self.root, value=False)
-    if not hasattr(self, "hide_path_nodes_var"):
-        self.hide_path_nodes_var = tk.BooleanVar(master=self.root, value=True)
+    if not hasattr(self, "show_path_nodes_var"):
+        self.show_path_nodes_var = tk.BooleanVar(master=self.root, value=False)
     if not hasattr(self, "circle_internal_voids_var"):
         self.circle_internal_voids_var = tk.BooleanVar(master=self.root, value=False)
 

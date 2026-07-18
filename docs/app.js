@@ -8,21 +8,22 @@ const searchButton = document.querySelector('#searchButton');
 const searchStatus = document.querySelector('#searchStatus');
 const routeStartInput = document.querySelector('#routeStartInput');
 const routeEndInput = document.querySelector('#routeEndInput');
-const useMetroInput = document.querySelector('#useMetroInput');
-const useFlyingInput = document.querySelector('#useFlyingInput');
 const routeButton = document.querySelector('#routeButton');
 const swapRouteButton = document.querySelector('#swapRouteButton');
 const clearRouteButton = document.querySelector('#clearRouteButton');
 const routeSummary = document.querySelector('#routeSummary');
 const routeSteps = document.querySelector('#routeSteps');
+const stationSuggestions = document.querySelector('#stationSuggestions');
 const resetViewButton = document.querySelector('#resetViewButton');
 const fitMapButton = document.querySelector('#fitMapButton');
 const blackportButton = document.querySelector('#blackportButton');
 const clearSelectionButton = document.querySelector('#clearSelectionButton');
+const mapZoomInButton = document.querySelector('#mapZoomInButton');
+const mapZoomOutButton = document.querySelector('#mapZoomOutButton');
+const mapFitButton = document.querySelector('#mapFitButton');
 const showWorldMapInput = document.querySelector('#showWorldMapInput');
 const showLabelsInput = document.querySelector('#showLabelsInput');
-const showAlignmentInput = document.querySelector('#showAlignmentInput');
-const showFrontierInput = document.querySelector('#showFrontierInput');
+const showSuggestedWalkingPathsInput = document.querySelector('#showSuggestedWalkingPathsInput');
 
 const CONSTANTS = {
   padding: 80,
@@ -31,26 +32,27 @@ const CONSTANTS = {
   gridColor: '#4b4b4b',
   intersectionColor: '#ffffff',
   defaultZoom: 1,
-  zoomStep: 1.15,
-  maxVisibleBlocksAtMaxZoom: 10,
+  zoomStep: 1.22,
+  maxZoom: 20,
+  wheelZoomSpeed: 0.0018,
+  clampPadding: 64,
   labelAngle: -30 * Math.PI / 180,
-  baseLabelFontSize: 12,
+  baseLabelFontSize: 13,
   stationRadius: 4,
   stationHitTolerance: 10,
   unconnectedDash: [10, 6],
   unconnectedWidth: 3,
   connectedWidth: 4,
+  labelCasingColor: '#f2efe6',
+  labelCasingWidth: 2,
+  junctionLabelColor: '#050505',
   routeOutline: '#ffffff',
   routeOutlineWidth: 10,
   routeWidth: 6,
-  frontierOutline: '#ffd6e6',
-  frontierOutlineWidth: 12,
-  frontierWidth: 8,
-  alignmentOutline: '#d8d8d8',
-  alignmentWidth: 2,
-  alignmentPadding: 16,
-  alignmentMinSize: 30,
-  alignmentLabelSize: 10,
+  connectorPathColor: '#f0f0f0',
+  walkingPathColor: '#f7c7db',
+  walkingPathDash: [8, 6],
+  extraPathWidth: 4,
   worldMapAlpha: 0.745,
   terrainMetadataUrl: 'assets/blackport_topdown.render.json',
   blackportVar: 'P_ABCDE',
@@ -64,8 +66,10 @@ const state = {
   lineSegments: [],
   visibleLines: new Set(),
   selectedStop: null,
+  selectedPathEdge: null,
   hoverStop: null,
   searchMatches: [],
+  preferredRouteInput: null,
   currentRoute: null,
   routeRequest: null,
   terrain: {
@@ -74,20 +78,20 @@ const state = {
     bounds: null,
     stationBounds: null,
   },
-  viewport: {
+  camera: {
     zoom: CONSTANTS.defaultZoom,
-    panX: 0,
-    panY: 0,
+    translateX: 0,
+    translateY: 0,
+    minZoom: CONSTANTS.defaultZoom,
+    maxZoom: CONSTANTS.maxZoom,
+    viewportWidth: 1,
+    viewportHeight: 1,
+    worldWidth: 1,
+    worldHeight: 1,
+    initialized: false,
+    userChangedView: false,
   },
-  transform: {
-    width: 1,
-    height: 1,
-    minX: 0,
-    maxX: 1,
-    minY: 0,
-    maxY: 1,
-    scale: 1,
-  },
+  transform: null,
   plotBounds: null,
   dragging: false,
   dragDistance: 0,
@@ -133,10 +137,33 @@ function hydrateNetwork(data) {
     ...data.stops.map(stationPlotPoint),
     ...state.lineSegments.flatMap((segment) => segment.points),
     ...(data.path_nodes || []).map((node) => ({ x: node.x, y: -node.y })),
+    ...(data.suggested_walking_segments || []).flatMap((segment) => suggestedWalkingSegmentPlotPoints(segment)),
   ];
   state.plotBounds = boundsForPoints(allPoints);
   state.terrain.stationBounds = terrainStationBounds(data.stops);
-  summaryText.textContent = stationProgressSummary();
+  populateStationSuggestions();
+  summaryText.textContent = networkSummary();
+}
+
+function populateStationSuggestions() {
+  if (!stationSuggestions) {
+    return;
+  }
+  const seen = new Set();
+  const values = [];
+  for (const stop of state.data.stops) {
+    for (const value of [displayLabel(stop.lbl), stop.var, stop.var.replace(/^P_/, '')]) {
+      const normalized = normalizeIdentity(value);
+      if (normalized && !seen.has(normalized)) {
+        seen.add(normalized);
+        values.push(value);
+      }
+    }
+  }
+  values.sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
+  stationSuggestions.innerHTML = values
+    .map((value) => `<option value="${escapeHtml(value)}"></option>`)
+    .join('');
 }
 
 function pointFromSpec(spec) {
@@ -200,8 +227,7 @@ function bindEvents() {
     if (state.dragging && state.lastPointer) {
       const dx = event.clientX - state.lastPointer.x;
       const dy = event.clientY - state.lastPointer.y;
-      state.viewport.panX += dx;
-      state.viewport.panY += dy;
+      panBy(dx, dy);
       state.dragDistance += Math.abs(dx) + Math.abs(dy);
       state.lastPointer = { x: event.clientX, y: event.clientY };
       render();
@@ -211,14 +237,22 @@ function bindEvents() {
   });
 
   canvas.addEventListener('pointerup', (event) => {
-    canvas.releasePointerCapture(event.pointerId);
+    if (canvas.hasPointerCapture(event.pointerId)) {
+      canvas.releasePointerCapture(event.pointerId);
+    }
     state.dragging = false;
     state.lastPointer = null;
     canvas.classList.remove('dragging');
     if (state.dragDistance <= 4) {
-      const stop = findStopAt(event.offsetX, event.offsetY);
+      const point = canvasPoint(event);
+      const stop = findStopAt(point.x, point.y);
       if (stop) {
         selectStop(stop, { updateRouteStart: true });
+      } else {
+        const edge = findExtraEdgeAt(point.x, point.y);
+        if (edge) {
+          selectPathEdge(edge);
+        }
       }
     }
   });
@@ -231,14 +265,20 @@ function bindEvents() {
 
   canvas.addEventListener('wheel', (event) => {
     event.preventDefault();
-    zoomAt(event.offsetX, event.offsetY, event.deltaY > 0 ? 1 / CONSTANTS.zoomStep : CONSTANTS.zoomStep);
+    event.stopPropagation();
+    const point = canvasPoint(event);
+    zoomAtScreenPoint(point.x, point.y, wheelNextZoom(event));
   }, { passive: false });
 
   document.addEventListener('pointerdown', (event) => {
     if (infoPopup.hidden || infoPopup.contains(event.target)) {
       return;
     }
+    if (event.target instanceof HTMLElement && event.target.closest('.side-panel')) {
+      return;
+    }
     state.selectedStop = null;
+    state.selectedPathEdge = null;
     hidePopup();
     render();
   });
@@ -262,11 +302,16 @@ function bindEvents() {
       planRoute();
     }
   });
+  for (const input of [routeStartInput, routeEndInput]) {
+    input.addEventListener('input', clearRouteStateForInput);
+    input.addEventListener('focus', () => prepareRouteInput(input));
+    input.addEventListener('pointerdown', () => {
+      state.preferredRouteInput = input;
+    });
+  }
   routeButton.addEventListener('click', planRoute);
   swapRouteButton.addEventListener('click', swapRoute);
   clearRouteButton.addEventListener('click', clearRoute);
-  useMetroInput.addEventListener('change', refreshRouteIfNeeded);
-  useFlyingInput.addEventListener('change', refreshRouteIfNeeded);
 
   resetViewButton.addEventListener('click', () => {
     resetView();
@@ -275,8 +320,14 @@ function bindEvents() {
   fitMapButton.addEventListener('click', fitRenderedMap);
   blackportButton.addEventListener('click', showBlackportView);
   clearSelectionButton.addEventListener('click', clearSelection);
+  mapZoomInButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom * CONSTANTS.zoomStep));
+  mapZoomOutButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom / CONSTANTS.zoomStep));
+  mapFitButton?.addEventListener('click', () => {
+    fitToMap();
+    render();
+  });
 
-  for (const input of [showWorldMapInput, showLabelsInput, showAlignmentInput, showFrontierInput]) {
+  for (const input of [showWorldMapInput, showLabelsInput, showSuggestedWalkingPathsInput]) {
     input.addEventListener('change', render);
   }
 }
@@ -287,34 +338,26 @@ function resizeCanvas() {
   canvas.width = Math.max(1, Math.round(rect.width * pixelRatio));
   canvas.height = Math.max(1, Math.round(rect.height * pixelRatio));
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  updateTransform(rect.width, rect.height);
+  updateCameraViewport(rect.width, rect.height);
 }
 
-function updateTransform(width, height) {
-  if (!state.plotBounds) {
+function updateCameraViewport(width, height) {
+  state.camera.viewportWidth = Math.max(1, width);
+  state.camera.viewportHeight = Math.max(1, height);
+  updateCameraWorld();
+  if (!state.camera.initialized && cameraHasWorld()) {
+    fitToMap();
     return;
   }
-  const xSpan = Math.max(state.plotBounds.maxX - state.plotBounds.minX, 1);
-  const ySpan = Math.max(state.plotBounds.maxY - state.plotBounds.minY, 1);
-  const scale = Math.min(
-    (width - (CONSTANTS.padding * 2)) / xSpan,
-    (height - (CONSTANTS.padding * 2)) / ySpan,
-  );
-  state.transform = {
-    width,
-    height,
-    minX: state.plotBounds.minX,
-    maxX: state.plotBounds.maxX,
-    minY: state.plotBounds.minY,
-    maxY: state.plotBounds.maxY,
-    scale: Math.max(scale, 0.001),
-  };
+  if (!state.camera.userChangedView && cameraHasWorld()) {
+    fitToMap();
+    return;
+  }
+  clampCamera();
 }
 
 function resetView() {
-  state.viewport.zoom = CONSTANTS.defaultZoom;
-  state.viewport.panX = 0;
-  state.viewport.panY = 0;
+  fitToMap();
   hidePopup();
 }
 
@@ -347,39 +390,31 @@ function fitRenderedMap() {
   render();
 }
 
-function showConnectedAreaView() {
-  const connectedPoints = state.lineSegments
-    .filter((segment) => segment.connected)
-    .flatMap((segment) => segment.points);
-  const points = connectedPoints.length
-    ? connectedPoints
-    : state.data.stops.filter((stop) => stop.is_connected).map(stationPlotPoint);
-  const bounds = boundsForPoints(points);
-  if (!validBounds(bounds)) {
-    resetView();
-    render();
+function setViewToPlotBounds(bounds) {
+  if (!cameraHasWorld()) {
     return;
   }
-  setViewToPlotBounds(bounds);
-  render();
-}
-
-function setViewToPlotBounds(bounds) {
-  const { width, height, scale } = state.transform;
-  const spanX = Math.max(bounds.maxX - bounds.minX, 1);
-  const spanY = Math.max(bounds.maxY - bounds.minY, 1);
-  const availableWidth = Math.max(width - (CONSTANTS.padding * 2), 1);
-  const availableHeight = Math.max(height - (CONSTANTS.padding * 2), 1);
-  state.viewport.zoom = Math.max(
-    CONSTANTS.defaultZoom,
-    Math.min(availableWidth / (spanX * scale), availableHeight / (spanY * scale), maxZoom()),
+  const first = plotToWorld({ x: bounds.minX, y: bounds.minY });
+  const second = plotToWorld({ x: bounds.maxX, y: bounds.maxY });
+  const worldBounds = normalizedWorldBounds(first, second);
+  const spanX = Math.max(worldBounds.maxX - worldBounds.minX, 1);
+  const spanY = Math.max(worldBounds.maxY - worldBounds.minY, 1);
+  const availableWidth = Math.max(state.camera.viewportWidth - (CONSTANTS.padding * 2), 1);
+  const availableHeight = Math.max(state.camera.viewportHeight - (CONSTANTS.padding * 2), 1);
+  state.camera.zoom = clamp(
+    Math.min(availableWidth / spanX, availableHeight / spanY),
+    state.camera.minZoom,
+    state.camera.maxZoom,
   );
-  const baseCenter = plotToBaseCanvas({
+  const worldCenter = {
     x: (bounds.minX + bounds.maxX) / 2,
     y: (bounds.minY + bounds.maxY) / 2,
-  });
-  state.viewport.panX = ((width / 2) - baseCenter.x) * state.viewport.zoom;
-  state.viewport.panY = ((height / 2) - baseCenter.y) * state.viewport.zoom;
+  };
+  const center = plotToWorld(worldCenter);
+  state.camera.translateX = (state.camera.viewportWidth / 2) - (center.x * state.camera.zoom);
+  state.camera.translateY = (state.camera.viewportHeight / 2) - (center.y * state.camera.zoom);
+  state.camera.userChangedView = true;
+  clampCamera();
   hidePopup();
 }
 
@@ -395,9 +430,6 @@ function handleHotkey(event) {
   } else if (key === 'b') {
     event.preventDefault();
     showBlackportView();
-  } else if (key === 'a') {
-    event.preventDefault();
-    showConnectedAreaView();
   }
 }
 
@@ -415,21 +447,17 @@ function render() {
   }
 
   const rect = canvas.getBoundingClientRect();
-  updateTransform(rect.width, rect.height);
+  updateCameraViewport(rect.width, rect.height);
   ctx.clearRect(0, 0, rect.width, rect.height);
   ctx.fillStyle = CONSTANTS.backgroundColor;
   ctx.fillRect(0, 0, rect.width, rect.height);
 
   drawTerrainUnderlay();
   drawZeroAxes();
-  drawCurrentRoute();
   drawMetroLines();
-  if (showFrontierInput.checked && !state.currentRoute) {
-    drawFrontierHighlights();
-  }
-  if (showAlignmentInput.checked) {
-    drawAlignmentReminders();
-  }
+  drawExtraEdges();
+  drawSuggestedWalkingPaths();
+  drawCurrentRoute();
   drawStations();
   positionInfoPopup();
 }
@@ -439,6 +467,10 @@ function loadTerrainImage() {
   image.onload = () => {
     state.terrain.image = image;
     state.terrain.loaded = true;
+    updateCameraWorld();
+    if (!state.camera.initialized) {
+      fitToMap();
+    }
     render();
   };
   image.src = `assets/blackport_topdown.png?v=${Date.now()}`;
@@ -455,6 +487,10 @@ async function loadTerrainBounds() {
       return;
     }
     state.terrain.bounds = bounds;
+    updateCameraWorld();
+    if (!state.camera.initialized) {
+      fitToMap();
+    }
     render();
   } catch (_error) {
     // The viewer can still place the image from the network and image dimensions.
@@ -462,32 +498,32 @@ async function loadTerrainBounds() {
 }
 
 function drawTerrainUnderlay() {
-  if (!showWorldMapInput.checked || !state.terrain.loaded || !state.terrain.image) {
+  if (!showWorldMapInput.checked || !state.terrain.loaded || !state.terrain.image || !cameraHasWorld()) {
     return;
   }
   const { image } = state.terrain;
-  const bounds = currentTerrainBounds();
-  if (!bounds) {
-    return;
-  }
-  const first = plotToCanvas({ x: bounds.minX, y: -bounds.minZ });
-  const second = plotToCanvas({ x: bounds.maxX, y: -bounds.maxZ });
-  const left = Math.min(first.x, second.x);
-  const right = Math.max(first.x, second.x);
-  const top = Math.min(first.y, second.y);
-  const bottom = Math.max(first.y, second.y);
-  if (right <= left || bottom <= top) {
-    return;
-  }
+  const topLeft = worldToScreen({ x: 0, y: 0 });
+  const bottomRight = worldToScreen({ x: state.camera.worldWidth, y: state.camera.worldHeight });
+  const left = topLeft.x;
+  const top = topLeft.y;
+  const width = bottomRight.x - topLeft.x;
+  const height = bottomRight.y - topLeft.y;
   ctx.save();
   ctx.globalAlpha = CONSTANTS.worldMapAlpha;
   ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(image, left, top, right - left, bottom - top);
+  ctx.drawImage(image, left, top, width, height);
   ctx.restore();
 }
 
 function drawZeroAxes() {
-  const { minX, maxX, minY, maxY } = state.transform;
+  const terrainBounds = currentTerrainBounds();
+  if (!terrainBounds || !cameraHasWorld()) {
+    return;
+  }
+  const minX = terrainBounds.minX;
+  const maxX = terrainBounds.maxX;
+  const minY = -terrainBounds.maxZ;
+  const maxY = -terrainBounds.minZ;
   ctx.save();
   ctx.strokeStyle = CONSTANTS.gridColor;
   ctx.lineWidth = 1;
@@ -513,10 +549,55 @@ function drawMetroLines() {
     if (!state.visibleLines.has(segment.lineName) || segment.points.length < 2) {
       continue;
     }
-    ctx.strokeStyle = colorForLine(segment.lineName);
-    ctx.lineWidth = segment.connected ? CONSTANTS.connectedWidth : CONSTANTS.unconnectedWidth;
+    const lineWidth = segment.connected ? CONSTANTS.connectedWidth : CONSTANTS.unconnectedWidth;
     ctx.setLineDash(segment.connected ? [] : CONSTANTS.unconnectedDash);
+    ctx.strokeStyle = colorForLine(segment.lineName);
+    ctx.lineWidth = lineWidth;
     drawPlotPolyline(segment.points);
+  }
+  ctx.restore();
+}
+
+function drawExtraEdges() {
+  const edges = state.data.extra_edges || [];
+  if (!edges.length) {
+    return;
+  }
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const edge of edges) {
+    const points = extraEdgePlotPoints(edge);
+    if (points.length < 2) {
+      continue;
+    }
+    ctx.strokeStyle = edge.kind === 'walk' ? CONSTANTS.walkingPathColor : CONSTANTS.connectorPathColor;
+    ctx.lineWidth = CONSTANTS.extraPathWidth;
+    ctx.setLineDash(edge.kind === 'walk' ? CONSTANTS.walkingPathDash : []);
+    drawPlotPolyline(points);
+  }
+  ctx.restore();
+}
+
+function drawSuggestedWalkingPaths() {
+  if (!showSuggestedWalkingPathsInput?.checked) {
+    return;
+  }
+  const segments = state.data.suggested_walking_segments || [];
+  if (!segments.length) {
+    return;
+  }
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = CONSTANTS.walkingPathColor;
+  ctx.lineWidth = CONSTANTS.extraPathWidth;
+  ctx.setLineDash(CONSTANTS.walkingPathDash);
+  for (const segment of segments) {
+    const points = suggestedWalkingSegmentPlotPoints(segment);
+    if (points.length >= 2) {
+      drawPlotPolyline(points);
+    }
   }
   ctx.restore();
 }
@@ -543,59 +624,111 @@ function drawCurrentRoute() {
   ctx.restore();
 }
 
-function drawFrontierHighlights() {
-  ctx.save();
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-  for (const segment of frontierSegments()) {
-    ctx.strokeStyle = CONSTANTS.frontierOutline;
-    ctx.lineWidth = CONSTANTS.frontierOutlineWidth;
-    ctx.setLineDash([]);
-    drawPlotPolyline(segment.points);
-    ctx.strokeStyle = colorForLine(segment.lineName);
-    ctx.lineWidth = CONSTANTS.frontierWidth;
-    drawPlotPolyline(segment.points);
+function extraEdgePlotPoints(edge) {
+  const rawPathPoints = Array.isArray(edge.path_points) ? edge.path_points : [];
+  if (rawPathPoints.length) {
+    return rawPathPoints
+      .map((point) => plotPointFromCoordinateRecord(point))
+      .filter(Boolean);
   }
-  ctx.restore();
+  const fromPoint = endpointPlotPoint(edge.from_endpoint || endpointFromLegacyStop(edge.from_var));
+  const toPoint = endpointPlotPoint(edge.to_endpoint || endpointFromLegacyStop(edge.to_var));
+  return [fromPoint, toPoint].filter(Boolean);
 }
 
-function drawAlignmentReminders() {
-  const reminders = state.data.alignment_reminders || [];
-  ctx.save();
-  ctx.strokeStyle = CONSTANTS.alignmentOutline;
-  ctx.fillStyle = CONSTANTS.alignmentOutline;
-  ctx.lineWidth = CONSTANTS.alignmentWidth;
-  ctx.font = `${CONSTANTS.alignmentLabelSize}px Helvetica, Arial, sans-serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'bottom';
-  ctx.setLineDash([8, 4]);
-  for (const reminder of reminders) {
-    const stops = alignmentReminderStops(reminder);
-    if (stops.length < 2 || reminderIsAligned(reminder, stops)) {
-      continue;
-    }
-    const points = stops.map(stationPlotPoint).map(plotToCanvas);
-    const xs = points.map((point) => point.x);
-    const ys = points.map((point) => point.y);
-    const padding = Math.max(CONSTANTS.alignmentPadding, Math.round(CONSTANTS.alignmentPadding * state.viewport.zoom));
-    let left = Math.min(...xs) - padding;
-    let right = Math.max(...xs) + padding;
-    let top = Math.min(...ys) - padding;
-    let bottom = Math.max(...ys) + padding;
-    if (right - left < CONSTANTS.alignmentMinSize) {
-      const center = (left + right) / 2;
-      left = center - CONSTANTS.alignmentMinSize / 2;
-      right = center + CONSTANTS.alignmentMinSize / 2;
-    }
-    if (bottom - top < CONSTANTS.alignmentMinSize) {
-      const center = (top + bottom) / 2;
-      top = center - CONSTANTS.alignmentMinSize / 2;
-      bottom = center + CONSTANTS.alignmentMinSize / 2;
-    }
-    drawEllipse(left, top, right, bottom);
-    ctx.fillText(`${reminder.axis}: ${stops.map((stop) => displayLabel(stop.lbl)).join(', ')}`, (left + right) / 2, Math.max(CONSTANTS.alignmentLabelSize + 2, top - 4));
+function endpointFromLegacyStop(stopVar) {
+  return stopVar ? { kind: 'stop', stop_var: stopVar } : null;
+}
+
+function endpointPlotPoint(endpoint) {
+  if (!endpoint) {
+    return null;
   }
-  ctx.restore();
+  if (endpoint.kind === 'stop') {
+    const stop = state.stopsByVar.get(endpoint.stop_var || endpoint.key);
+    return stop ? stationPlotPoint(stop) : null;
+  }
+  if (endpoint.kind === 'coord') {
+    return plotPointFromCoordinateRecord(endpoint);
+  }
+  return null;
+}
+
+function endpointWorldPoint(endpoint) {
+  if (!endpoint) {
+    return null;
+  }
+  if (endpoint.kind === 'stop') {
+    const stop = state.stopsByVar.get(endpoint.stop_var || endpoint.key);
+    return stop ? { x: stop.x, y: stop.y } : null;
+  }
+  if (endpoint.kind === 'coord') {
+    const x = Number(endpoint.x);
+    const y = Number(endpoint.y);
+    return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+  }
+  return null;
+}
+
+function endpointLabel(endpoint) {
+  if (!endpoint) {
+    return 'Unknown';
+  }
+  if (endpoint.kind === 'stop') {
+    const stopVar = endpoint.stop_var || endpoint.key;
+    const stop = state.stopsByVar.get(stopVar);
+    return stop ? displayLabel(stop.lbl) : stopVar;
+  }
+  if (endpoint.kind === 'coord') {
+    return `(${endpoint.x}, ${endpoint.y})`;
+  }
+  return 'Unknown';
+}
+
+function plotPointFromCoordinateRecord(record) {
+  const x = Number(record?.x);
+  const y = Number(record?.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  return { x, y: -y };
+}
+
+function suggestedWalkingSegmentPlotPoints(segment) {
+  const rawPath = Array.isArray(segment?.path) ? segment.path : [];
+  return rawPath.map((point) => plotPointFromCoordinateRecord(point)).filter(Boolean);
+}
+
+function extraEdgeWorldPoints(edge) {
+  const rawPathPoints = Array.isArray(edge.path_points) ? edge.path_points : [];
+  if (rawPathPoints.length) {
+    return rawPathPoints
+      .map((point) => {
+        const x = Number(point?.x);
+        const y = Number(point?.y);
+        return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+      })
+      .filter(Boolean);
+  }
+  const fromPoint = endpointWorldPoint(edge.from_endpoint || endpointFromLegacyStop(edge.from_var));
+  const toPoint = endpointWorldPoint(edge.to_endpoint || endpointFromLegacyStop(edge.to_var));
+  return [fromPoint, toPoint].filter(Boolean);
+}
+
+function pathEdgeTurnCoordinates(edge) {
+  const points = extraEdgeWorldPoints(edge);
+  if (points.length <= 2) {
+    return [];
+  }
+  return points.slice(1, -1);
+}
+
+function selectedPathEdgeAnchorPoint(edge) {
+  const points = extraEdgePlotPoints(edge);
+  if (!points.length) {
+    return { x: CONSTANTS.padding, y: CONSTANTS.padding };
+  }
+  return plotToCanvas(points[Math.floor(points.length / 2)]);
 }
 
 function drawStations() {
@@ -616,7 +749,14 @@ function drawStations() {
     ctx.fill();
 
     if (showLabelsInput.checked) {
-      drawRotatedLabel(displayLabel(stop.lbl), point.x + labelOffset(), point.y - labelOffset(), fill, labelFontSize, false);
+      drawRotatedLabel(
+        displayLabel(stop.lbl),
+        point.x + labelOffset(),
+        point.y - labelOffset(),
+        stationLabelColor(stop),
+        labelFontSize,
+        false,
+      );
     }
   }
   ctx.restore();
@@ -643,18 +783,16 @@ function drawLine(first, second) {
   ctx.stroke();
 }
 
-function drawEllipse(left, top, right, bottom) {
-  ctx.beginPath();
-  ctx.ellipse((left + right) / 2, (top + bottom) / 2, (right - left) / 2, (bottom - top) / 2, 0, 0, Math.PI * 2);
-  ctx.stroke();
-}
-
 function drawRotatedLabel(text, x, y, fill, fontSize, bold) {
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(CONSTANTS.labelAngle);
-  ctx.fillStyle = fill;
   ctx.font = `${bold ? '700 ' : ''}${fontSize}px Helvetica, Arial, sans-serif`;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = CONSTANTS.labelCasingColor;
+  ctx.lineWidth = CONSTANTS.labelCasingWidth;
+  ctx.strokeText(text, 0, 0);
+  ctx.fillStyle = fill;
   ctx.fillText(text, 0, 0);
   ctx.restore();
 }
@@ -692,20 +830,44 @@ function findStopAt(screenX, screenY) {
   return best;
 }
 
+function findExtraEdgeAt(screenX, screenY) {
+  let best = null;
+  let bestDistanceSq = Infinity;
+  const maxDistanceSq = CONSTANTS.stationHitTolerance ** 2;
+  for (const edge of state.data.extra_edges || []) {
+    const points = extraEdgePlotPoints(edge).map(plotToCanvas);
+    const distanceSq = pointToPolylineDistanceSq({ x: screenX, y: screenY }, points);
+    if (distanceSq !== null && distanceSq <= maxDistanceSq && distanceSq < bestDistanceSq) {
+      best = edge;
+      bestDistanceSq = distanceSq;
+    }
+  }
+  return best;
+}
+
 function selectStop(stop, options = {}) {
   state.selectedStop = stop;
+  state.selectedPathEdge = null;
   if (options.pan) {
     centerOnPlotPoint(stationPlotPoint(stop));
   }
-  if (options.updateRouteStart && !routeStartInput.value.trim()) {
-    routeStartInput.value = displayLabel(stop.lbl);
+  if (options.updateRouteStart) {
+    fillRouteInputFromStop(stop);
   }
+  updateInfoPopup();
+  render();
+}
+
+function selectPathEdge(edge) {
+  state.selectedStop = null;
+  state.selectedPathEdge = edge;
   updateInfoPopup();
   render();
 }
 
 function clearSelection() {
   state.selectedStop = null;
+  state.selectedPathEdge = null;
   state.searchMatches = [];
   searchInput.value = '';
   refreshSearch();
@@ -714,46 +876,54 @@ function clearSelection() {
 }
 
 function updateInfoPopup() {
-  if (!state.selectedStop) {
+  if (!state.selectedStop && !state.selectedPathEdge) {
     hidePopup();
     return;
   }
+  if (state.selectedPathEdge) {
+    updatePathEdgePopup(state.selectedPathEdge);
+    return;
+  }
   const stop = state.selectedStop;
-  const reminders = (state.data.alignment_reminders || []).filter(
-    (reminder) => reminder.first_var === stop.var || reminder.second_var === stop.var,
-  );
-  const checks = [
-    ['Has Name', Boolean(stop.lbl.trim())],
-    ['Facade', stop.has_connector],
-    ['Station', stop.has_full_station],
-    ['Connected', stop.is_connected],
-    ['Finished Railway', stop.has_finished_railway],
-    ['Signs', stop.has_signs],
-  ];
+  const statusText = stop.is_connected ? 'Open' : 'Planned';
   const chimeText = stop.is_connected && stop.chime_directions?.length
     ? `<p class="section-label">Chimes</p><p>${stop.chime_directions.map(capitalize).join(', ')}</p>`
     : '';
-  const reminderText = reminders.length
-    ? `<p class="section-label">Alignment Reminders</p><p>${reminders.map((reminder) => escapeHtml(reminderDebugLabel(reminder))).join('<br>')}</p>`
-    : '';
   infoPopup.innerHTML = `
     <h2>${escapeHtml(displayLabel(stop.lbl))}</h2>
-    <p>Coords: (${stop.x}, ${stop.y})<br>Lines: ${escapeHtml(linesForStop(stop).join(', '))}<br>Progress: ${stationCheckpointCount(stop)}/${stationCheckpointTotal(stop)}<br>Alignments: ${reminders.length ? `${reminders.length} active` : 'none'}</p>
-    <div class="readonly-checks">
-      ${checks.map(([label, checked]) => `<label><input type="checkbox" ${checked ? 'checked' : ''} disabled><span>${label}</span></label>`).join('')}
-    </div>
+    <p>Coords: (${stop.x}, ${stop.y})<br>Lines: ${escapeHtml(linesForStop(stop).join(', '))}<br>Status: ${statusText}</p>
     ${chimeText}
-    ${reminderText}
+  `;
+  infoPopup.hidden = false;
+  positionInfoPopup();
+}
+
+function updatePathEdgePopup(edge) {
+  const points = extraEdgeWorldPoints(edge);
+  const turnPoints = pathEdgeTurnCoordinates(edge);
+  const fromLabel = endpointLabel(edge.from_endpoint || endpointFromLegacyStop(edge.from_var));
+  const toLabel = endpointLabel(edge.to_endpoint || endpointFromLegacyStop(edge.to_var));
+  const kindLabel = edge.kind === 'walk' ? 'Walking path' : 'Metro connector';
+  const turnText = turnPoints.length
+    ? turnPoints.map((point) => `(${point.x}, ${point.y})`).join('<br>')
+    : 'No turn coordinates';
+  infoPopup.innerHTML = `
+    <h2>${kindLabel}</h2>
+    <p>From: ${escapeHtml(fromLabel)}<br>To: ${escapeHtml(toLabel)}<br>Distance: ${formatTrackDistance(Math.round(polylineDistance(points.map((point) => ({ x: point.x, y: -point.y })))))}<br>Shape: ${turnPoints.length ? 'turn' : 'direct'}</p>
+    <p class="section-label">Turn Coordinates</p>
+    <p>${turnText}</p>
   `;
   infoPopup.hidden = false;
   positionInfoPopup();
 }
 
 function positionInfoPopup() {
-  if (!state.selectedStop || infoPopup.hidden) {
+  if ((!state.selectedStop && !state.selectedPathEdge) || infoPopup.hidden) {
     return;
   }
-  const point = plotToCanvas(stationPlotPoint(state.selectedStop));
+  const point = state.selectedStop
+    ? plotToCanvas(stationPlotPoint(state.selectedStop))
+    : selectedPathEdgeAnchorPoint(state.selectedPathEdge);
   const stageRect = canvas.getBoundingClientRect();
   const box = infoPopup.getBoundingClientRect();
   const margin = CONSTANTS.padding / 2;
@@ -842,27 +1012,30 @@ function planRoute() {
     return;
   }
   state.routeRequest = [start.var, end.var];
-  const route = findRoute(start.var, end.var, {
-    allowMetro: useMetroInput.checked,
-    allowFlying: useFlyingInput.checked,
-  });
+  const route = findRoute(start.var, end.var);
   state.currentRoute = route;
   if (!route) {
     routeSummary.textContent = `No route from ${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}.`;
     routeSteps.textContent = 'No route exists for those endpoints with the current metro data.';
   } else {
-    routeStartInput.value = displayLabel(start.lbl);
-    routeEndInput.value = displayLabel(end.lbl);
     routeSummary.textContent = `${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}\n${formatTrackDistance(route.totalDistance)}, ${route.totalInterchanges} interchange(s)`;
     routeSteps.textContent = routeInstructions(route);
   }
   render();
 }
 
-function refreshRouteIfNeeded() {
-  if (state.routeRequest) {
-    planRoute();
-  }
+function clearRouteStateForInput() {
+  state.currentRoute = null;
+  state.routeRequest = null;
+  routeSummary.textContent = 'Choose two stations.';
+  routeSteps.textContent = 'Enter or select a start and destination, then press Route.';
+}
+
+function prepareRouteInput(input) {
+  state.preferredRouteInput = input;
+  state.selectedStop = null;
+  state.selectedPathEdge = null;
+  hidePopup();
 }
 
 function swapRoute() {
@@ -877,6 +1050,7 @@ function swapRoute() {
 function clearRoute() {
   state.currentRoute = null;
   state.routeRequest = null;
+  state.preferredRouteInput = routeStartInput;
   routeStartInput.value = '';
   routeEndInput.value = '';
   routeSummary.textContent = 'Choose two stations.';
@@ -884,23 +1058,42 @@ function clearRoute() {
   render();
 }
 
-function findRoute(startVar, endVar, options) {
+function fillRouteInputFromStop(stop) {
+  const targetInput = routeInputTargetForStop(stop);
+  if (!targetInput) {
+    return;
+  }
+  targetInput.value = displayLabel(stop.lbl);
+  state.preferredRouteInput = targetInput === routeStartInput ? routeEndInput : routeStartInput;
+  clearRouteStateForInput();
+}
+
+function routeInputTargetForStop(stop) {
+  const preferredInput = state.preferredRouteInput;
+  if (document.activeElement === routeStartInput || document.activeElement === routeEndInput) {
+    return document.activeElement;
+  }
+  if (
+    (preferredInput === routeStartInput || preferredInput === routeEndInput)
+    && !preferredInput.value.trim()
+  ) {
+    return preferredInput;
+  }
+
+  if (!routeStartInput.value.trim()) {
+    return routeStartInput;
+  }
+  if (!routeEndInput.value.trim() && resolveStop(routeStartInput.value)?.var !== stop.var) {
+    return routeEndInput;
+  }
+  return null;
+}
+
+function findRoute(startVar, endVar) {
   if (startVar === endVar) {
     return { startVar, endVar, totalDistance: 0, totalInterchanges: 0, steps: [] };
   }
-  const metroRoute = options.allowMetro ? findMetroRoute(startVar, endVar) : null;
-  const flyRoute = options.allowFlying ? directFlyRoute(startVar, endVar) : null;
-  if (!metroRoute) {
-    return flyRoute;
-  }
-  if (!flyRoute) {
-    return metroRoute;
-  }
-  return [metroRoute, flyRoute].sort((a, b) => (
-    a.totalDistance - b.totalDistance ||
-    a.totalInterchanges - b.totalInterchanges ||
-    a.steps.length - b.steps.length
-  ))[0];
+  return findMetroRoute(startVar, endVar);
 }
 
 function findMetroRoute(startVar, endVar) {
@@ -967,9 +1160,6 @@ function findMetroRoute(startVar, endVar) {
 function buildRouteGraph() {
   const graph = new Map();
   for (const stop of state.data.stops) {
-    if (!stop.is_connected) {
-      continue;
-    }
     const lines = linesForStop(stop);
     for (const lineName of lines) {
       ensureGraphNode(graph, { stopVar: stop.var, lineName });
@@ -998,11 +1188,6 @@ function buildRouteGraph() {
     }
   }
   for (const segment of state.lineSegments) {
-    const start = state.stopsByVar.get(segment.startVar);
-    const end = state.stopsByVar.get(segment.endVar);
-    if (!start?.is_connected || !end?.is_connected) {
-      continue;
-    }
     const distance = Math.round(polylineDistance(segment.points));
     appendGraphEdge(graph, {
       start: { stopVar: segment.startVar, lineName: segment.lineName },
@@ -1064,29 +1249,6 @@ function appendRouteStep(steps, edge) {
   });
 }
 
-function directFlyRoute(startVar, endVar) {
-  const start = state.stopsByVar.get(startVar);
-  const end = state.stopsByVar.get(endVar);
-  if (!start || !end) {
-    return null;
-  }
-  return {
-    startVar,
-    endVar,
-    totalDistance: Math.round(Math.hypot(end.x - start.x, end.y - start.y)),
-    totalInterchanges: 0,
-    steps: [{
-      kind: 'fly',
-      startVar,
-      endVar,
-      distance: Math.round(Math.hypot(end.x - start.x, end.y - start.y)),
-      lineName: null,
-      stopVars: [startVar, endVar],
-      pathPoints: [stationPlotPoint(start), stationPlotPoint(end)],
-    }],
-  };
-}
-
 function routeInstructions(route) {
   const start = state.stopsByVar.get(route.startVar);
   const end = state.stopsByVar.get(route.endVar);
@@ -1108,64 +1270,219 @@ function routeInstructions(route) {
       lines.push(`${index + 1}. Take Line ${step.lineName} from ${startLabel} to ${endLabel} for ${formatTrackDistance(step.distance)} (${stopCount} ${stopCount === 1 ? 'stop' : 'stops'}).`);
     } else if (step.kind === 'transfer') {
       lines.push(`${index + 1}. Transfer at ${startLabel} to Line ${step.lineName}.`);
-    } else if (step.kind === 'fly') {
-      lines.push(`${index + 1}. Fly directly from ${startLabel} to ${endLabel} for ${formatTrackDistance(step.distance)}.`);
     }
   });
   lines.push('');
+  const unfinishedLineNames = unfinishedRouteLineNames(route);
+  if (unfinishedLineNames.length) {
+    const lineWord = unfinishedLineNames.length === 1 ? 'line is' : 'lines are';
+    lines.push(`Warning: the ${formatLineList(unfinishedLineNames)} ${lineWord} not fully constructed for this route. Consider direct flying instead.`);
+    lines.push('');
+  }
   lines.push(`Route from ${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}.`);
   return lines.join('\n');
+}
+
+function unfinishedRouteLineNames(route) {
+  const lineNames = new Set();
+  for (const step of route.steps) {
+    if (step.kind !== 'ride' || !step.lineName || step.stopVars.length < 2) {
+      continue;
+    }
+    for (let index = 0; index < step.stopVars.length - 1; index += 1) {
+      const segment = state.lineSegments.find((candidate) => (
+        candidate.lineName === step.lineName &&
+        (
+          (candidate.startVar === step.stopVars[index] && candidate.endVar === step.stopVars[index + 1]) ||
+          (candidate.startVar === step.stopVars[index + 1] && candidate.endVar === step.stopVars[index])
+        )
+      ));
+      if (segment && !segment.connected) {
+        lineNames.add(step.lineName);
+      }
+    }
+  }
+  return [...lineNames].sort();
+}
+
+function formatLineList(lineNames) {
+  if (lineNames.length <= 2) {
+    return lineNames.join(lineNames.length === 2 ? ' and ' : '');
+  }
+  return `${lineNames.slice(0, -1).join(', ')}, and ${lineNames[lineNames.length - 1]}`;
 }
 
 function stationPlotPoint(stop) {
   return { x: stop.x, y: -stop.y };
 }
 
-function plotToBaseCanvas(point) {
-  const { minX, minY, height, scale } = state.transform;
+function cameraHasWorld() {
+  return state.camera.worldWidth > 1
+    && state.camera.worldHeight > 1
+    && state.camera.viewportWidth > 1
+    && state.camera.viewportHeight > 1;
+}
+
+function updateCameraWorld() {
+  const bounds = currentTerrainBounds();
+  const image = state.terrain.image;
+  const width = image?.naturalWidth || (bounds ? Math.max(1, bounds.maxX - bounds.minX + 1) : 1);
+  const height = image?.naturalHeight || (bounds ? Math.max(1, bounds.maxZ - bounds.minZ + 1) : 1);
+  state.camera.worldWidth = width;
+  state.camera.worldHeight = height;
+  const fitZoom = Math.min(
+    state.camera.viewportWidth / width,
+    state.camera.viewportHeight / height,
+  );
+  state.camera.minZoom = Math.max(0.0001, fitZoom);
+  state.camera.maxZoom = Math.max(state.camera.minZoom * 2, CONSTANTS.maxZoom);
+  state.camera.zoom = clamp(state.camera.zoom, state.camera.minZoom, state.camera.maxZoom);
+  clampCamera();
+}
+
+function plotToWorld(point) {
+  const bounds = currentTerrainBounds();
+  if (!bounds || !cameraHasWorld()) {
+    return { x: point.x, y: -point.y };
+  }
+  const xSpan = Math.max(bounds.maxX - bounds.minX, 1);
+  const zSpan = Math.max(bounds.maxZ - bounds.minZ, 1);
   return {
-    x: CONSTANTS.padding + ((point.x - minX) * scale),
-    y: height - CONSTANTS.padding - ((point.y - minY) * scale),
+    x: ((point.x - bounds.minX) / xSpan) * state.camera.worldWidth,
+    y: (((-point.y) - bounds.minZ) / zSpan) * state.camera.worldHeight,
+  };
+}
+
+function worldToPlot(point) {
+  const bounds = currentTerrainBounds();
+  if (!bounds || !cameraHasWorld()) {
+    return { x: point.x, y: -point.y };
+  }
+  return {
+    x: bounds.minX + ((point.x / state.camera.worldWidth) * (bounds.maxX - bounds.minX)),
+    y: -(bounds.minZ + ((point.y / state.camera.worldHeight) * (bounds.maxZ - bounds.minZ))),
+  };
+}
+
+function worldToScreen(point) {
+  return {
+    x: (point.x * state.camera.zoom) + state.camera.translateX,
+    y: (point.y * state.camera.zoom) + state.camera.translateY,
+  };
+}
+
+function screenToWorld(point) {
+  return {
+    x: (point.x - state.camera.translateX) / state.camera.zoom,
+    y: (point.y - state.camera.translateY) / state.camera.zoom,
   };
 }
 
 function plotToCanvas(point) {
-  const base = plotToBaseCanvas(point);
-  const { width, height } = state.transform;
-  return {
-    x: (width / 2) + ((base.x - (width / 2)) * state.viewport.zoom) + state.viewport.panX,
-    y: (height / 2) + ((base.y - (height / 2)) * state.viewport.zoom) + state.viewport.panY,
-  };
+  return worldToScreen(plotToWorld(point));
 }
 
 function centerOnPlotPoint(point) {
-  const base = plotToBaseCanvas(point);
-  const { width, height } = state.transform;
-  state.viewport.panX = -((base.x - (width / 2)) * state.viewport.zoom);
-  state.viewport.panY = -((base.y - (height / 2)) * state.viewport.zoom);
+  if (!cameraHasWorld()) {
+    return;
+  }
+  const world = plotToWorld(point);
+  state.camera.translateX = (state.camera.viewportWidth / 2) - (world.x * state.camera.zoom);
+  state.camera.translateY = (state.camera.viewportHeight / 2) - (world.y * state.camera.zoom);
+  state.camera.userChangedView = true;
+  clampCamera();
   hidePopup();
 }
 
-function zoomAt(anchorX, anchorY, factor) {
-  const oldZoom = state.viewport.zoom;
-  const newZoom = Math.max(CONSTANTS.defaultZoom, Math.min(oldZoom * factor, maxZoom()));
-  if (newZoom === oldZoom) {
+function zoomAtViewportCenter(nextZoom) {
+  zoomAtScreenPoint(state.camera.viewportWidth / 2, state.camera.viewportHeight / 2, nextZoom);
+}
+
+function zoomAtScreenPoint(screenX, screenY, nextZoom) {
+  if (!cameraHasWorld()) {
     return;
   }
-  const { width, height } = state.transform;
-  const ratio = newZoom / oldZoom;
-  state.viewport.panX = anchorX - (width / 2) - ((anchorX - (width / 2) - state.viewport.panX) * ratio);
-  state.viewport.panY = anchorY - (height / 2) - ((anchorY - (height / 2) - state.viewport.panY) * ratio);
-  state.viewport.zoom = newZoom;
+  const oldWorldPoint = screenToWorld({ x: screenX, y: screenY });
+  state.camera.zoom = clamp(nextZoom, state.camera.minZoom, state.camera.maxZoom);
+
+  // Keep the same world coordinate under the cursor after zooming.
+  state.camera.translateX = screenX - (oldWorldPoint.x * state.camera.zoom);
+  state.camera.translateY = screenY - (oldWorldPoint.y * state.camera.zoom);
+  state.camera.userChangedView = true;
+  clampCamera();
   hidePopup();
   render();
 }
 
-function maxZoom() {
-  const { width, height, scale } = state.transform;
-  const visibleWidth = Math.max(width - (CONSTANTS.padding * 2), 1) / scale;
-  const visibleHeight = Math.max(height - (CONSTANTS.padding * 2), 1) / scale;
-  return Math.max(CONSTANTS.defaultZoom, Math.max(visibleWidth, visibleHeight) / CONSTANTS.maxVisibleBlocksAtMaxZoom);
+function panBy(deltaX, deltaY) {
+  state.camera.translateX += deltaX;
+  state.camera.translateY += deltaY;
+  state.camera.userChangedView = true;
+  clampCamera();
+  hidePopup();
+}
+
+function fitToMap() {
+  if (!cameraHasWorld()) {
+    return;
+  }
+  state.camera.zoom = state.camera.minZoom;
+  state.camera.translateX = (state.camera.viewportWidth - (state.camera.worldWidth * state.camera.zoom)) / 2;
+  state.camera.translateY = (state.camera.viewportHeight - (state.camera.worldHeight * state.camera.zoom)) / 2;
+  state.camera.initialized = true;
+  state.camera.userChangedView = false;
+  clampCamera();
+}
+
+function clampCamera() {
+  if (!cameraHasWorld()) {
+    return;
+  }
+  const scaledWidth = state.camera.worldWidth * state.camera.zoom;
+  const scaledHeight = state.camera.worldHeight * state.camera.zoom;
+  state.camera.translateX = clampAxis(state.camera.translateX, scaledWidth, state.camera.viewportWidth);
+  state.camera.translateY = clampAxis(state.camera.translateY, scaledHeight, state.camera.viewportHeight);
+}
+
+function clampAxis(translate, scaledSize, viewportSize) {
+  const padding = Math.min(CONSTANTS.clampPadding, viewportSize * 0.2);
+  if (scaledSize <= viewportSize - (padding * 2)) {
+    return (viewportSize - scaledSize) / 2;
+  }
+  const minTranslate = viewportSize - scaledSize - padding;
+  const maxTranslate = padding;
+  return clamp(translate, minTranslate, maxTranslate);
+}
+
+function canvasPoint(event) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  };
+}
+
+function wheelNextZoom(event) {
+  let delta = event.deltaY;
+  if (event.deltaMode === WheelEvent.DOM_DELTA_LINE) {
+    delta *= 16;
+  } else if (event.deltaMode === WheelEvent.DOM_DELTA_PAGE) {
+    delta *= state.camera.viewportHeight;
+  }
+  return state.camera.zoom * Math.exp(-delta * CONSTANTS.wheelZoomSpeed);
+}
+
+function normalizedWorldBounds(first, second) {
+  return {
+    minX: Math.min(first.x, second.x),
+    maxX: Math.max(first.x, second.x),
+    minY: Math.min(first.y, second.y),
+    maxY: Math.max(first.y, second.y),
+  };
+}
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
 }
 
 function graphNodesForStop(graph, stopVar) {
@@ -1215,6 +1532,11 @@ function stationColor(stop) {
   return lines.length === 1 ? colorForLine(lines[0]) : CONSTANTS.intersectionColor;
 }
 
+function stationLabelColor(stop) {
+  const lines = linesForStop(stop).filter((lineName) => state.visibleLines.has(lineName));
+  return lines.length === 1 ? colorForLine(lines[0]) : CONSTANTS.junctionLabelColor;
+}
+
 function stopHasVisibleLine(stop) {
   return linesForStop(stop).some((lineName) => state.visibleLines.has(lineName));
 }
@@ -1231,84 +1553,12 @@ function routeStepColor(step) {
   if (step.kind === 'ride' && step.lineName) {
     return colorForLine(step.lineName);
   }
-  if (step.kind === 'fly') {
-    return '#8ad4ff';
-  }
   return CONSTANTS.routeOutline;
 }
 
-function frontierSegments() {
-  const segments = [];
-  for (const [lineName, stopVars] of Object.entries(state.data.line_stop_vars)) {
-    for (let index = 0; index < stopVars.length - 1; index += 1) {
-      const first = state.stopsByVar.get(stopVars[index]);
-      const second = state.stopsByVar.get(stopVars[index + 1]);
-      if (!first || !second) {
-        continue;
-      }
-      if (first.is_connected !== second.is_connected) {
-        const segment = state.lineSegments.find((candidate) => (
-          candidate.lineName === lineName &&
-          candidate.startVar === first.var &&
-          candidate.endVar === second.var
-        ));
-        if (segment) {
-          segments.push(segment);
-        }
-      }
-    }
-  }
-  return segments;
-}
-
-function alignmentReminderStops(reminder) {
-  const first = state.stopsByVar.get(reminder.first_var);
-  const second = state.stopsByVar.get(reminder.second_var);
-  if (!first || !second) {
-    return [];
-  }
-  const sharedLines = linesForStop(first).filter((lineName) => linesForStop(second).includes(lineName));
-  const ordered = [];
-  const seen = new Set();
-  for (const lineName of sharedLines) {
-    const stopVars = state.data.line_stop_vars[lineName] || [];
-    const firstIndex = stopVars.indexOf(first.var);
-    const secondIndex = stopVars.indexOf(second.var);
-    if (firstIndex < 0 || secondIndex < 0) {
-      continue;
-    }
-    const low = Math.min(firstIndex, secondIndex);
-    const high = Math.max(firstIndex, secondIndex);
-    for (const stopVar of stopVars.slice(low, high + 1)) {
-      if (!seen.has(stopVar)) {
-        ordered.push(state.stopsByVar.get(stopVar));
-        seen.add(stopVar);
-      }
-    }
-  }
-  return ordered.length ? ordered.filter(Boolean) : [first, second];
-}
-
-function reminderIsAligned(reminder, stops) {
-  if (reminder.axis === 'x') {
-    return new Set(stops.map((stop) => stop.x)).size === 1;
-  }
-  if (reminder.axis === 'y') {
-    return new Set(stops.map((stop) => stop.y)).size === 1;
-  }
-  return false;
-}
-
-function reminderDebugLabel(reminder) {
-  return `${reminder.axis}: ${alignmentReminderStops(reminder).map((stop) => displayLabel(stop.lbl)).join(', ')}`;
-}
-
 function labelFontSizeForZoom() {
-  if (state.viewport.zoom <= CONSTANTS.defaultZoom) {
-    return CONSTANTS.baseLabelFontSize;
-  }
-  const growthSteps = Math.log(state.viewport.zoom) / Math.log(CONSTANTS.zoomStep);
-  const growth = Math.min(14, Math.round(growthSteps * 0.3));
+  const scale = cameraStyleScale();
+  const growth = Math.min(4, Math.max(0, Math.round(Math.log2(scale) * 1.2)));
   return CONSTANTS.baseLabelFontSize + growth;
 }
 
@@ -1316,55 +1566,15 @@ function labelOffset() {
   return 7 + (labelFontSizeForZoom() - CONSTANTS.baseLabelFontSize);
 }
 
-function stationProgressSummary() {
+function cameraStyleScale() {
+  return Math.max(1, state.camera.zoom / Math.max(state.camera.minZoom, 0.0001));
+}
+
+function networkSummary() {
   const stops = state.data.stops;
-  const connectedStops = stops.filter((stop) => stop.is_connected);
-  const total = stops.length;
-  const connectedTotal = connectedStops.length || 1;
-  const requiredChimes = connectedStops.reduce((totalChimes, stop) => totalChimes + maxChimeCount(stop), 0);
-  const completedChimes = connectedStops.reduce((totalChimes, stop) => totalChimes + completedChimeCount(stop), 0);
-  return [
-    `Named: ${stops.filter((stop) => stop.lbl.trim()).length}/${total}`,
-    `Facades: ${stops.filter((stop) => stop.has_connector).length}/${total}`,
-    `Stations: ${stops.filter((stop) => stop.has_full_station).length}/${total}`,
-    `Connected: ${stops.filter((stop) => stop.is_connected).length}/${total}`,
-    `Finished Railway: ${connectedStops.filter((stop) => stop.has_finished_railway).length}/${connectedTotal}`,
-    `Signs: ${connectedStops.filter((stop) => stop.has_signs).length}/${connectedTotal}`,
-    `Chimes: ${completedChimes}/${requiredChimes}`,
-  ].join('\n');
-}
-
-function stationCheckpointTotal(stop) {
-  let total = 4;
-  if (stop.is_connected) {
-    total += 2;
-  }
-  if (stop.is_connected && maxChimeCount(stop) > 0) {
-    total += 1;
-  }
-  return total;
-}
-
-function stationCheckpointCount(stop) {
-  let count = 0;
-  if (stop.lbl.trim()) count += 1;
-  if (stop.has_connector) count += 1;
-  if (stop.has_full_station) count += 1;
-  if (stop.is_connected) count += 1;
-  if (stop.is_connected && stop.has_finished_railway) count += 1;
-  if (stop.is_connected && stop.has_signs) count += 1;
-  if (stop.is_connected && maxChimeCount(stop) > 0 && completedChimeCount(stop) >= maxChimeCount(stop)) {
-    count += 1;
-  }
-  return count;
-}
-
-function maxChimeCount(stop) {
-  return stop.is_connected ? linesForStop(stop).length : 0;
-}
-
-function completedChimeCount(stop) {
-  return Array.isArray(stop.chime_directions) ? stop.chime_directions.length : 0;
+  const openStops = stops.filter((stop) => stop.is_connected).length;
+  const lineCount = Object.keys(state.data.line_stop_vars || {}).length;
+  return `${stops.length} stations · ${openStops} open · ${lineCount} lines`;
 }
 
 function polylineDistance(points) {
@@ -1375,6 +1585,34 @@ function polylineDistance(points) {
     total += Math.hypot(second.x - first.x, second.y - first.y);
   }
   return total;
+}
+
+function pointToPolylineDistanceSq(point, points) {
+  if (points.length < 2) {
+    return null;
+  }
+  let bestDistanceSq = Infinity;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const first = points[index];
+    const second = points[index + 1];
+    const dx = second.x - first.x;
+    const dy = second.y - first.y;
+    const lengthSq = (dx * dx) + (dy * dy);
+    const t = lengthSq === 0
+      ? 0
+      : clamp(
+        (((point.x - first.x) * dx) + ((point.y - first.y) * dy)) / lengthSq,
+        0,
+        1,
+      );
+    const closest = {
+      x: first.x + (dx * t),
+      y: first.y + (dy * t),
+    };
+    const distanceSq = ((point.x - closest.x) ** 2) + ((point.y - closest.y) ** 2);
+    bestDistanceSq = Math.min(bestDistanceSq, distanceSq);
+  }
+  return bestDistanceSq;
 }
 
 function boundsForPoints(points) {

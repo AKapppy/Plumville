@@ -240,6 +240,47 @@ def _alpha_limited_copy(image: Image.Image) -> Image.Image:
     return underlay
 
 
+def _underlay_cache_key(
+    source_image: Image.Image,
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+    fast_resample: bool,
+) -> tuple[int, int, int, tuple[int, int, int, int], bool]:
+    return (id(source_image), target_width, target_height, source_box, fast_resample)
+
+
+def _cached_underlay_photo(
+    viewer: "base.MetroMapViewer",
+    source_image: Image.Image,
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+    *,
+    fast_resample: bool,
+) -> ImageTk.PhotoImage:
+    cache_key = _underlay_cache_key(source_image, target_width, target_height, source_box, fast_resample)
+    cached = getattr(viewer, "_world_map_underlay_photo_cache", None)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == cache_key:
+        cached_photo = cached[1]
+        if isinstance(cached_photo, ImageTk.PhotoImage):
+            return cached_photo
+
+    underlay = source_image.crop(source_box)
+    if fast_resample:
+        try:
+            resampling_filter = Image.Resampling.NEAREST
+        except AttributeError:
+            resampling_filter = cast(Any, Image).NEAREST
+    else:
+        resampling_filter = _underlay_resampling_filter(target_width, target_height, source_box)
+    underlay = underlay.resize((target_width, target_height), resampling_filter)
+    underlay = _alpha_limited_copy(underlay)
+    underlay_image = ImageTk.PhotoImage(underlay)
+    viewer._world_map_underlay_photo_cache = (cache_key, underlay_image)
+    return underlay_image
+
+
 def _edge_runs(edge_mask: np.ndarray) -> list[tuple[int, int]]:
     runs: list[tuple[int, int]] = []
     run_start = None
@@ -349,7 +390,11 @@ def _draw_world_boundary_completion_edges(
             )
 
 
-def _patched_draw_world_map_render_underlay(self: "base.MetroMapViewer") -> None:
+def _patched_draw_world_map_render_underlay(
+    self: "base.MetroMapViewer",
+    *,
+    fast_resample: bool = False,
+) -> None:
     if not self.show_world_map_render_var.get():
         return
 
@@ -373,13 +418,17 @@ def _patched_draw_world_map_render_underlay(self: "base.MetroMapViewer") -> None
                 source_image = full_source_image
                 draw_left, draw_top, target_width, target_height, source_box = full_draw_plan
 
-    underlay = source_image.crop(source_box)
-    resampling_filter = _underlay_resampling_filter(target_width, target_height, source_box)
-    underlay = underlay.resize((target_width, target_height), resampling_filter)
-    underlay = _alpha_limited_copy(underlay)
-    underlay_image = ImageTk.PhotoImage(underlay)
+    underlay_image = _cached_underlay_photo(
+        self,
+        source_image,
+        target_width,
+        target_height,
+        source_box,
+        fast_resample=fast_resample,
+    )
     self.overlay_image_refs.append(underlay_image)
-    self.canvas.create_image(draw_left, draw_top, anchor="nw", image=underlay_image)
+    image_id = self.canvas.create_image(draw_left, draw_top, anchor="nw", image=underlay_image)
+    self.canvas.tag_lower(image_id)
 
     world_map_analysis.draw_internal_voids(self, payload, source_image)
     _draw_world_boundary_completion_edges(self, payload, source_image)

@@ -128,6 +128,41 @@ class LegacyPathMetadataTests(unittest.TestCase):
         finally:
             legacy_core.METRO_STOPS = previous_metro_stops
 
+    def test_signs_are_available_after_station_is_built(self) -> None:
+        previous_metro_stops = legacy_core.METRO_STOPS
+        try:
+            needs_signs = legacy_core.MetroStop(
+                var="P_A",
+                lbl="Alpha",
+                x=0,
+                y=0,
+                has_full_station=True,
+            )
+            has_signs = legacy_core.MetroStop(
+                var="P_A",
+                lbl="Alpha",
+                x=0,
+                y=0,
+                has_full_station=True,
+                has_signs=True,
+            )
+
+            self.assertFalse(needs_signs.is_connected)
+            self.assertIn("signs", legacy_core._missing_station_tasks(needs_signs))
+            self.assertEqual(has_signs.checkpoint_count, needs_signs.checkpoint_count + 1)
+
+            legacy_core.METRO_STOPS = (needs_signs,)
+            with mock.patch.object(
+                legacy_core,
+                "_world_map_checklist_completion_line",
+                return_value=None,
+            ):
+                summary = legacy_core._station_progress_summary_text()
+
+            self.assertIn("Signs: 0/1", summary)
+        finally:
+            legacy_core.METRO_STOPS = previous_metro_stops
+
     def test_station_priority_entry_includes_station_village_tasks(self) -> None:
         previous_metro_stops = legacy_core.METRO_STOPS
         previous_stops_by_var = legacy_core.STOPS_BY_VAR
@@ -165,6 +200,101 @@ class LegacyPathMetadataTests(unittest.TestCase):
             legacy_core.STOPS_BY_VAR = previous_stops_by_var
             legacy_core.STOP_LINE_NAMES = previous_stop_line_names
             legacy_core.LINE_STOP_VARS = previous_line_stop_vars
+
+    def test_alignment_reminder_adds_priority_need_until_station_connected(self) -> None:
+        previous_metro_stops = legacy_core.METRO_STOPS
+        previous_stops_by_var = legacy_core.STOPS_BY_VAR
+        previous_stop_line_names = legacy_core.STOP_LINE_NAMES
+        previous_line_stop_vars = legacy_core.LINE_STOP_VARS
+        previous_alignment_reminders = legacy_core.ALIGNMENT_REMINDERS
+        try:
+            connected_stop = legacy_core.MetroStop(
+                var="P_A",
+                lbl="Anchor",
+                x=0,
+                y=0,
+                is_connected=True,
+                has_connector=True,
+                has_full_station=True,
+                has_walking_paths=True,
+                station_entry_x=0,
+                station_entry_y=0,
+                city_limit_node_keys=("coord:0,0", "coord:1,0", "coord:1,1"),
+                has_finished_railway=True,
+                has_signs=True,
+            )
+            aligned_target = legacy_core.MetroStop(
+                var="P_B",
+                lbl="Aligned",
+                x=100,
+                y=50,
+                is_connected=False,
+                has_connector=True,
+                has_full_station=True,
+                has_walking_paths=True,
+                station_entry_x=100,
+                station_entry_y=50,
+                city_limit_node_keys=("coord:0,0", "coord:1,0", "coord:1,1"),
+            )
+            legacy_core.METRO_STOPS = (connected_stop, aligned_target)
+            legacy_core.STOPS_BY_VAR = {
+                connected_stop.var: connected_stop,
+                aligned_target.var: aligned_target,
+            }
+            legacy_core.STOP_LINE_NAMES = {
+                connected_stop.var: ("B",),
+                aligned_target.var: ("B",),
+            }
+            legacy_core.LINE_STOP_VARS = {"B": (connected_stop.var, aligned_target.var)}
+            legacy_core.ALIGNMENT_REMINDERS = (
+                legacy_core.AlignmentReminder(connected_stop.var, aligned_target.var, "y"),
+            )
+
+            with mock.patch.object(legacy_core, "_station_max_chime_count", return_value=0):
+                self.assertIn("alignment", legacy_core._missing_station_tasks(aligned_target))
+                self.assertNotIn("alignment", legacy_core._missing_station_tasks(connected_stop))
+
+                with (
+                    mock.patch.object(
+                        legacy_core,
+                        "_route_costs_from_endpoint_key",
+                        return_value={connected_stop.var: (0, 0)},
+                    ),
+                    mock.patch.object(legacy_core, "_line_distance_between_stops", return_value=100),
+                ):
+                    entries = legacy_core._priority_list_entries(connected_stop.var)
+
+                self.assertEqual(len(entries), 1)
+                self.assertEqual(entries[0][0], aligned_target.var)
+                self.assertIn("align to other station(s)", entries[0][1])
+
+                connected_target = legacy_core.MetroStop(
+                    var=aligned_target.var,
+                    lbl=aligned_target.lbl,
+                    x=aligned_target.x,
+                    y=aligned_target.y,
+                    is_connected=True,
+                    has_connector=aligned_target.has_connector,
+                    has_full_station=aligned_target.has_full_station,
+                    has_walking_paths=aligned_target.has_walking_paths,
+                    station_entry_x=aligned_target.station_entry_x,
+                    station_entry_y=aligned_target.station_entry_y,
+                    city_limit_node_keys=aligned_target.city_limit_node_keys,
+                    has_finished_railway=True,
+                    has_signs=True,
+                )
+                legacy_core.METRO_STOPS = (connected_stop, connected_target)
+                legacy_core.STOPS_BY_VAR = {
+                    connected_stop.var: connected_stop,
+                    connected_target.var: connected_target,
+                }
+                self.assertNotIn("alignment", legacy_core._missing_station_tasks(connected_target))
+        finally:
+            legacy_core.METRO_STOPS = previous_metro_stops
+            legacy_core.STOPS_BY_VAR = previous_stops_by_var
+            legacy_core.STOP_LINE_NAMES = previous_stop_line_names
+            legacy_core.LINE_STOP_VARS = previous_line_stop_vars
+            legacy_core.ALIGNMENT_REMINDERS = previous_alignment_reminders
 
     def test_checklist_uses_paths_and_city_limits_labels(self) -> None:
         previous_metro_stops = legacy_core.METRO_STOPS

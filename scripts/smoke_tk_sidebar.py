@@ -40,8 +40,8 @@ def main() -> int:
         labels = set(_label_texts(viewer.sidebar))
         expected_headers = {
             "+ Checklist",
+            "+ Show/Hide",
             "- Priority List",
-            "+ Railway Finishing",
             "- Directions",
             "- Pathing",
             "- World Map",
@@ -58,13 +58,41 @@ def main() -> int:
             "show_alignment_reminders_var": False,
             "show_frontier_highlights_var": False,
             "show_suggested_walking_paths_var": False,
-            "hide_path_nodes_var": False,
+            "show_path_nodes_var": False,
             "circle_internal_voids_var": False,
         }
         for attr_name, expected in defaults.items():
             actual = bool(getattr(viewer, attr_name).get())
             if actual != expected:
                 raise AssertionError(f"{attr_name} defaulted to {actual}, expected {expected}")
+
+        if not viewer.route_start_entry.winfo_ismapped():
+            viewer.route_start_entry.master.pack(fill="x")
+
+        viewer.route_start_entry.focus_set()
+        viewer.root.update()
+        viewer._show_suggestion_popup(
+            viewer.route_start_entry,
+            ["Blackport"],
+            on_select=lambda value: viewer.route_start_var.set(value),
+        )
+        viewer.root.update()
+        viewer._apply_suggestion_value("Blackport")
+        viewer.root.update()
+        if viewer.root.focus_get() is not viewer.route_start_entry:
+            raise AssertionError("Route suggestion selection did not restore focus to the From field.")
+
+        viewer.route_end_entry.focus_set()
+        viewer.root.update()
+        if viewer.root.focus_get() is not viewer.route_end_entry:
+            raise AssertionError("Route To field could not receive focus after selecting From.")
+        viewer.route_end_var.set("Dicton")
+        viewer.root.update()
+        if viewer.route_end_var.get() != "Dicton":
+            raise AssertionError("Route To field could not be edited after selecting From.")
+
+        if "+ Railway Finishing" in labels or "- Railway Finishing" in labels:
+            raise AssertionError("Retired Railway Finishing section is still visible.")
 
         print("OK: Tk sidebar built and default section state is intact.")
         return 0

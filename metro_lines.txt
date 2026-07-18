@@ -1,0 +1,193 @@
+A LINE
+    Blackport (BCDE)
+    Cherry Hill
+    Arrow Falls (P)
+    Minas Rojas
+    New Eden
+    Holihill
+    Cherry Hole (F)
+    Glacier Cherry
+    Isle of Whales
+
+B LINE
+    Blackport (ACDE)
+    Dicton
+    Hidden Valley Ranch
+    Pinkerton
+    B_5
+    BK (K)
+    BH (H)
+    B_8
+    BJ (J)
+    B_{10}
+    B_{11}
+
+C LINE
+    Blackport (ABDE)
+    Ridgewater
+    Triarchidia
+    Everly (N)
+    Amortay
+    Neamegapolis
+    Pinto Peak
+    Prumpvatn
+    Peapod (D)
+    Aldinhöfn (T)
+
+D LINE
+    Blackport (ABCE)
+    Timberville
+    Green Arch
+    Nujeau (N)
+    Pumpland
+    East Arendel
+    West Arendel
+    Hollow Bluffs
+    Peapod (C)
+
+E LINE
+    Blackport (ABCD)
+    Northbulge
+    Alexandropol (N)
+    The Edge
+    Isthmopol
+    Mt. Phosphagos
+    Kelp City (PRV)
+    Castle Crossing
+    Stilton (T)
+    West Stilton
+
+F LINE
+    FH (H)
+    F_2
+    F_3
+    F_4
+    F_5
+    FG (G)
+    F_7
+    Cherry Hole (A)
+
+G LINE
+    FG (F)
+    G_2
+    G_3
+    G_4
+    G_5
+    G_6
+    GH (H)
+    G_8
+    GJ (J)
+    G_{10}
+
+H LINE
+    GH (G)
+    H_2
+    H_3
+    FH (F)
+    H_5
+    BH (B)
+    H_7
+    H_8
+    HL (L)
+    H_{10}
+    HKM (KM)
+
+J LINE
+    GJ (G)
+    J_2
+    J_3
+    J_4
+    BJ (B)
+    J_6
+
+K LINE
+    BK (B)
+    KL (L)
+    K_3
+    HKM (HM)
+    K_5
+    Aesopia (N)
+    K_7
+    K_8
+    K_9
+
+L LINE
+    KL (K)
+    HL (H)
+    LM (M)
+    L_4
+
+M LINE
+    Mycopolis (N)
+    M_2
+    HKM (HK)
+    LM (L)
+    M_5
+    M_6
+    M_7
+
+N LINE
+    Alexandropol (E)
+    Glacier Bay
+    White Pines
+    Nujeau (D)
+    Everly (C)
+    Rack City
+    Aesopia (K)
+    Michael
+    Mycopolis (M)
+
+P LINE
+    Arrow Falls (A)
+    P_2
+    P_3
+    P_4
+    P_5
+    P_6
+    Kelp City (ERV)
+    P_8
+    PT (T)
+
+R LINE
+    Kelp City (EPV)
+    R_2
+    RS (S)
+    R_4
+    R_5
+    R_6
+
+S LINE
+    RS (R)
+    S_2
+    S_3
+    S_4
+
+T LINE
+    Stilton (E)
+    PT (P)
+    TV (V)
+    T_2
+    Aldinhöfn (C)
+
+V LINE
+    Kelp City (EPR)
+    Krimnos
+    V_3
+    TV (T)
+    V_5
+
+-----------------
+SIGN EXAMPLE FOR TRIARCHIDIA
+
+
+<<<<<                               >>>>>
+1 Everly (N)        Arriving:       1 Ridgewater
+2 C5                Triarchidia     2 Blackport (ABDE)
+3 C6                                
+4 C7                                
+5 C8                TRIARCHIDIA     
+6 CD                STATION         
+7 Aldinhöfn (T)                     
+
+                    << ELEVATOR <<
+                    TO TRIARCHIDIA

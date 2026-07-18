@@ -44,7 +44,7 @@ MAX_VISIBLE_BLOCKS_AT_MAX_ZOOM: Final[float] = 10.0
 ZOOM_STEP: Final[float] = 1.7
 FRONTIER_LABEL_SIZE_BOOST: Final[int] = 6
 LABEL_ANGLE: Final[float] = 30.0
-BASE_LABEL_FONT_SIZE: Final[int] = 12
+BASE_LABEL_FONT_SIZE: Final[int] = 13
 MAX_LABEL_FONT_GROWTH: Final[int] = 14
 LABEL_FONT_GROWTH_PER_ZOOM_STEP: Final[float] = 0.3
 LABEL_OFFSET_X: Final[int] = 7
@@ -112,6 +112,9 @@ CURSOR_INFO_PAD_Y: Final[int] = 5
 CURSOR_INFO_FONT_SIZE: Final[int] = 12
 CURSOR_INFO_BACKGROUND: Final[str] = '#0f1820'
 CURSOR_INFO_BORDER: Final[str] = '#395a70'
+PRIORITY_FILTER_ALL_LABEL: Final[str] = 'All needs'
+PRIORITY_HIGHLIGHT_COLOR: Final[str] = '#ffffff'
+PRIORITY_HIGHLIGHT_SOFT_COLOR: Final[str] = '#d8f3ff'
 BLACKPORT_VIEW_RADIUS: Final[int] = 2000
 WORLD_MAP_RENDER_ALPHA: Final[int] = 190
 WORLD_MAP_RENDER_BOUNDS_COLOR: Final[str] = '#f3d66b'
@@ -144,7 +147,11 @@ ROUTE_HIGHLIGHT_OUTLINE_WIDTH: Final[int] = 10
 ROUTE_HIGHLIGHT_WIDTH: Final[int] = 6
 SELECTED_SEGMENT_OUTLINE_WIDTH: Final[int] = 12
 SELECTED_SEGMENT_WIDTH: Final[int] = 7
+LABEL_CASING_COLOR: Final[str] = '#f2efe6'
+LABEL_CASING_WIDTH: Final[int] = 2
+JUNCTION_LABEL_COLOR: Final[str] = '#050505'
 FINISHED_RAILWAY_MAJOR_LINES: Final[frozenset[str]] = frozenset(('A', 'B', 'C', 'D', 'E'))
+SHOW_RAILWAY_FINISHING_UI: Final[bool] = False
 FINISHED_RAILWAY_COORDINATE_TOLERANCE: Final[float] = 0.01
 FINISHED_RAILWAY_HIGHLIGHT_OUTLINE: Final[str] = '#ffffff'
 FINISHED_RAILWAY_HIGHLIGHT_OUTLINE_WIDTH: Final[int] = 14
@@ -158,9 +165,25 @@ CONNECTED_TASK_WEIGHTS: Final[dict[str, int]] = {
     'station entrance': 2,
     'paths': 3,
     'city limits': 2,
+    'alignment': 2,
     'finished railway': 4,
     'signs': 2,
     'chimes': 2,
+}
+PRIORITY_NEED_LABELS: Final[dict[str, str]] = {
+    'name': 'Names',
+    'façade': 'Façades',
+    'station': 'Stations',
+    'station entrance': 'Station Entrances',
+    'paths': 'Walking Paths',
+    'city limits': 'City Limits',
+    'alignment': 'Align to Other Station(s)',
+    'finished railway': 'Finished Railway',
+    'signs': 'Signs',
+    'chimes': 'Chimes',
+}
+PRIORITY_TASK_PHRASES: Final[dict[str, str]] = {
+    'alignment': 'align to other station(s)',
 }
 ALIGNMENT_PRIORITY_PENALTY: Final[int] = 2
 PRIORITY_NAME_WEIGHT: Final[int] = 1
@@ -787,6 +810,14 @@ def _resolve_path_node_runtime(identifier: str) -> PathNode | None:
 
 
 def _all_path_nodes() -> tuple[PathNode, ...]:
+    global _ALL_PATH_NODES_CACHE_KEY
+    global _ALL_PATH_NODES_CACHE
+    global _ALL_PATH_NODES_BY_KEY_CACHE
+
+    cache_key = (id(PATH_NODES), id(EXTRA_EDGES))
+    if _ALL_PATH_NODES_CACHE_KEY == cache_key:
+        return _ALL_PATH_NODES_CACHE
+
     nodes_by_key = {node.key: node for node in PATH_NODES}
     for extra_edge in EXTRA_EDGES:
         for endpoint in (extra_edge.from_endpoint, extra_edge.to_endpoint):
@@ -802,7 +833,7 @@ def _all_path_nodes() -> tuple[PathNode, ...]:
                     is_explicit=False,
                 ),
             )
-    return tuple(
+    all_nodes = tuple(
         sorted(
             nodes_by_key.values(),
             key=lambda node: (
@@ -812,6 +843,15 @@ def _all_path_nodes() -> tuple[PathNode, ...]:
             ),
         )
     )
+    _ALL_PATH_NODES_CACHE_KEY = cache_key
+    _ALL_PATH_NODES_CACHE = all_nodes
+    _ALL_PATH_NODES_BY_KEY_CACHE = {node.key: node for node in all_nodes}
+    return all_nodes
+
+
+def _all_path_nodes_by_key() -> dict[str, PathNode]:
+    _all_path_nodes()
+    return _ALL_PATH_NODES_BY_KEY_CACHE
 
 
 def _city_limit_world_points(stop: MetroStop) -> tuple[tuple[int, int], ...]:
@@ -1470,6 +1510,12 @@ def _fill_for_visible_line_names(visible_line_names: tuple[str, ...]) -> str:
     return LINE_COLORS[visible_line_names[0]]
 
 
+def _label_fill_for_visible_line_names(visible_line_names: tuple[str, ...]) -> str:
+    if len(visible_line_names) != 1:
+        return JUNCTION_LABEL_COLOR
+    return LINE_COLORS[visible_line_names[0]]
+
+
 def _station_fill(stop: MetroStop) -> str:
     line_names = STOP_LINE_NAMES[stop.var]
     if len(line_names) != 1:
@@ -1482,6 +1528,43 @@ def _display_label(lbl: str) -> str:
     if not match:
         return lbl
     return f"{match.group(1)}{match.group(2).translate(SUBSCRIPT_TRANSLATION)}"
+
+
+def _is_placeholder_station_label(lbl: str) -> bool:
+    return bool(re.fullmatch(r'[A-Z0-9_{}]+', lbl.strip()))
+
+
+def _station_signage_label(stop_var: str, line_name: str) -> str:
+    stop = STOPS_BY_VAR[stop_var]
+    label = _display_label(stop.lbl)
+    other_line_names = ''.join(
+        other_line_name
+        for other_line_name in STOP_LINE_NAMES[stop_var]
+        if other_line_name != line_name
+    )
+    if other_line_names and not _is_placeholder_station_label(stop.lbl):
+        return f'{label} ({other_line_names})'
+    return label
+
+
+def _station_signage_direction_stop_vars(
+    stop_var: str,
+    line_name: str,
+    *,
+    flipped: bool = False,
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    stop_vars = LINE_STOP_VARS[line_name]
+    stop_index = stop_vars.index(stop_var)
+    before_stop_vars = tuple(reversed(stop_vars[:stop_index]))
+    after_stop_vars = tuple(stop_vars[stop_index + 1:])
+
+    if stop_index == 0:
+        return (after_stop_vars, ())
+    if stop_index == len(stop_vars) - 1:
+        return (before_stop_vars, ())
+    if flipped:
+        return (before_stop_vars, after_stop_vars)
+    return (after_stop_vars, before_stop_vars)
 
 
 def _label_font_size(zoom: float) -> int:
@@ -1819,6 +1902,7 @@ def _build_map_svg(
                 continue
             canvas_x, canvas_y = world_to_canvas(stop.plot_coordinates)
             stop_fill = _fill_for_visible_line_names(stop_visible_line_names)
+            label_fill = _label_fill_for_visible_line_names(stop_visible_line_names)
             svg_lines.append(
                 (
                     f'  <circle cx="{canvas_x:.2f}" cy="{canvas_y:.2f}" r="{STATION_RADIUS:.2f}" '
@@ -1832,14 +1916,24 @@ def _build_map_svg(
                 label_size = label_font_size + (
                     FRONTIER_LABEL_SIZE_BOOST if stop.var in frontier_label_stop_vars else 0
                 )
+                label_markup = (
+                    f'x="{label_x:.2f}" y="{label_y:.2f}" '
+                    f'font-family="Helvetica, Arial, sans-serif" font-size="{label_size}"'
+                    f'{font_weight_markup} '
+                    f'text-anchor="start" dominant-baseline="alphabetic" '
+                    f'transform="rotate(-{LABEL_ANGLE:.2f} {label_x:.2f} {label_y:.2f})"'
+                )
+                label_text = _svg_escape(_display_label(stop.lbl))
                 svg_lines.append(
                     (
-                        f'  <text x="{label_x:.2f}" y="{label_y:.2f}" fill="{stop_fill}" '
-                        f'font-family="Helvetica, Arial, sans-serif" font-size="{label_size}"'
-                        f'{font_weight_markup} '
-                        f'text-anchor="start" dominant-baseline="alphabetic" '
-                        f'transform="rotate(-{LABEL_ANGLE:.2f} {label_x:.2f} {label_y:.2f})">'
-                        f'{_svg_escape(_display_label(stop.lbl))}</text>'
+                        f'  <text {label_markup} fill="none" stroke="{LABEL_CASING_COLOR}" '
+                        f'stroke-width="{LABEL_CASING_WIDTH}" stroke-linejoin="round" '
+                        f'paint-order="stroke">{label_text}</text>'
+                    )
+                )
+                svg_lines.append(
+                    (
+                        f'  <text {label_markup} fill="{label_fill}">{label_text}</text>'
                     )
                 )
 
@@ -1903,15 +1997,31 @@ def _extra_edge_summary(extra_edge: ExtraEdgeDefinition, stop_var: str) -> str:
     other_endpoint = _extra_edge_other_endpoint(extra_edge, stop_var)
     return (
         f'{extra_edge.display_label} to {other_endpoint.display_label} '
-        f'({_format_track_distance(extra_edge.resolved_distance)}, {extra_edge.shape_label})'
+        f'({_format_track_distance(extra_edge.resolved_distance)}, '
+        f'{extra_edge.shape_label}{_extra_edge_turn_coordinate_suffix(extra_edge)})'
     )
+
+
+def _extra_edge_turn_coordinates(extra_edge: ExtraEdgeDefinition) -> tuple[tuple[int, int], ...]:
+    if len(extra_edge.path_points) <= 2:
+        return ()
+    return extra_edge.path_points[1:-1]
+
+
+def _extra_edge_turn_coordinate_suffix(extra_edge: ExtraEdgeDefinition) -> str:
+    turn_coordinates = _extra_edge_turn_coordinates(extra_edge)
+    if not turn_coordinates:
+        return ''
+    coordinate_text = ', '.join(f'({point_x}, {point_y})' for point_x, point_y in turn_coordinates)
+    return f', turns at {coordinate_text}'
 
 
 def _extra_edge_full_summary(extra_edge: ExtraEdgeDefinition) -> str:
     return (
         f'{extra_edge.display_label}: {extra_edge.from_endpoint.display_label} '
         f'to {extra_edge.to_endpoint.display_label} '
-        f'({_format_track_distance(extra_edge.resolved_distance)}, {extra_edge.shape_label})'
+        f'({_format_track_distance(extra_edge.resolved_distance)}, '
+        f'{extra_edge.shape_label}{_extra_edge_turn_coordinate_suffix(extra_edge)})'
     )
 
 
@@ -1923,7 +2033,8 @@ def _extra_edge_summary_for_endpoint(extra_edge: ExtraEdgeDefinition, endpoint_k
     )
     return (
         f'{extra_edge.display_label} to {other_endpoint.display_label} '
-        f'({_format_track_distance(extra_edge.resolved_distance)}, {extra_edge.shape_label})'
+        f'({_format_track_distance(extra_edge.resolved_distance)}, '
+        f'{extra_edge.shape_label}{_extra_edge_turn_coordinate_suffix(extra_edge)})'
     )
 
 
@@ -2718,23 +2829,30 @@ def _missing_station_tasks(stop: MetroStop) -> list[str]:
         tasks.append('paths')
     if not stop.city_limit_node_keys:
         tasks.append('city limits')
-    if stop.is_connected and not stop.has_finished_railway:
+    if not stop.is_connected and _priority_alignment_count(stop.var) > 0:
+        tasks.append('alignment')
+    if SHOW_RAILWAY_FINISHING_UI and stop.is_connected and not stop.has_finished_railway:
         tasks.append('finished railway')
-    if stop.is_connected and not stop.has_signs:
+    if _station_signs_available(stop) and not stop.has_signs:
         tasks.append('signs')
     if stop.is_connected and _station_max_chime_count(stop) > 0 and not _station_has_required_chimes(stop):
         tasks.append('chimes')
     return tasks
 
 
+def _priority_task_phrase(task: str) -> str:
+    return PRIORITY_TASK_PHRASES.get(task, task)
+
+
 def _join_priority_tasks(tasks: list[str]) -> str:
     if not tasks:
         return ''
+    task_phrases = [_priority_task_phrase(task) for task in tasks]
     if len(tasks) == 1:
-        return tasks[0]
+        return task_phrases[0]
     if len(tasks) == 2:
-        return f'{tasks[0]} and {tasks[1]}'
-    return f"{', '.join(tasks[:-1])}, and {tasks[-1]}"
+        return f'{task_phrases[0]} and {task_phrases[1]}'
+    return f"{', '.join(task_phrases[:-1])}, and {task_phrases[-1]}"
 
 
 def _priority_route_summary(route_distance: int, transfer_count: int) -> str:
@@ -2755,10 +2873,7 @@ def _priority_alignment_count(stop_var: str) -> int:
 
 
 def _priority_work_weight(stop: MetroStop) -> int:
-    return (
-        sum(CONNECTED_TASK_WEIGHTS[task] for task in _missing_station_tasks(stop))
-        + (_priority_alignment_count(stop.var) * ALIGNMENT_PRIORITY_PENALTY)
-    )
+    return sum(CONNECTED_TASK_WEIGHTS[task] for task in _missing_station_tasks(stop))
 
 
 def _priority_work_summary(stop: MetroStop) -> str:
@@ -2766,12 +2881,6 @@ def _priority_work_summary(stop: MetroStop) -> str:
     missing_tasks = _missing_station_tasks(stop)
     if missing_tasks:
         parts.append(f'needs {_join_priority_tasks(missing_tasks)}')
-
-    alignment_count = _priority_alignment_count(stop.var)
-    if alignment_count == 1:
-        parts.append('1 active alignment')
-    elif alignment_count > 1:
-        parts.append(f'{alignment_count} active alignments')
 
     if not parts:
         return 'no remaining station work'
@@ -2866,7 +2975,6 @@ def _priority_list_entries(
             (PRIORITY_DISTANCE_WEIGHT if distance_value is not None else 0)
             + (PRIORITY_JUNCTION_WEIGHT if junction_count > 1 else 0)
             + sum(CONNECTED_TASK_WEIGHTS[task] for task in missing_tasks)
-            + (alignment_count * ALIGNMENT_PRIORITY_PENALTY)
         )
         sort_key: tuple[int | str, ...] = (
             complexity_score,
@@ -3399,8 +3507,8 @@ def _station_progress_summary_text() -> str:
     full_station_count = sum(stop.has_full_station for stop in METRO_STOPS)
     station_entry_count = sum(stop.station_entry_coordinates is not None for stop in METRO_STOPS)
     connected_count = sum(stop.is_connected for stop in METRO_STOPS)
-    finished_railway_count = sum(stop.has_finished_railway for stop in connected_stops)
-    signs_count = sum(stop.has_signs for stop in connected_stops)
+    signs_available_stops = tuple(stop for stop in METRO_STOPS if _station_signs_available(stop))
+    signs_count = sum(stop.has_signs for stop in signs_available_stops)
     required_chime_count = sum(_station_max_chime_count(stop) for stop in connected_stops)
     completed_chime_count = sum(_station_completed_chime_count(stop) for stop in connected_stops)
     lines = [
@@ -3415,15 +3523,9 @@ def _station_progress_summary_text() -> str:
         ),
         _checklist_ratio_line('Connected', connected_count, total_stations, hide_when_total_zero=True),
         _checklist_ratio_line(
-            'Finished Railway',
-            finished_railway_count,
-            connected_station_count,
-            hide_when_total_zero=True,
-        ),
-        _checklist_ratio_line(
             'Signs',
             signs_count,
-            connected_station_count,
+            len(signs_available_stops),
             hide_when_total_zero=True,
         ),
         _checklist_ratio_line(
@@ -3661,10 +3763,17 @@ def _station_has_required_chimes(stop: MetroStop) -> bool:
     return max_chime_count == 0 or _station_completed_chime_count(stop) >= max_chime_count
 
 
+def _station_signs_available(stop: MetroStop) -> bool:
+    return stop.has_full_station or stop.is_connected
+
+
 def _station_checkpoint_total(stop: MetroStop) -> int:
     base_total = 5
     if stop.is_connected:
-        base_total += 2
+        if SHOW_RAILWAY_FINISHING_UI:
+            base_total += 1
+    if _station_signs_available(stop):
+        base_total += 1
     if stop.is_connected and _station_max_chime_count(stop) > 0:
         base_total += 1
     return base_total
@@ -3679,10 +3788,10 @@ def _station_checkpoint_count(stop: MetroStop) -> int:
         stop.is_connected,
     ))
     if stop.is_connected:
-        completed_count += sum((
-            stop.has_finished_railway,
-            stop.has_signs,
-        ))
+        if SHOW_RAILWAY_FINISHING_UI and stop.has_finished_railway:
+            completed_count += 1
+    if _station_signs_available(stop) and stop.has_signs:
+        completed_count += 1
     if stop.is_connected and _station_max_chime_count(stop) > 0 and _station_has_required_chimes(stop):
         completed_count += 1
     return completed_count
@@ -4304,11 +4413,12 @@ def _build_route_graph(
     *,
     allow_connector: bool = True,
     allow_walk: bool = True,
+    include_planned_metro: bool = False,
 ) -> dict[RouteNode, list[RouteEdge]]:
     graph: dict[RouteNode, list[RouteEdge]] = {}
 
     for stop in METRO_STOPS:
-        if not stop.is_connected:
+        if not include_planned_metro and not stop.is_connected:
             continue
 
         node_lines = tuple(STOP_LINE_NAMES[stop.var])
@@ -4341,7 +4451,13 @@ def _build_route_graph(
 
     for line_name, stop_vars in LINE_STOP_VARS.items():
         for start_var, end_var in zip(stop_vars, stop_vars[1:]):
-            if not STOPS_BY_VAR[start_var].is_connected or not STOPS_BY_VAR[end_var].is_connected:
+            if (
+                not include_planned_metro
+                and (
+                    not STOPS_BY_VAR[start_var].is_connected
+                    or not STOPS_BY_VAR[end_var].is_connected
+                )
+            ):
                 continue
 
             forward_points = _line_segment_plot_points(line_name, start_var, end_var)
@@ -4521,6 +4637,7 @@ def _find_route(
     graph = _build_route_graph(
         allow_connector=allow_connector,
         allow_walk=allow_walk,
+        include_planned_metro=True,
     )
     start_nodes = _graph_nodes_for_endpoint(graph, start_key)
     end_nodes = set(_graph_nodes_for_endpoint(graph, end_key))
@@ -4651,6 +4768,27 @@ def _route_costs_from(
         allow_connector=allow_connector,
         allow_walk=allow_walk,
     )
+
+
+def _format_line_name_list(line_names: Sequence[str]) -> str:
+    if not line_names:
+        return ''
+    if len(line_names) == 1:
+        return line_names[0]
+    if len(line_names) == 2:
+        return f'{line_names[0]} and {line_names[1]}'
+    return f'{", ".join(line_names[:-1])}, and {line_names[-1]}'
+
+
+def _unfinished_route_line_names(route: RouteResult) -> tuple[str, ...]:
+    line_names: set[str] = set()
+    for step in route.steps:
+        if step.kind != 'ride' or step.line_name is None or len(step.stop_vars) < 2:
+            continue
+        for start_var, end_var in zip(step.stop_vars, step.stop_vars[1:]):
+            if not STOPS_BY_VAR[start_var].is_connected or not STOPS_BY_VAR[end_var].is_connected:
+                line_names.add(step.line_name)
+    return tuple(sorted(line_names))
 
 
 def _direct_fly_route(start_key: str, end_key: str) -> RouteResult | None:
@@ -5079,14 +5217,20 @@ class MetroMapViewer:
         self.active_path_edge_id: str | None = None
         self.path_drag_start_endpoint_key: str | None = None
         self.path_drag_current_canvas_point: tuple[int, int] | None = None
+        self.path_drag_preview_item_ids: list[int] = []
         self.station_canvas_positions: dict[str, tuple[float, float]] = {}
         self.path_node_canvas_positions: dict[str, tuple[float, float]] = {}
         self.info_popup_frame: tk.Frame | None = None
         self.info_popup_variables: list[tk.BooleanVar] = []
+        self.station_signage_line_by_stop: dict[str, str] = {}
+        self.station_signage_flipped_keys: set[tuple[str, str]] = set()
+        self.station_signage_elevator_right_stop_vars: set[str] = set()
         self.sidebar_scroll_after_id: str | None = None
         self.sidebar_scroll_remaining = 0.0
         self.current_route: RouteResult | None = None
         self.route_request: tuple[str, str] | None = None
+        self.priority_filter_options: dict[str, str | None] = {}
+        self.priority_highlight_stop_vars: set[str] = set()
         self.route_controls_dirty = True
         self.route_dirty = True
         self.priority_dirty = True
@@ -5143,6 +5287,7 @@ class MetroMapViewer:
         self.redraw_after_id: str | None = None
         self.full_redraw_after_id: str | None = None
         self.defer_expensive_viewport_layers = False
+        self.fast_viewport_transform_active = False
 
         self.root: tk.Tk = tk.Tk()
         self.root.title('Minecraft Metro Stops')
@@ -5184,7 +5329,7 @@ class MetroMapViewer:
         self.show_labels_var = tk.BooleanVar(master=self.root, value=True)
         self.show_world_map_render_var = tk.BooleanVar(master=self.root, value=True)
         self.show_suggested_walking_paths_var = tk.BooleanVar(master=self.root, value=False)
-        self.hide_path_nodes_var = tk.BooleanVar(master=self.root, value=True)
+        self.show_path_nodes_var = tk.BooleanVar(master=self.root, value=False)
         self.circle_internal_voids_var = tk.BooleanVar(master=self.root, value=False)
         self.export_include_world_map_var = tk.BooleanVar(master=self.root, value=True)
         self.export_include_grid_var = tk.BooleanVar(master=self.root, value=True)
@@ -5201,6 +5346,7 @@ class MetroMapViewer:
         self.export_include_frontier_highlights_var = tk.BooleanVar(master=self.root, value=False)
         self.export_include_railway_finishing_var = tk.BooleanVar(master=self.root, value=False)
         self.priority_summary_var = tk.StringVar(master=self.root, value='Planning radius unavailable.')
+        self.priority_filter_var = tk.StringVar(master=self.root, value=PRIORITY_FILTER_ALL_LABEL)
         self.railway_finish_mode_var = tk.BooleanVar(master=self.root, value=False)
         self.railway_finish_line_var = tk.StringVar(master=self.root)
         self.railway_finish_coordinates_var = tk.StringVar(master=self.root)
@@ -5214,6 +5360,8 @@ class MetroMapViewer:
             ),
         )
         self.search_var.trace_add('write', self._on_search_changed)
+        self.route_start_var.trace_add('write', self._on_route_input_changed)
+        self.route_end_var.trace_add('write', self._on_route_input_changed)
         self.world_map_mode_var.trace_add('write', self._on_world_map_mode_changed)
 
         self.sidebar_container = tk.Frame(
@@ -5317,7 +5465,51 @@ class MetroMapViewer:
             command=self._show_export_svg_options,
         ).pack(side='right', anchor='n', padx=(10, 0))
 
-        priority_section = self._make_collapsible_sidebar_section('Priority List', expanded=True)
+        show_hide_section = self._make_collapsible_sidebar_section('Show/Hide', expanded=True)
+        connected_area_toggle = self._make_sidebar_checkbox(
+            show_hide_section,
+            text='Connected area',
+            variable=self.show_connected_area_var,
+            command=self.redraw,
+        )
+        connected_area_toggle.pack(anchor='w', padx=16, pady=(4, 6))
+        city_limits_toggle = self._make_sidebar_checkbox(
+            show_hide_section,
+            text='City limits',
+            variable=self.show_city_limits_var,
+            command=self.redraw,
+        )
+        city_limits_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        planning_toggle = self._make_sidebar_checkbox(
+            show_hide_section,
+            text='Planning radius',
+            variable=self.show_planning_circle_var,
+            command=self.redraw,
+        )
+        planning_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        alignment_toggle = self._make_sidebar_checkbox(
+            show_hide_section,
+            text='Alignment ellipses',
+            variable=self.show_alignment_reminders_var,
+            command=self.redraw,
+        )
+        alignment_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        frontier_toggle = self._make_sidebar_checkbox(
+            show_hide_section,
+            text='Frontier highlights',
+            variable=self.show_frontier_highlights_var,
+            command=self.redraw,
+        )
+        frontier_toggle.pack(anchor='w', padx=16, pady=(0, 6))
+        labels_toggle = self._make_sidebar_checkbox(
+            show_hide_section,
+            text='Station labels',
+            variable=self.show_labels_var,
+            command=self.redraw,
+        )
+        labels_toggle.pack(anchor='w', padx=16, pady=(0, 12))
+
+        priority_section = self._make_collapsible_sidebar_section('Priority List', expanded=False)
         planning_summary_label = tk.Label(
             priority_section,
             textvariable=self.priority_summary_var,
@@ -5329,6 +5521,22 @@ class MetroMapViewer:
             wraplength=SIDEBAR_WIDTH - 32,
         )
         planning_summary_label.pack(anchor='w', padx=16, pady=(4, 12))
+        priority_filter_row = tk.Frame(priority_section, bg=BACKGROUND_COLOR)
+        priority_filter_row.pack(fill='x', padx=16, pady=(0, 8))
+        tk.Label(
+            priority_filter_row,
+            text='Need',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            width=5,
+            anchor='w',
+        ).pack(side='left')
+        self.priority_filter_menu = self._make_sidebar_option_menu(
+            priority_filter_row,
+            self.priority_filter_var,
+        )
+        self.priority_filter_menu.pack(side='left', fill='x', expand=True)
         priority_panel = tk.Frame(
             priority_section,
             bg=INFO_BOX_BACKGROUND,
@@ -5373,51 +5581,7 @@ class MetroMapViewer:
         )
         search_status_label.pack(anchor='w', padx=16, pady=(0, 12))
 
-        self._make_sidebar_caption('Show/Hide').pack(anchor='w', padx=16)
-        connected_area_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Connected area',
-            variable=self.show_connected_area_var,
-            command=self.redraw,
-        )
-        connected_area_toggle.pack(anchor='w', padx=16, pady=(4, 6))
-        city_limits_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='City limits',
-            variable=self.show_city_limits_var,
-            command=self.redraw,
-        )
-        city_limits_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-        planning_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Planning radius',
-            variable=self.show_planning_circle_var,
-            command=self.redraw,
-        )
-        planning_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-        alignment_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Alignment ellipses',
-            variable=self.show_alignment_reminders_var,
-            command=self.redraw,
-        )
-        alignment_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-        frontier_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Frontier highlights',
-            variable=self.show_frontier_highlights_var,
-            command=self.redraw,
-        )
-        frontier_toggle.pack(anchor='w', padx=16, pady=(0, 6))
-        labels_toggle = self._make_sidebar_checkbox(
-            self.sidebar,
-            text='Station labels',
-            variable=self.show_labels_var,
-            command=self.redraw,
-        )
-        labels_toggle.pack(anchor='w', padx=16, pady=(0, 12))
-
-        railway_section = self._make_collapsible_sidebar_section('Railway Finishing', expanded=True)
+        railway_section = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
         self._make_sidebar_hint(
             'Enter the farthest finished coordinate on the selected line. The app tracks finished rail from that line origin to the coordinate.',
             parent=railway_section,
@@ -5988,6 +6152,8 @@ class MetroMapViewer:
         self.suggestion_select_callback = None
 
     def _hide_suggestion_popup_if_unfocused(self, entry: tk.Entry) -> None:
+        if self.suggestion_active_entry is not entry:
+            return
         focus_widget = self.root.focus_get()
         if focus_widget is entry or focus_widget is self.suggestion_listbox:
             return
@@ -6051,9 +6217,17 @@ class MetroMapViewer:
 
     def _apply_suggestion_value(self, value: str) -> None:
         callback = self.suggestion_select_callback
+        active_entry = self.suggestion_active_entry
         self._hide_suggestion_popup()
         if callback is not None:
             callback(value)
+        if active_entry is not None and active_entry.winfo_exists():
+            try:
+                active_entry.focus_force()
+            except tk.TclError:
+                active_entry.focus_set()
+            active_entry.icursor('end')
+            active_entry.selection_clear()
 
     def _on_suggestion_listbox_activate(self, _event: object) -> str:
         if self.suggestion_listbox is None:
@@ -6133,10 +6307,15 @@ class MetroMapViewer:
 
     def _begin_viewport_interaction(self) -> None:
         self.defer_expensive_viewport_layers = True
+        if not self.fast_viewport_transform_active:
+            if self.is_dragging:
+                self._clear_info_popup()
+            self.fast_viewport_transform_active = True
         self._schedule_full_redraw()
 
     def _finish_viewport_interaction(self) -> None:
         self.defer_expensive_viewport_layers = False
+        self.fast_viewport_transform_active = False
         if self.full_redraw_after_id is None:
             return
         self.root.after_cancel(self.full_redraw_after_id)
@@ -6149,7 +6328,71 @@ class MetroMapViewer:
     def _run_full_redraw(self) -> None:
         self.full_redraw_after_id = None
         self.defer_expensive_viewport_layers = False
+        self.fast_viewport_transform_active = False
         self.redraw()
+
+    def _prepare_viewport_transform_tag(self, *, include_images: bool) -> str | None:
+        transform_tag = '_viewport_transform'
+        self.canvas.dtag('all', transform_tag)
+        self.canvas.addtag_all(transform_tag)
+        for item_id in self.canvas.find_all():
+            item_type = self.canvas.type(item_id)
+            if item_type == 'window' or (item_type == 'image' and not include_images):
+                self.canvas.dtag(item_id, transform_tag)
+        if not self.canvas.find_withtag(transform_tag):
+            return None
+        return transform_tag
+
+    def _transform_cached_canvas_positions(
+        self,
+        transform: Callable[[tuple[float, float]], tuple[float, float]],
+    ) -> None:
+        self.station_canvas_positions = {
+            key: transform(position)
+            for key, position in self.station_canvas_positions.items()
+        }
+        self.path_node_canvas_positions = {
+            key: transform(position)
+            for key, position in self.path_node_canvas_positions.items()
+        }
+
+    def _delete_viewport_image_items(self) -> None:
+        for item_id in self.canvas.find_all():
+            if self.canvas.type(item_id) == 'image':
+                self.canvas.delete(item_id)
+        self.overlay_image_refs = []
+
+    def _scale_viewport_canvas_items(self, anchor_x: float, anchor_y: float, ratio: float) -> None:
+        transform_tag = self._prepare_viewport_transform_tag(include_images=False)
+        if transform_tag is None:
+            self._schedule_redraw()
+            return
+
+        self.canvas.scale(transform_tag, anchor_x, anchor_y, ratio, ratio)
+        self.canvas.dtag('all', transform_tag)
+        self._transform_cached_canvas_positions(
+            lambda position: (
+                anchor_x + ((position[0] - anchor_x) * ratio),
+                anchor_y + ((position[1] - anchor_y) * ratio),
+            )
+        )
+        self._delete_viewport_image_items()
+        self._draw_world_map_render_underlay(fast_resample=True)
+
+    def _move_viewport_canvas_items(self, delta_x: float, delta_y: float) -> None:
+        transform_tag = self._prepare_viewport_transform_tag(include_images=True)
+        if transform_tag is None:
+            self._schedule_redraw()
+            return
+
+        self.canvas.move(transform_tag, delta_x, delta_y)
+        self.canvas.dtag('all', transform_tag)
+        self._transform_cached_canvas_positions(
+            lambda position: (
+                position[0] + delta_x,
+                position[1] + delta_y,
+            )
+        )
 
     def _focused_typing_widget(self) -> tk.Widget | None:
         focus_widget = self.root.focus_get()
@@ -6378,6 +6621,69 @@ class MetroMapViewer:
     def _repair_world_map_db(self) -> None:
         self._start_world_map_task('Repairing Bedrock LevelDB folder', _world_map_repair_db_text)
 
+    def _priority_need_counts(self, entries: list[tuple[str, str]]) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for stop_var, _text in entries:
+            stop = STOPS_BY_VAR.get(stop_var)
+            if stop is None:
+                continue
+            for task_name in _missing_station_tasks(stop):
+                counts[task_name] = counts.get(task_name, 0) + 1
+        return counts
+
+    def _priority_filter_task(self) -> str | None:
+        return self.priority_filter_options.get(self.priority_filter_var.get())
+
+    def _select_priority_filter(self, label: str) -> None:
+        self.priority_filter_var.set(label)
+        self.priority_dirty = True
+        self.redraw()
+
+    def _refresh_priority_filter_menu(self, entries: list[tuple[str, str]]) -> None:
+        if not hasattr(self, 'priority_filter_menu'):
+            return
+
+        selected_task = self._priority_filter_task()
+        counts = self._priority_need_counts(entries)
+        ordered_tasks = sorted(
+            counts,
+            key=lambda task_name: (
+                -counts[task_name],
+                -CONNECTED_TASK_WEIGHTS.get(task_name, 0),
+                PRIORITY_NEED_LABELS.get(task_name, task_name).lower(),
+            ),
+        )
+        self.priority_filter_options = {PRIORITY_FILTER_ALL_LABEL: None}
+        labels = [PRIORITY_FILTER_ALL_LABEL]
+        selected_label = PRIORITY_FILTER_ALL_LABEL
+        for task_name in ordered_tasks:
+            label = f'{PRIORITY_NEED_LABELS.get(task_name, task_name.title())} ({counts[task_name]})'
+            self.priority_filter_options[label] = task_name
+            labels.append(label)
+            if task_name == selected_task:
+                selected_label = label
+
+        self.priority_filter_var.set(selected_label)
+
+        menu = self._option_menu_widget(self.priority_filter_menu)
+        menu.delete(0, 'end')
+        for label in labels:
+            menu.add_command(label=label, command=lambda selected=label: self._select_priority_filter(selected))
+
+    def _priority_filter_entries(self, entries: list[tuple[str, str]]) -> list[tuple[str, str]]:
+        selected_task = self._priority_filter_task()
+        if selected_task is None:
+            self.priority_highlight_stop_vars = set()
+            return entries
+
+        filtered_entries = [
+            (stop_var, text)
+            for stop_var, text in entries
+            if selected_task in _missing_station_tasks(STOPS_BY_VAR[stop_var])
+        ]
+        self.priority_highlight_stop_vars = {stop_var for stop_var, _text in filtered_entries}
+        return filtered_entries
+
     def _populate_priority_list(self, entries: list[tuple[str, str]]) -> None:
         if not hasattr(self, 'priority_list_frame'):
             return
@@ -6434,7 +6740,9 @@ class MetroMapViewer:
         self.priority_summary_var.set(
             f'From {origin_label}. Click a station below.'
         )
-        self._populate_priority_list(_priority_list_entries(origin_key, **self._route_graph_options()))
+        entries = _priority_list_entries(origin_key, **self._route_graph_options())
+        self._refresh_priority_filter_menu(entries)
+        self._populate_priority_list(self._priority_filter_entries(entries))
 
     def _select_railway_finish_line(self, line_name: str) -> None:
         self.railway_finish_line_var.set(line_name)
@@ -6716,24 +7024,30 @@ class MetroMapViewer:
                 return
 
             if self.route_request is not None:
-                start_key, end_key = self.route_request
-                self.route_start_var.set(_route_input_text_for_endpoint_key(start_key))
-                self.route_end_var.set(_route_input_text_for_endpoint_key(end_key))
                 return
 
-            if not self.route_start_var.get().strip():
+            if not self.route_start_var.get().strip() and not self.route_end_var.get().strip():
                 self.route_start_var.set(self._default_route_start_label(connected_labels))
-
-            if not self.route_end_var.get().strip():
-                default_start_var = _resolve_stop_var_runtime(self.route_start_var.get())
-                destination_labels = self._destination_labels_for_origin(default_start_var)
-                if destination_labels:
-                    self.route_end_var.set(destination_labels[0])
         finally:
             self.route_controls_updating = False
 
     def _on_route_start_changed(self, *_args: object) -> None:
         return
+
+    def _on_route_input_changed(self, *_args: object) -> None:
+        if self.route_controls_updating:
+            return
+        if self.route_request is None and self.current_route is None:
+            return
+        self.route_request = None
+        self.current_route = None
+        self.route_dirty = False
+        self.priority_dirty = True
+        if hasattr(self, 'route_summary_var'):
+            self.route_summary_var.set('Choose two stations or coordinates.')
+        if hasattr(self, 'route_steps_text'):
+            self._set_route_steps_text('Enter or select a start and destination, then press Route.')
+            self._set_route_steps_visible(False)
 
     def _on_search_changed(self, *_args: object) -> None:
         self._refresh_search_results()
@@ -6804,6 +7118,14 @@ class MetroMapViewer:
             step_number += 1
 
         lines.append('')
+        unfinished_line_names = _unfinished_route_line_names(route)
+        if unfinished_line_names:
+            line_word = 'line is' if len(unfinished_line_names) == 1 else 'lines are'
+            lines.append(
+                f'Warning: the {_format_line_name_list(unfinished_line_names)} {line_word} '
+                'not fully constructed for this route. Consider direct flying instead.'
+            )
+            lines.append('')
         lines.append(
             f'Route from {start_label} to {end_label}.'
         )
@@ -6826,17 +7148,6 @@ class MetroMapViewer:
             self._set_route_steps_text('The saved route endpoints are no longer available.')
             self._set_route_steps_visible(False)
             return
-
-        self.route_controls_updating = True
-        try:
-            start_text = _route_input_text_for_endpoint_key(start_key)
-            end_text = _route_input_text_for_endpoint_key(end_key)
-            if self.route_start_var.get() != start_text:
-                self.route_start_var.set(start_text)
-            if self.route_end_var.get() != end_text:
-                self.route_end_var.set(end_text)
-        finally:
-            self.route_controls_updating = False
 
         route = _find_route(start_key, end_key, **self._route_search_options())
         if route is None:
@@ -7020,9 +7331,6 @@ class MetroMapViewer:
 
         self.path_node_coordinates_var.set('')
         self.path_node_label_var.set('')
-        self.route_controls_dirty = True
-        self.route_dirty = True
-        self.priority_dirty = True
         self.redraw()
 
     def _add_path_for_selected_node(self, kind: ExtraEdgeKind) -> None:
@@ -7353,7 +7661,7 @@ class MetroMapViewer:
     def _selected_path_node(self) -> PathNode | None:
         if self.selected_path_node_key is None:
             return None
-        return next((node for node in _all_path_nodes() if node.key == self.selected_path_node_key), None)
+        return _all_path_nodes_by_key().get(self.selected_path_node_key)
 
     def _path_node_hit_test(self, canvas_x: int, canvas_y: int) -> PathNode | None:
         best_node: PathNode | None = None
@@ -7742,6 +8050,237 @@ class MetroMapViewer:
         self.info_popup_frame = frame
         self._attach_info_popup_close_button(frame)
 
+    def _selected_station_signage_line(self, stop: MetroStop) -> str | None:
+        line_names = STOP_LINE_NAMES[stop.var]
+        if not line_names:
+            return None
+        selected_line = self.station_signage_line_by_stop.get(stop.var)
+        if selected_line in line_names:
+            return selected_line
+        return line_names[0]
+
+    def _select_station_signage_line(self, stop_var: str, line_name: str) -> None:
+        self.station_signage_line_by_stop[stop_var] = line_name
+        self.redraw()
+
+    def _toggle_station_signage_sides(self, stop_var: str, line_name: str) -> None:
+        key = (stop_var, line_name)
+        if key in self.station_signage_flipped_keys:
+            self.station_signage_flipped_keys.remove(key)
+        else:
+            self.station_signage_flipped_keys.add(key)
+        self.redraw()
+
+    def _toggle_station_signage_elevator(self, stop_var: str) -> None:
+        if stop_var in self.station_signage_elevator_right_stop_vars:
+            self.station_signage_elevator_right_stop_vars.remove(stop_var)
+        else:
+            self.station_signage_elevator_right_stop_vars.add(stop_var)
+        self.redraw()
+
+    def _make_signage_tab_button(
+        self,
+        parent: tk.Misc,
+        *,
+        stop_var: str,
+        line_name: str,
+        selected: bool,
+    ) -> tk.Label:
+        button = tk.Label(
+            parent,
+            text=line_name,
+            bg=LINE_COLORS.get(line_name, INFO_BUTTON_BACKGROUND) if selected else INFO_BUTTON_BACKGROUND,
+            fg=TEXT_COLOR,
+            font=('Helvetica', INFO_BUTTON_FONT_SIZE, 'bold'),
+            padx=8,
+            pady=3,
+            cursor='hand2',
+            bd=1,
+            relief='solid',
+            highlightthickness=0,
+        )
+        self._bind_info_clickable(
+            button,
+            command=lambda: self._select_station_signage_line(stop_var, line_name),
+            normal_background=cast(str, button.cget('bg')),
+            active_background=INFO_BUTTON_ACTIVE_BACKGROUND,
+        )
+        return button
+
+    def _draw_signage_station_list(
+        self,
+        parent: tk.Misc,
+        *,
+        title: str,
+        stop_vars: tuple[str, ...],
+        line_name: str,
+        width: int,
+    ) -> None:
+        tk.Label(
+            parent,
+            text=title,
+            bg=INFO_BOX_BACKGROUND,
+            fg=INFO_CHECKBOX_TEXT_COLOR,
+            font=('Menlo', INFO_TEXT_FONT_SIZE, 'bold'),
+            anchor='center',
+            justify='center',
+            width=width,
+        ).pack(anchor='n')
+        if not stop_vars:
+            tk.Label(
+                parent,
+                text='End of line',
+                bg=INFO_BOX_BACKGROUND,
+                fg=INFO_CHECKBOX_TEXT_COLOR,
+                font=('Helvetica', max(10, INFO_TEXT_FONT_SIZE - 1)),
+                anchor='w',
+                justify='left',
+                width=width,
+            ).pack(anchor='w', pady=(5, 0))
+            return
+
+        for index, listed_stop_var in enumerate(stop_vars, start=1):
+            tk.Label(
+                parent,
+                text=f'{index} {_station_signage_label(listed_stop_var, line_name)}',
+                bg=INFO_BOX_BACKGROUND,
+                fg=TEXT_COLOR,
+                font=('Helvetica', max(10, INFO_TEXT_FONT_SIZE - 1)),
+                anchor='w',
+                justify='left',
+                width=width,
+            ).pack(anchor='w')
+
+    def _draw_station_signage_panel(self, parent: tk.Misc, stop: MetroStop) -> None:
+        selected_line = self._selected_station_signage_line(stop)
+        if selected_line is None:
+            return
+
+        line_names = STOP_LINE_NAMES[stop.var]
+        flipped = (stop.var, selected_line) in self.station_signage_flipped_keys
+        left_stop_vars, right_stop_vars = _station_signage_direction_stop_vars(
+            stop.var,
+            selected_line,
+            flipped=flipped,
+        )
+        has_two_direction_lists = bool(left_stop_vars and right_stop_vars)
+        elevator_points_right = stop.var in self.station_signage_elevator_right_stop_vars
+        display_name = _display_label(stop.lbl)
+        uppercase_name = display_name.upper()
+
+        panel = tk.Frame(
+            parent,
+            bg=INFO_BOX_BACKGROUND,
+            highlightbackground=INFO_BOX_BORDER,
+            highlightthickness=1,
+        )
+        panel.pack(anchor='n', fill='x')
+
+        header_row = tk.Frame(panel, bg=INFO_BOX_BACKGROUND)
+        header_row.pack(anchor='w', fill='x', padx=8, pady=(7, 4))
+        tk.Label(
+            header_row,
+            text='Signs',
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            font=('Helvetica', INFO_TEXT_FONT_SIZE, 'bold'),
+            anchor='w',
+        ).pack(side='left')
+        if len(line_names) > 1:
+            tabs_row = tk.Frame(header_row, bg=INFO_BOX_BACKGROUND)
+            tabs_row.pack(side='left', padx=(10, 0))
+            for line_name in line_names:
+                self._make_signage_tab_button(
+                    tabs_row,
+                    stop_var=stop.var,
+                    line_name=line_name,
+                    selected=line_name == selected_line,
+                ).pack(side='left', padx=(0, 4))
+
+        table_row = tk.Frame(panel, bg=INFO_BOX_BACKGROUND)
+        table_row.pack(anchor='w', padx=8, pady=(0, 7))
+
+        left_column = tk.Frame(table_row, bg=INFO_BOX_BACKGROUND)
+        left_column.pack(side='left', anchor='n')
+        center_column = tk.Frame(table_row, bg=INFO_BOX_BACKGROUND)
+        center_column.pack(side='left', anchor='n', padx=12)
+        right_column = tk.Frame(table_row, bg=INFO_BOX_BACKGROUND)
+
+        if has_two_direction_lists:
+            self._draw_signage_station_list(
+                left_column,
+                title='<<<<<',
+                stop_vars=left_stop_vars,
+                line_name=selected_line,
+                width=20,
+            )
+        else:
+            self._draw_signage_station_list(
+                left_column,
+                title=f'Line {selected_line}',
+                stop_vars=left_stop_vars,
+                line_name=selected_line,
+                width=20,
+            )
+
+        arriving_label = tk.Label(
+            center_column,
+            text=f'Arriving:\n{display_name}',
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            font=('Helvetica', max(10, INFO_TEXT_FONT_SIZE - 1)),
+            anchor='center',
+            justify='center',
+            width=18,
+        )
+        arriving_label.pack(anchor='center', pady=(20 if has_two_direction_lists else 8, 16))
+        tk.Label(
+            center_column,
+            text=f'{uppercase_name}\nSTATION',
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            font=('Helvetica', INFO_TEXT_FONT_SIZE, 'bold'),
+            anchor='center',
+            justify='center',
+            width=18,
+        ).pack(anchor='center', pady=(0, 16))
+        elevator_arrow = '>> ELEVATOR >>' if elevator_points_right else '<< ELEVATOR <<'
+        tk.Label(
+            center_column,
+            text=f'{elevator_arrow}\nTO {uppercase_name}',
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            font=('Helvetica', max(10, INFO_TEXT_FONT_SIZE - 1), 'bold'),
+            anchor='center',
+            justify='center',
+            width=18,
+        ).pack(anchor='center')
+
+        if has_two_direction_lists:
+            right_column.pack(side='left', anchor='n')
+            self._draw_signage_station_list(
+                right_column,
+                title='>>>>>',
+                stop_vars=right_stop_vars,
+                line_name=selected_line,
+                width=20,
+            )
+
+        control_row = tk.Frame(panel, bg=INFO_BOX_BACKGROUND)
+        control_row.pack(anchor='w', padx=8, pady=(0, 8))
+        if has_two_direction_lists:
+            self._make_info_button(
+                control_row,
+                text='Swap Sides',
+                command=lambda: self._toggle_station_signage_sides(stop.var, selected_line),
+            ).pack(side='left')
+        elevator_button_text = 'Elevator ->' if not elevator_points_right else 'Elevator <-'
+        self._make_info_button(
+            control_row,
+            text=elevator_button_text,
+            command=lambda: self._toggle_station_signage_elevator(stop.var),
+        ).pack(side='left', padx=(INFO_BOX_SECTION_GAP if has_two_direction_lists else 0, 0))
+
     def _draw_selected_stop_info(self) -> None:
         if self.selected_stop_var is None or self.selected_stop_var not in self.station_canvas_positions:
             return
@@ -7793,8 +8332,15 @@ class MetroMapViewer:
             pady=(INFO_BOX_PAD_Y, max(2, INFO_BOX_SECTION_GAP // 2)),
         )
 
+        body_row = tk.Frame(frame, bg=INFO_BOX_BACKGROUND)
+        body_row.pack(anchor='w', fill='x')
+        left_column = tk.Frame(body_row, bg=INFO_BOX_BACKGROUND)
+        left_column.pack(side='left', anchor='n', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_SECTION_GAP))
+        signage_column = tk.Frame(body_row, bg=INFO_BOX_BACKGROUND)
+        signage_column.pack(side='left', anchor='n', padx=(18, INFO_BOX_PAD_X), pady=(0, INFO_BOX_SECTION_GAP))
+
         details_label = tk.Label(
-            frame,
+            left_column,
             text='\n'.join(detail_lines),
             bg=INFO_BOX_BACKGROUND,
             fg=TEXT_COLOR,
@@ -7802,10 +8348,10 @@ class MetroMapViewer:
             anchor='w',
             justify='left',
         )
-        details_label.pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_SECTION_GAP))
+        details_label.pack(anchor='w', pady=(0, INFO_BOX_SECTION_GAP))
 
-        checkpoint_frame = tk.Frame(frame, bg=INFO_BOX_BACKGROUND)
-        checkpoint_frame.pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_SECTION_GAP))
+        checkpoint_frame = tk.Frame(left_column, bg=INFO_BOX_BACKGROUND)
+        checkpoint_frame.pack(anchor='w', pady=(0, INFO_BOX_SECTION_GAP))
         self._make_info_checkbox(
             checkpoint_frame,
             text='Has Name',
@@ -7836,13 +8382,14 @@ class MetroMapViewer:
             checked=stop.is_connected,
             on_toggle=lambda value: self._update_selected_checkpoint('is_connected', value),
         ).pack(anchor='w')
-        if stop.is_connected:
+        if stop.is_connected and SHOW_RAILWAY_FINISHING_UI:
             self._make_info_checkbox(
                 checkpoint_frame,
                 text='Finished Railway',
                 checked=stop.has_finished_railway,
                 on_toggle=lambda value: self._update_selected_checkpoint('has_finished_railway', value),
             ).pack(anchor='w')
+        if _station_signs_available(stop):
             self._make_info_checkbox(
                 checkpoint_frame,
                 text='Signs',
@@ -7870,6 +8417,8 @@ class MetroMapViewer:
                         self._update_selected_chime_direction(chime_direction, value)
                     ),
                 ).pack(anchor='w')
+
+        self._draw_station_signage_panel(signage_column, stop)
 
         button_row = tk.Frame(frame, bg=INFO_BOX_BACKGROUND)
         button_row.pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_PAD_Y))
@@ -8313,10 +8862,16 @@ class MetroMapViewer:
         )
         self.redraw()
 
-    def _refresh_after_path_edit(self, *, refresh_path_status: bool = True) -> None:
-        self.route_controls_dirty = True
-        self.route_dirty = True
-        self.priority_dirty = True
+    def _refresh_after_path_edit(
+        self,
+        *,
+        refresh_path_status: bool = True,
+        refresh_routes: bool = True,
+    ) -> None:
+        if refresh_routes:
+            self.route_controls_dirty = True
+            self.route_dirty = True
+            self.priority_dirty = True
         self.path_edge_list_dirty = True
         if refresh_path_status and self.active_path_edge_id is not None:
             self._set_active_path_edge(self._active_path_edge())
@@ -8479,9 +9034,65 @@ class MetroMapViewer:
             return endpoint.key
         return f'{endpoint.x}, {endpoint.y}'
 
+    def _delete_path_drag_preview(self) -> None:
+        for item_id in self.path_drag_preview_item_ids:
+            self.canvas.delete(item_id)
+        self.path_drag_preview_item_ids = []
+
     def _clear_path_drag(self) -> None:
+        self._delete_path_drag_preview()
         self.path_drag_start_endpoint_key = None
         self.path_drag_current_canvas_point = None
+
+    def _path_drag_preview_points(self) -> tuple[float, float, float, float] | None:
+        if self.path_drag_start_endpoint_key is None or self.path_drag_current_canvas_point is None:
+            return None
+
+        start_endpoint = _path_endpoint_from_key(self.path_drag_start_endpoint_key)
+        if start_endpoint is None:
+            return None
+
+        start_x, start_y = self.world_to_canvas(start_endpoint.plot_coordinates)
+        end_x, end_y = self.path_drag_current_canvas_point
+        target_endpoint = self._path_endpoint_hit_test(end_x, end_y)
+        if target_endpoint is not None and target_endpoint.key != start_endpoint.key:
+            end_x, end_y = self.world_to_canvas(target_endpoint.plot_coordinates)
+        return (start_x, start_y, float(end_x), float(end_y))
+
+    def _update_path_drag_preview(self) -> None:
+        self._delete_path_drag_preview()
+        preview_points = self._path_drag_preview_points()
+        if preview_points is None:
+            return
+
+        start_x, start_y, end_x, end_y = preview_points
+        preview_color = WALK_ROUTE_COLOR if self._path_drag_kind() == 'walk' else CONNECTOR_ROUTE_COLOR
+        self.path_drag_preview_item_ids.append(
+            self.canvas.create_line(
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                fill=ROUTE_HIGHLIGHT_OUTLINE,
+                width=PATH_EDIT_ACTIVE_OUTLINE_WIDTH,
+                capstyle='round',
+            )
+        )
+        line_kwargs: dict[str, object] = {}
+        if self._path_drag_kind() == 'walk':
+            line_kwargs['dash'] = (6, 4)
+        self.path_drag_preview_item_ids.append(
+            self.canvas.create_line(
+                start_x,
+                start_y,
+                end_x,
+                end_y,
+                fill=preview_color,
+                width=PATH_EDIT_ACTIVE_WIDTH,
+                capstyle='round',
+                **line_kwargs,
+            )
+        )
 
     def _add_path_node_at_canvas_point(self, canvas_x: int, canvas_y: int) -> bool:
         from tkinter import messagebox
@@ -8502,7 +9113,7 @@ class MetroMapViewer:
         self.path_click_status_var.set(
             f'Added node at ({coordinates[0]}, {coordinates[1]}). Drag from it to another station/node to add a {self._path_drag_kind_label()} path.'
         )
-        self._refresh_after_path_edit(refresh_path_status=False)
+        self._refresh_after_path_edit(refresh_path_status=False, refresh_routes=False)
         return True
 
     def _finish_path_drag(self, canvas_x: int, canvas_y: int) -> bool:
@@ -8731,7 +9342,7 @@ class MetroMapViewer:
             anchor='w',
         ).pack(anchor='w', pady=(0, 8))
 
-        option_rows = (
+        option_rows = [
             ('World map image', self.export_include_world_map_var),
             ('Grid axes', self.export_include_grid_var),
             ('Metro lines', self.export_include_metro_lines_var),
@@ -8745,8 +9356,9 @@ class MetroMapViewer:
             ('Connected area', self.export_include_connected_area_var),
             ('Alignment ellipses', self.export_include_alignment_ellipses_var),
             ('Frontier highlights', self.export_include_frontier_highlights_var),
-            ('Railway finishing highlights', self.export_include_railway_finishing_var),
-        )
+        ]
+        if SHOW_RAILWAY_FINISHING_UI:
+            option_rows.append(('Railway finishing highlights', self.export_include_railway_finishing_var))
         for text, variable in option_rows:
             self._make_sidebar_checkbox(
                 body,
@@ -8895,6 +9507,7 @@ class MetroMapViewer:
         )
 
     def redraw(self) -> None:
+        self.fast_viewport_transform_active = False
         defer_expensive_layers = self.defer_expensive_viewport_layers
         self._clear_info_popup()
         if self.stats_dirty:
@@ -8924,6 +9537,7 @@ class MetroMapViewer:
             self._refresh_path_edge_list()
             self.path_edge_list_dirty = False
         self.canvas.delete('all')
+        self.path_drag_preview_item_ids = []
         self.station_canvas_positions = {}
         self.path_node_canvas_positions = {}
         self.overlay_image_refs = []
@@ -8990,6 +9604,27 @@ class MetroMapViewer:
             canvas_x, canvas_y = self.world_to_canvas(stop.plot_coordinates)
             self.station_canvas_positions[stop.var] = (canvas_x, canvas_y)
             stop_fill = self._stop_fill_for_visible_lines(stop_visible_line_names)
+            label_fill = _label_fill_for_visible_line_names(stop_visible_line_names)
+            is_priority_highlight = stop.var in self.priority_highlight_stop_vars
+            if is_priority_highlight:
+                self.canvas.create_oval(
+                    canvas_x - STATION_RADIUS - 10,
+                    canvas_y - STATION_RADIUS - 10,
+                    canvas_x + STATION_RADIUS + 10,
+                    canvas_y + STATION_RADIUS + 10,
+                    fill='',
+                    outline=PRIORITY_HIGHLIGHT_SOFT_COLOR,
+                    width=3,
+                )
+                self.canvas.create_oval(
+                    canvas_x - STATION_RADIUS - 5,
+                    canvas_y - STATION_RADIUS - 5,
+                    canvas_x + STATION_RADIUS + 5,
+                    canvas_y + STATION_RADIUS + 5,
+                    fill='',
+                    outline=PRIORITY_HIGHLIGHT_COLOR,
+                    width=2,
+                )
             self.canvas.create_oval(
                 canvas_x - STATION_RADIUS,
                 canvas_y - STATION_RADIUS,
@@ -9004,16 +9639,38 @@ class MetroMapViewer:
                 )
                 label_font = (
                     ('Helvetica', active_label_font_size, 'bold')
-                    if stop.var in frontier_label_stop_vars
+                    if stop.var in frontier_label_stop_vars or is_priority_highlight
                     else ('Helvetica', active_label_font_size)
                 )
+                label_text = _display_label(stop.lbl)
+                for casing_offset_x, casing_offset_y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    self.canvas.create_text(
+                        canvas_x + label_offset_x + casing_offset_x,
+                        canvas_y - label_offset_y + casing_offset_y,
+                        anchor='sw',
+                        angle=LABEL_ANGLE,
+                        text=label_text,
+                        fill=LABEL_CASING_COLOR,
+                        font=label_font,
+                    )
+                if is_priority_highlight:
+                    for glow_offset_x, glow_offset_y in ((-2, 0), (2, 0), (0, -2), (0, 2)):
+                        self.canvas.create_text(
+                            canvas_x + label_offset_x + glow_offset_x,
+                            canvas_y - label_offset_y + glow_offset_y,
+                            anchor='sw',
+                            angle=LABEL_ANGLE,
+                            text=label_text,
+                            fill=PRIORITY_HIGHLIGHT_COLOR,
+                            font=label_font,
+                        )
                 self.canvas.create_text(
                     canvas_x + label_offset_x,
                     canvas_y - label_offset_y,
                     anchor='sw',
                     angle=LABEL_ANGLE,
-                    text=_display_label(stop.lbl),
-                    fill=stop_fill,
+                    text=label_text,
+                    fill=label_fill,
                     font=label_font,
                 )
 
@@ -9298,7 +9955,7 @@ class MetroMapViewer:
         self.world_map_spiral_check_payload = payload
         return payload
 
-    def _draw_world_map_render_underlay(self) -> None:
+    def _draw_world_map_render_underlay(self, *, fast_resample: bool = False) -> None:
         if not self.show_world_map_render_var.get():
             return
 
@@ -9341,17 +9998,24 @@ class MetroMapViewer:
 
         visible_width = max(1, round(visible_right - visible_left))
         visible_height = max(1, round(visible_bottom - visible_top))
-        try:
-            resampling_filter = Image.Resampling.BILINEAR
-        except AttributeError:
-            resampling_filter = cast(Any, Image).BILINEAR
+        if fast_resample:
+            try:
+                resampling_filter = Image.Resampling.NEAREST
+            except AttributeError:
+                resampling_filter = cast(Any, Image).NEAREST
+        else:
+            try:
+                resampling_filter = Image.Resampling.BILINEAR
+            except AttributeError:
+                resampling_filter = cast(Any, Image).BILINEAR
         underlay = source_image.crop((source_left, source_top, source_right, source_bottom))
         underlay = underlay.resize((visible_width, visible_height), resampling_filter)
         alpha = underlay.getchannel('A').point(_limit_world_map_alpha)
         underlay.putalpha(alpha)
         underlay_image = ImageTk.PhotoImage(underlay)
         self.overlay_image_refs.append(underlay_image)
-        self.canvas.create_image(visible_left, visible_top, anchor='nw', image=underlay_image)
+        image_id = self.canvas.create_image(visible_left, visible_top, anchor='nw', image=underlay_image)
+        self.canvas.tag_lower(image_id)
 
     def _draw_world_map_render_bounds(self, payload: dict[str, object]) -> None:
         bounds = _world_map_visible_render_bounds_from_payload(payload)
@@ -9741,50 +10405,7 @@ class MetroMapViewer:
                 )
 
     def _draw_path_drag_preview(self) -> None:
-        if self.path_drag_start_endpoint_key is None or self.path_drag_current_canvas_point is None:
-            return
-
-        start_endpoint = _path_endpoint_from_key(self.path_drag_start_endpoint_key)
-        if start_endpoint is None:
-            return
-
-        start_x, start_y = self.world_to_canvas(start_endpoint.plot_coordinates)
-        end_x, end_y = self.path_drag_current_canvas_point
-        target_endpoint = self._path_endpoint_hit_test(end_x, end_y)
-        if target_endpoint is not None and target_endpoint.key != start_endpoint.key:
-            end_x, end_y = self.world_to_canvas(target_endpoint.plot_coordinates)
-
-        preview_color = WALK_ROUTE_COLOR if self._path_drag_kind() == 'walk' else CONNECTOR_ROUTE_COLOR
-        self.canvas.create_line(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
-            fill=ROUTE_HIGHLIGHT_OUTLINE,
-            width=PATH_EDIT_ACTIVE_OUTLINE_WIDTH,
-            capstyle='round',
-        )
-        if self._path_drag_kind() == 'walk':
-            self.canvas.create_line(
-                start_x,
-                start_y,
-                end_x,
-                end_y,
-                fill=preview_color,
-                width=PATH_EDIT_ACTIVE_WIDTH,
-                capstyle='round',
-                dash=(6, 4),
-            )
-            return
-        self.canvas.create_line(
-            start_x,
-            start_y,
-            end_x,
-            end_y,
-            fill=preview_color,
-            width=PATH_EDIT_ACTIVE_WIDTH,
-            capstyle='round',
-        )
+        self._update_path_drag_preview()
 
     def _draw_extra_edges(self) -> None:
         for extra_edge in EXTRA_EDGES:
@@ -9871,7 +10492,7 @@ class MetroMapViewer:
         self.pan_y = anchor_y - center_y - ((anchor_y - center_y - self.pan_y) * ratio)
         self.zoom = new_zoom
         self._begin_viewport_interaction()
-        self._schedule_redraw()
+        self._scale_viewport_canvas_items(anchor_x, anchor_y, ratio)
 
     def _set_view_to_plot_bounds(
         self,
@@ -10091,8 +10712,7 @@ class MetroMapViewer:
                 self.hover_canvas_point = None
                 self.cursor_readout_coordinates = None
                 self.show_cursor_guides = False
-            self._begin_viewport_interaction()
-            self._schedule_redraw()
+            self._update_path_drag_preview()
             return
 
         if not self.is_dragging and self.drag_origin is not None:
@@ -10107,9 +10727,11 @@ class MetroMapViewer:
             self.show_cursor_guides = False
         self.pan_x += current[0] - self.drag_start[0]
         self.pan_y += current[1] - self.drag_start[1]
+        delta_x = current[0] - self.drag_start[0]
+        delta_y = current[1] - self.drag_start[1]
         self.drag_start = current
         self._begin_viewport_interaction()
-        self._schedule_redraw()
+        self._move_viewport_canvas_items(delta_x, delta_y)
 
     def _on_drag_end(self, event: object) -> None:
         if self._widget_is_in_info_popup(getattr(event, 'widget', None)):
@@ -10131,7 +10753,6 @@ class MetroMapViewer:
                 self.drag_origin = None
                 self.is_dragging = False
                 self._clear_path_drag()
-                self.redraw()
                 return
             self._clear_path_drag()
 
@@ -10293,6 +10914,9 @@ RAILWAY_FINISH_PROGRESS: dict[str, PathPointRecord] = {}
 PATH_NODES: tuple[PathNode, ...] = ()
 PATH_NODES_BY_KEY: dict[str, PathNode] = {}
 PATH_NODES_BY_ID: dict[str, PathNode] = {}
+_ALL_PATH_NODES_CACHE_KEY: tuple[int, int] | None = None
+_ALL_PATH_NODES_CACHE: tuple[PathNode, ...] = ()
+_ALL_PATH_NODES_BY_KEY_CACHE: dict[str, PathNode] = {}
 EXTRA_EDGES: tuple[ExtraEdgeDefinition, ...] = ()
 ALIGNMENT_REMINDERS: tuple[AlignmentReminder, ...] = ()
 
@@ -11028,6 +11652,9 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
     global PATH_NODES
     global PATH_NODES_BY_KEY
     global PATH_NODES_BY_ID
+    global _ALL_PATH_NODES_CACHE_KEY
+    global _ALL_PATH_NODES_CACHE
+    global _ALL_PATH_NODES_BY_KEY_CACHE
     global EXTRA_EDGES
     global ALIGNMENT_REMINDERS
 
@@ -11157,6 +11784,9 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
         )
         for extra_edge_record in payload.get('extra_edges', [])
     )
+    _ALL_PATH_NODES_CACHE_KEY = None
+    _ALL_PATH_NODES_CACHE = ()
+    _ALL_PATH_NODES_BY_KEY_CACHE = {}
     ALIGNMENT_REMINDERS = tuple(
         AlignmentReminder(
             first_var=str(reminder_record['first_var']),
