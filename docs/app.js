@@ -58,6 +58,11 @@ const CONSTANTS = {
   walkingPathDash: [8, 6],
   extraPathWidth: 4,
   worldMapAlpha: 0.745,
+  underlayOverscanPixels: 1,
+  sharpUnderlayUpscaleThreshold: 1.5,
+  boundaryEdgeColor: '#e5e7eb',
+  boundaryEdgeWidth: 1,
+  edgeTouchBand: 2,
   terrainMetadataUrl: 'assets/blackport_topdown.render.json',
   blackportVar: 'P_ABCDE',
   blackportViewRadius: 2000,
@@ -81,8 +86,10 @@ const state = {
   terrain: {
     image: null,
     loaded: false,
+    metadata: null,
     bounds: null,
     stationBounds: null,
+    edgeRuns: null,
   },
   camera: {
     zoom: CONSTANTS.defaultZoom,
@@ -490,10 +497,12 @@ async function loadTerrainBounds() {
     if (!response.ok) {
       return;
     }
-    const bounds = terrainBoundsFromMetadata(await response.json());
+    const payload = await response.json();
+    const bounds = terrainBoundsFromMetadata(payload);
     if (!bounds) {
       return;
     }
+    state.terrain.metadata = payload;
     state.terrain.bounds = bounds;
     updateCameraWorld();
     if (!state.camera.initialized) {
@@ -510,17 +519,252 @@ function drawTerrainUnderlay() {
     return;
   }
   const { image } = state.terrain;
-  const topLeft = worldToScreen({ x: 0, y: 0 });
-  const bottomRight = worldToScreen({ x: state.camera.worldWidth, y: state.camera.worldHeight });
-  const left = topLeft.x;
-  const top = topLeft.y;
-  const width = bottomRight.x - topLeft.x;
-  const height = bottomRight.y - topLeft.y;
+  const renderRect = terrainRenderScreenRect();
+  if (!renderRect) {
+    return;
+  }
+  const visibleRect = {
+    minX: Math.max(0, renderRect.minX),
+    minY: Math.max(0, renderRect.minY),
+    maxX: Math.min(state.camera.viewportWidth, renderRect.maxX),
+    maxY: Math.min(state.camera.viewportHeight, renderRect.maxY),
+  };
+  if (visibleRect.maxX <= visibleRect.minX || visibleRect.maxY <= visibleRect.minY) {
+    return;
+  }
+
+  const sourceBox = visibleUnderlaySourceBox(image, renderRect, visibleRect);
+  if (!sourceBox) {
+    return;
+  }
+  const { sourceLeft, sourceTop, sourceRight, sourceBottom } = sourceBox;
+  const xScale = (renderRect.maxX - renderRect.minX) / Math.max(1, image.naturalWidth);
+  const yScale = (renderRect.maxY - renderRect.minY) / Math.max(1, image.naturalHeight);
+  const drawLeft = renderRect.minX + (sourceLeft * xScale);
+  const drawTop = renderRect.minY + (sourceTop * yScale);
+  const drawWidth = Math.max(1, Math.round((sourceRight - sourceLeft) * xScale));
+  const drawHeight = Math.max(1, Math.round((sourceBottom - sourceTop) * yScale));
+
   ctx.save();
   ctx.globalAlpha = CONSTANTS.worldMapAlpha;
-  ctx.imageSmoothingEnabled = true;
-  ctx.drawImage(image, left, top, width, height);
+  ctx.imageSmoothingEnabled = !underlayDrawIsUpscaled(drawWidth, drawHeight, sourceBox);
+  ctx.imageSmoothingQuality = 'medium';
+  ctx.drawImage(
+    image,
+    sourceLeft,
+    sourceTop,
+    sourceRight - sourceLeft,
+    sourceBottom - sourceTop,
+    drawLeft,
+    drawTop,
+    drawWidth,
+    drawHeight,
+  );
   ctx.restore();
+  drawTerrainBoundaryCompletionEdges(renderRect);
+}
+
+function terrainRenderScreenRect() {
+  if (!cameraHasWorld()) {
+    return null;
+  }
+  const first = worldToScreen({ x: 0, y: 0 });
+  const second = worldToScreen({ x: state.camera.worldWidth, y: state.camera.worldHeight });
+  return normalizedScreenRect(first, second);
+}
+
+function visibleUnderlaySourceBox(image, renderRect, visibleRect) {
+  const sourceLeft = Math.floor(clamp(
+    ((visibleRect.minX - renderRect.minX) / (renderRect.maxX - renderRect.minX)) * image.naturalWidth,
+    0,
+    image.naturalWidth,
+  ));
+  const sourceRight = Math.ceil(clamp(
+    ((visibleRect.maxX - renderRect.minX) / (renderRect.maxX - renderRect.minX)) * image.naturalWidth,
+    0,
+    image.naturalWidth,
+  ));
+  const sourceTop = Math.floor(clamp(
+    ((visibleRect.minY - renderRect.minY) / (renderRect.maxY - renderRect.minY)) * image.naturalHeight,
+    0,
+    image.naturalHeight,
+  ));
+  const sourceBottom = Math.ceil(clamp(
+    ((visibleRect.maxY - renderRect.minY) / (renderRect.maxY - renderRect.minY)) * image.naturalHeight,
+    0,
+    image.naturalHeight,
+  ));
+  if (sourceRight <= sourceLeft || sourceBottom <= sourceTop) {
+    return null;
+  }
+  const overscan = CONSTANTS.underlayOverscanPixels;
+  return {
+    sourceLeft: Math.max(0, sourceLeft - overscan),
+    sourceTop: Math.max(0, sourceTop - overscan),
+    sourceRight: Math.min(image.naturalWidth, sourceRight + overscan),
+    sourceBottom: Math.min(image.naturalHeight, sourceBottom + overscan),
+  };
+}
+
+function underlayDrawIsUpscaled(targetWidth, targetHeight, sourceBox) {
+  const sourceWidth = Math.max(1, sourceBox.sourceRight - sourceBox.sourceLeft);
+  const sourceHeight = Math.max(1, sourceBox.sourceBottom - sourceBox.sourceTop);
+  return Math.max(targetWidth / sourceWidth, targetHeight / sourceHeight) >= CONSTANTS.sharpUnderlayUpscaleThreshold;
+}
+
+function drawTerrainBoundaryCompletionEdges(renderRect) {
+  const image = state.terrain.image;
+  const metadata = state.terrain.metadata;
+  const bounds = currentTerrainBounds();
+  if (!image || !metadata || !bounds) {
+    return;
+  }
+  const visibleBounds = terrainVisibleRenderBounds(metadata, bounds);
+  const edgeRuns = terrainEdgeRuns(image);
+  if (!visibleBounds || !edgeRuns) {
+    return;
+  }
+
+  const imageWidth = Math.max(1, image.naturalWidth);
+  const imageHeight = Math.max(1, image.naturalHeight);
+  const xScale = (renderRect.maxX - renderRect.minX) / imageWidth;
+  const yScale = (renderRect.maxY - renderRect.minY) / imageHeight;
+
+  ctx.save();
+  ctx.strokeStyle = CONSTANTS.boundaryEdgeColor;
+  ctx.lineWidth = CONSTANTS.boundaryEdgeWidth;
+  ctx.setLineDash([]);
+  if (visibleBounds.minX === bounds.minX) {
+    for (const [start, end] of edgeRuns.left) {
+      drawLine(
+        { x: renderRect.minX, y: renderRect.minY + (start * yScale) },
+        { x: renderRect.minX, y: renderRect.minY + ((end + 1) * yScale) },
+      );
+    }
+  }
+  if (visibleBounds.maxX === bounds.maxX) {
+    for (const [start, end] of edgeRuns.right) {
+      drawLine(
+        { x: renderRect.maxX, y: renderRect.minY + (start * yScale) },
+        { x: renderRect.maxX, y: renderRect.minY + ((end + 1) * yScale) },
+      );
+    }
+  }
+  if (visibleBounds.minZ === bounds.minZ) {
+    for (const [start, end] of edgeRuns.top) {
+      drawLine(
+        { x: renderRect.minX + (start * xScale), y: renderRect.minY },
+        { x: renderRect.minX + ((end + 1) * xScale), y: renderRect.minY },
+      );
+    }
+  }
+  if (visibleBounds.maxZ === bounds.maxZ) {
+    for (const [start, end] of edgeRuns.bottom) {
+      drawLine(
+        { x: renderRect.minX + (start * xScale), y: renderRect.maxY },
+        { x: renderRect.minX + ((end + 1) * xScale), y: renderRect.maxY },
+      );
+    }
+  }
+  ctx.restore();
+}
+
+function terrainVisibleRenderBounds(metadata, bounds) {
+  const minX = finiteNumber(metadata.colored_min_x);
+  const maxX = finiteNumber(metadata.colored_max_x);
+  const minZ = finiteNumber(metadata.colored_min_z);
+  const maxZ = finiteNumber(metadata.colored_max_z);
+  if (minX !== null && maxX !== null && minZ !== null && maxZ !== null && minX <= maxX && minZ <= maxZ) {
+    return { minX, maxX, minZ, maxZ };
+  }
+  return bounds;
+}
+
+function terrainEdgeRuns(image) {
+  if (
+    state.terrain.edgeRuns
+    && state.terrain.edgeRuns.width === image.naturalWidth
+    && state.terrain.edgeRuns.height === image.naturalHeight
+  ) {
+    return state.terrain.edgeRuns;
+  }
+  const edgeRuns = computeTerrainEdgeRuns(image);
+  state.terrain.edgeRuns = edgeRuns ? {
+    width: image.naturalWidth,
+    height: image.naturalHeight,
+    ...edgeRuns,
+  } : null;
+  return state.terrain.edgeRuns;
+}
+
+function computeTerrainEdgeRuns(image) {
+  try {
+    return {
+      top: edgeRunsForBand(image, 0, 0, image.naturalWidth, Math.min(CONSTANTS.edgeTouchBand, image.naturalHeight), 'x'),
+      bottom: edgeRunsForBand(
+        image,
+        0,
+        Math.max(0, image.naturalHeight - CONSTANTS.edgeTouchBand),
+        image.naturalWidth,
+        Math.min(CONSTANTS.edgeTouchBand, image.naturalHeight),
+        'x',
+      ),
+      left: edgeRunsForBand(image, 0, 0, Math.min(CONSTANTS.edgeTouchBand, image.naturalWidth), image.naturalHeight, 'y'),
+      right: edgeRunsForBand(
+        image,
+        Math.max(0, image.naturalWidth - CONSTANTS.edgeTouchBand),
+        0,
+        Math.min(CONSTANTS.edgeTouchBand, image.naturalWidth),
+        image.naturalHeight,
+        'y',
+      ),
+    };
+  } catch (_error) {
+    return null;
+  }
+}
+
+function edgeRunsForBand(image, sx, sy, width, height, axis) {
+  if (width <= 0 || height <= 0) {
+    return [];
+  }
+  const scratch = document.createElement('canvas');
+  scratch.width = width;
+  scratch.height = height;
+  const scratchCtx = scratch.getContext('2d', { willReadFrequently: true });
+  scratchCtx.drawImage(image, sx, sy, width, height, 0, 0, width, height);
+  const data = scratchCtx.getImageData(0, 0, width, height).data;
+  const length = axis === 'x' ? width : height;
+  const depth = axis === 'x' ? height : width;
+  const mask = new Array(length).fill(false);
+  for (let primary = 0; primary < length; primary += 1) {
+    for (let secondary = 0; secondary < depth; secondary += 1) {
+      const x = axis === 'x' ? primary : secondary;
+      const y = axis === 'x' ? secondary : primary;
+      if (data[((y * width) + x) * 4 + 3] > 8) {
+        mask[primary] = true;
+        break;
+      }
+    }
+  }
+  return edgeRunsFromMask(mask);
+}
+
+function edgeRunsFromMask(mask) {
+  const runs = [];
+  let runStart = null;
+  for (let index = 0; index < mask.length; index += 1) {
+    if (mask[index] && runStart === null) {
+      runStart = index;
+    } else if (!mask[index] && runStart !== null) {
+      runs.push([runStart, index - 1]);
+      runStart = null;
+    }
+  }
+  if (runStart !== null) {
+    runs.push([runStart, mask.length - 1]);
+  }
+  return runs;
 }
 
 function drawZeroAxes() {

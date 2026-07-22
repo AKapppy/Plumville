@@ -10,6 +10,8 @@ This repo now has two active tracks:
 
 The browser viewer is built for GitHub Pages. After these files are pushed to GitHub, enable Pages from the `main` branch `/docs` folder.
 
+`docs/metro_network.json` is the canonical metro dataset. The desktop app and browser viewer both read that same file so station, line, and pathing changes do not need a separate sync step.
+
 The worldgen work is intentionally modular. It does not try to generate Minecraft terrain itself. Instead, it manages a Bedrock Docker container, waits for a world to exist on disk, caches the resolved world path, and writes a Blackport-centered starter render plan for the next rendering phase.
 
 ## Requirements

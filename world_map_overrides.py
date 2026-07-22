@@ -144,8 +144,8 @@ def _full_resolution_image_candidates(
         mode_paths = BedrockWorldGenerator(config).paths_for_mode(viewer._selected_world_map_mode_key())
         candidates.extend(
             [
-                mode_paths.render_image_path,
                 mode_paths.docs_render_image_path,
+                mode_paths.render_image_path,
                 config.repo_root / "worldgen_output" / mode_paths.render_image_path.name,
                 config.repo_root / "docs" / "assets" / mode_paths.render_image_path.name,
             ]

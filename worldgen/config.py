@@ -372,7 +372,7 @@ def _optional_int_default(value: int | None, default: int) -> int:
 
 
 def _load_village_render_bounds(base_dir: Path, margin: int) -> tuple[int, int, int, int] | None:
-    network_path = base_dir / 'metro_network.json'
+    network_path = base_dir / 'docs' / 'metro_network.json'
     if not network_path.exists():
         return None
     payload = json.loads(network_path.read_text(encoding='utf-8'))

@@ -15,7 +15,7 @@ class MovePathNodeTests(unittest.TestCase):
         self.tempdir = tempfile.TemporaryDirectory()
         self.addCleanup(self.tempdir.cleanup)
         temp_root = Path(self.tempdir.name)
-        self.source_network_path = Path(base.__file__).with_name("metro_network.json")
+        self.source_network_path = base.METRO_NETWORK_PATH
         self.network_path = temp_root / "metro_network.json"
         self.backup_path = temp_root / "metro_network.last.json"
         self.history_dir = temp_root / "metro_network.history"

@@ -6,7 +6,6 @@ const repoRoot = path.resolve(docsDir, '..');
 const indexHtml = fs.readFileSync(path.join(docsDir, 'index.html'), 'utf8');
 const appJs = fs.readFileSync(path.join(docsDir, 'app.js'), 'utf8');
 const network = JSON.parse(fs.readFileSync(path.join(docsDir, 'metro_network.json'), 'utf8'));
-const desktopNetwork = JSON.parse(fs.readFileSync(path.join(repoRoot, 'metro_network.json'), 'utf8'));
 const terrainMetadata = JSON.parse(fs.readFileSync(path.join(docsDir, 'assets', 'blackport_topdown.render.json'), 'utf8'));
 const terrainPng = fs.readFileSync(path.join(docsDir, 'assets', 'blackport_topdown.png'));
 
@@ -47,6 +46,9 @@ assert(indexHtml.includes('id="searchInput"'), 'Station search input is missing 
 assert(indexHtml.indexOf('id="searchInput"') < indexHtml.indexOf('id="showWorldMapInput"'), 'Search should sit above the view checklist.');
 assert(appJs.includes('function routeInputTargetForStop'), 'Directions station selection helper is missing from app.js.');
 assert(appJs.includes('function drawSuggestedWalkingPaths'), 'app.js is missing suggested walking path rendering.');
+assert(appJs.includes('function visibleUnderlaySourceBox'), 'app.js is missing desktop-style underlay cropping.');
+assert(appJs.includes('function underlayDrawIsUpscaled'), 'app.js is missing desktop-style sharp underlay sampling.');
+assert(appJs.includes('function drawTerrainBoundaryCompletionEdges'), 'app.js is missing terrain boundary completion strokes.');
 assert(appJs.includes('function coordinateQueryPoint'), 'app.js is missing coordinate search parsing.');
 assert(appJs.includes('function searchPointDistanceRows'), 'app.js is missing along-track point distance reporting.');
 assert(appJs.includes('function placeStationLabels'), 'app.js is missing automatic station label placement.');
@@ -62,7 +64,7 @@ assert(Array.isArray(network.stops) && network.stops.length > 0, 'metro_network.
 assert(network.line_stop_vars && Object.keys(network.line_stop_vars).length > 0, 'metro_network.json has no line data.');
 assert(Array.isArray(network.suggested_walking_segments), 'metro_network.json has no suggested walking segment data.');
 assert(network.suggested_walking_segments.length > 0, 'Suggested walking segment data is empty.');
-assert(JSON.stringify(network) === JSON.stringify(desktopNetwork), 'docs/metro_network.json is not synced with metro_network.json.');
+assert(!fs.existsSync(path.join(repoRoot, 'metro_network.json')), 'Duplicate root metro_network.json should not exist; docs/metro_network.json is canonical.');
 
 const dimensions = pngDimensions(terrainPng);
 assert(dimensions.width === terrainMetadata.width, `PNG width ${dimensions.width} does not match metadata width ${terrainMetadata.width}.`);

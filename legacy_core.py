@@ -29,7 +29,7 @@ COORDINATE_ENDPOINT_PREFIX: Final[str] = 'coord:'
 CITY_LIMIT_ENDPOINT_PREFIX: Final[str] = 'city:'
 COORDINATE_NODE_CONTEXT: Final[str] = '__coord__'
 STATION_CITY_PATH_CONTEXT: Final[str] = '__station_city_path__'
-METRO_NETWORK_PATH: Final[Path] = Path(__file__).with_name('metro_network.json')
+METRO_NETWORK_PATH: Final[Path] = Path(__file__).with_name('docs') / 'metro_network.json'
 METRO_NETWORK_BACKUP_PATH: Final[Path] = Path(__file__).with_name('metro_network.last.json')
 METRO_NETWORK_HISTORY_DIR: Final[Path] = Path(__file__).with_name('metro_network.history')
 PRIORITY_LIST_CSV_PATH: Final[Path] = Path(__file__).with_name('priority_list.csv')
@@ -9976,11 +9976,11 @@ class MetroMapViewer:
             return None
 
         image_candidates: list[Path] = []
+        image_candidates.append(mode_paths.docs_render_image_path)
         image_candidates.append(mode_paths.render_image_path)
         payload_image_path = payload.get('image_path')
         if isinstance(payload_image_path, str) and payload_image_path:
             image_candidates.append(Path(payload_image_path))
-        image_candidates.append(mode_paths.docs_render_image_path)
         image_candidates.append(config.repo_root / 'worldgen_output' / mode_paths.render_image_path.name)
         image_candidates.append(
             config.repo_root / 'docs' / 'assets' / mode_paths.render_image_path.name

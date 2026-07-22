@@ -59,6 +59,10 @@ def _patched_render_map(
         compact_packet_cache=False,
     )
     generator._copy_file_best_effort(self.paths.render_image_path, self.paths.docs_render_image_path)
+    generator._copy_file_best_effort(
+        self.paths.render_cache_path,
+        generator._docs_render_metadata_path(self.paths.docs_render_image_path),
+    )
     return result
 
 
@@ -104,6 +108,10 @@ def _patched_render_loaded_target_map(
         image_progress_interval=image_progress_interval,
     )
     generator._copy_file_best_effort(self.paths.render_image_path, self.paths.docs_render_image_path)
+    generator._copy_file_best_effort(
+        self.paths.render_cache_path,
+        generator._docs_render_metadata_path(self.paths.docs_render_image_path),
+    )
     return result
 
 
