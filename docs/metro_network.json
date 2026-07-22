@@ -463,7 +463,7 @@
     },
     {
       "var": "P_B5",
-      "lbl": "B_5",
+      "lbl": "Caverndeau",
       "x": 2504,
       "y": 664,
       "has_connector": false,
@@ -757,10 +757,10 @@
       "x": 280,
       "y": -3022,
       "has_connector": false,
-      "has_full_station": false,
+      "has_full_station": true,
       "is_connected": false,
       "has_finished_railway": false,
-      "has_signs": false,
+      "has_signs": true,
       "chime_directions": [],
       "has_walking_paths": false
     },
@@ -783,10 +783,10 @@
       "x": 1275,
       "y": -3068,
       "has_connector": false,
-      "has_full_station": false,
+      "has_full_station": true,
       "is_connected": false,
       "has_finished_railway": false,
-      "has_signs": false,
+      "has_signs": true,
       "chime_directions": [],
       "has_walking_paths": false
     },
@@ -805,7 +805,7 @@
     },
     {
       "var": "P_BK",
-      "lbl": "BK",
+      "lbl": "Clifton",
       "x": 4024,
       "y": 808,
       "has_connector": false,
@@ -835,10 +835,10 @@
       "x": 682,
       "y": -3550,
       "has_connector": false,
-      "has_full_station": false,
+      "has_full_station": true,
       "is_connected": false,
       "has_finished_railway": false,
-      "has_signs": false,
+      "has_signs": true,
       "chime_directions": [],
       "has_walking_paths": false
     },
@@ -1169,7 +1169,7 @@
     },
     {
       "var": "P_BH",
-      "lbl": "BH",
+      "lbl": "T-t-t-town",
       "x": 5240,
       "y": 776,
       "has_connector": false,
@@ -1195,7 +1195,7 @@
     },
     {
       "var": "P_H7",
-      "lbl": "H_7",
+      "lbl": "Langland",
       "x": 5256,
       "y": 1192,
       "has_connector": false,
@@ -1455,7 +1455,7 @@
     },
     {
       "var": "P_B8",
-      "lbl": "B_8",
+      "lbl": "Slimin",
       "x": 6184,
       "y": 168,
       "has_connector": false,
@@ -1559,7 +1559,7 @@
     },
     {
       "var": "P_BJ",
-      "lbl": "BJ",
+      "lbl": "Toot'n'Cummin",
       "x": 6728,
       "y": 216,
       "has_connector": false,
@@ -1701,6 +1701,19 @@
       "has_walking_paths": false
     },
     {
+      "var": "P_B9",
+      "lbl": "B_9",
+      "x": 7276,
+      "y": 142,
+      "has_connector": false,
+      "has_full_station": false,
+      "is_connected": false,
+      "has_finished_railway": false,
+      "has_signs": false,
+      "chime_directions": [],
+      "has_walking_paths": false
+    },
+    {
       "var": "P_R6",
       "lbl": "R_6",
       "x": -6744,
@@ -1789,6 +1802,7 @@
       "P_BH",
       "P_B8",
       "P_BJ",
+      "P_B9",
       "P_B10",
       "P_B11"
     ],
@@ -2132,8 +2146,14 @@
         "dy": 0
       },
       {
+        "x_var": "P_B9",
+        "y_var": "P_B9",
+        "dx": 0,
+        "dy": 0
+      },
+      {
         "x_var": "P_B10",
-        "y_var": "P_BJ",
+        "y_var": "P_B9",
         "dx": 0,
         "dy": 0
       },

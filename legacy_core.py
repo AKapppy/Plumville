@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import csv
 import heapq
 import html
 import io
@@ -31,6 +32,7 @@ STATION_CITY_PATH_CONTEXT: Final[str] = '__station_city_path__'
 METRO_NETWORK_PATH: Final[Path] = Path(__file__).with_name('metro_network.json')
 METRO_NETWORK_BACKUP_PATH: Final[Path] = Path(__file__).with_name('metro_network.last.json')
 METRO_NETWORK_HISTORY_DIR: Final[Path] = Path(__file__).with_name('metro_network.history')
+PRIORITY_LIST_CSV_PATH: Final[Path] = Path(__file__).with_name('priority_list.csv')
 EXPORTS_DIR: Final[Path] = Path(__file__).with_name('exports')
 PLOT_WIDTH: Final[int] = 1600
 PLOT_HEIGHT: Final[int] = 1000
@@ -182,6 +184,19 @@ PRIORITY_NEED_LABELS: Final[dict[str, str]] = {
     'signs': 'Signs',
     'chimes': 'Chimes',
 }
+PRIORITY_CSV_CHECKLIST_COLUMNS: Final[tuple[tuple[str, str], ...]] = (
+    ('Named', 'name'),
+    ('Facade', 'façade'),
+    ('Station', 'station'),
+    ('Station Entrance', 'station entrance'),
+    ('Walking Paths', 'paths'),
+    ('City Limits', 'city limits'),
+    ('Connected', 'connected'),
+    ('Aligned', 'alignment'),
+    ('Finished Railway', 'finished railway'),
+    ('Signs', 'signs'),
+    ('Chimes', 'chimes'),
+)
 PRIORITY_TASK_PHRASES: Final[dict[str, str]] = {
     'alignment': 'align to other station(s)',
 }
@@ -2891,6 +2906,21 @@ def _priority_junction_count(stop: MetroStop) -> int:
     return len(STOP_LINE_NAMES[stop.var]) if len(STOP_LINE_NAMES[stop.var]) > 1 else 0
 
 
+def _station_has_priority_progress(stop: MetroStop) -> bool:
+    return any((
+        stop.has_name,
+        stop.has_connector,
+        stop.has_full_station,
+        stop.station_entry_coordinates is not None,
+        stop.has_walking_paths,
+        bool(stop.city_limit_node_keys),
+        stop.is_connected,
+        stop.has_finished_railway,
+        stop.has_signs,
+        bool(stop.chime_directions),
+    ))
+
+
 def _priority_frontier_route_details(
     stop: MetroStop,
     route_costs: dict[str, tuple[int, int]],
@@ -2935,30 +2965,35 @@ def _priority_list_entries(
 
     for stop in METRO_STOPS:
         missing_tasks = _missing_station_tasks(stop)
+        has_progress = _station_has_priority_progress(stop)
         junction_count = _priority_junction_count(stop)
         alignment_count = _priority_alignment_count(stop.var)
 
         distance_value: int | None = None
         route_distance = 0
         transfer_count = 0
+        route_rank = 0
         next_on_line = False
 
         if stop.is_connected:
             route_cost = route_costs.get(stop.var)
             if route_cost is None:
-                continue
-            route_distance, transfer_count = route_cost
+                route_rank = 2
+            else:
+                route_distance, transfer_count = route_cost
         else:
             frontier_details = _priority_frontier_route_details(stop, route_costs)
-            if frontier_details is None:
-                continue
-            _frontier_sort_key, frontier_distance, frontier_transfer_count = frontier_details
-            distance_value = frontier_distance
-            route_distance = frontier_distance
-            transfer_count = frontier_transfer_count
-            next_on_line = True
+            if frontier_details is not None:
+                _frontier_sort_key, frontier_distance, frontier_transfer_count = frontier_details
+                distance_value = frontier_distance
+                route_distance = frontier_distance
+                transfer_count = frontier_transfer_count
+                next_on_line = True
+                route_rank = 1
+            else:
+                route_rank = 3
 
-        if not (missing_tasks or next_on_line):
+        if not (next_on_line or (missing_tasks and has_progress)):
             continue
 
         fragments: list[str] = []
@@ -2979,7 +3014,7 @@ def _priority_list_entries(
         sort_key: tuple[int | str, ...] = (
             complexity_score,
             len(fragments),
-            0 if stop.is_connected else 1,
+            route_rank,
             route_distance,
             transfer_count,
             junction_count,
@@ -2996,6 +3031,89 @@ def _priority_list_entries(
 
     entries.sort(key=lambda item: item[0])
     return [(stop_var, text) for _sort_key, stop_var, text in entries]
+
+
+def _csv_bool(value: bool) -> str:
+    return 'TRUE' if value else 'FALSE'
+
+
+def _priority_checklist_csv_value(stop: MetroStop, task_name: str) -> str:
+    if task_name == 'name':
+        return _csv_bool(stop.has_name)
+    if task_name == 'façade':
+        return _csv_bool(stop.has_connector)
+    if task_name == 'station':
+        return _csv_bool(stop.has_full_station)
+    if task_name == 'station entrance':
+        return _csv_bool(stop.station_entry_coordinates is not None)
+    if task_name == 'paths':
+        return _csv_bool(stop.has_walking_paths)
+    if task_name == 'city limits':
+        return _csv_bool(bool(stop.city_limit_node_keys))
+    if task_name == 'connected':
+        return _csv_bool(stop.is_connected)
+    if task_name == 'alignment':
+        if stop.is_connected:
+            return ''
+        return _csv_bool(_priority_alignment_count(stop.var) == 0)
+    if task_name == 'finished railway':
+        if not SHOW_RAILWAY_FINISHING_UI or not stop.is_connected:
+            return ''
+        return _csv_bool(stop.has_finished_railway)
+    if task_name == 'signs':
+        if not _station_signs_available(stop):
+            return ''
+        return _csv_bool(stop.has_signs)
+    if task_name == 'chimes':
+        if not stop.is_connected or _station_max_chime_count(stop) <= 0:
+            return ''
+        return _csv_bool(_station_has_required_chimes(stop))
+    raise ValueError(f'Unknown priority checklist task: {task_name}')
+
+
+def _priority_list_csv_fieldnames() -> list[str]:
+    return [
+        'Rank',
+        'Station ID',
+        'Station Name',
+        'Lines',
+        'Priority Note',
+        *(label for label, _task_name in PRIORITY_CSV_CHECKLIST_COLUMNS),
+    ]
+
+
+def _priority_list_csv_rows(entries: list[tuple[str, str]]) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for rank, (stop_var, priority_text) in enumerate(entries, start=1):
+        stop = STOPS_BY_VAR.get(stop_var)
+        if stop is None:
+            continue
+        row = {
+            'Rank': str(rank),
+            'Station ID': stop.var,
+            'Station Name': _display_label(stop.lbl),
+            'Lines': ', '.join(STOP_LINE_NAMES.get(stop.var, ())),
+            'Priority Note': priority_text,
+        }
+        for label, task_name in PRIORITY_CSV_CHECKLIST_COLUMNS:
+            row[label] = _priority_checklist_csv_value(stop, task_name)
+        rows.append(row)
+    return rows
+
+
+def _write_priority_list_csv(entries: list[tuple[str, str]]) -> None:
+    output = io.StringIO(newline='')
+    fieldnames = _priority_list_csv_fieldnames()
+    writer = csv.DictWriter(output, fieldnames=fieldnames, lineterminator='\n')
+    writer.writeheader()
+    writer.writerows(_priority_list_csv_rows(entries))
+    csv_text = output.getvalue()
+
+    existing_text = ''
+    if PRIORITY_LIST_CSV_PATH.exists():
+        existing_text = PRIORITY_LIST_CSV_PATH.read_text(encoding='utf-8')
+    if existing_text != csv_text:
+        PRIORITY_LIST_CSV_PATH.write_text(csv_text, encoding='utf-8')
 
 
 def _unconnected_line_priority_candidate_with_frontier(
@@ -5445,6 +5563,36 @@ class MetroMapViewer:
             return
 
     def _build_route_panel(self) -> None:
+        self._make_sidebar_caption('Search').pack(anchor='w', padx=16)
+        search_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        search_row.pack(fill='x', padx=16, pady=(4, 6))
+        self.search_entry = self._make_sidebar_entry(search_row, self.search_var)
+        self.search_entry.pack(side='left', fill='x', expand=True)
+        self.search_entry.bind('<Return>', self._on_search_submit)
+        self._bind_suggestion_entry(
+            self.search_entry,
+            self.search_var,
+            include_nodes=False,
+            on_select=self._select_search_suggestion,
+        )
+        self._make_sidebar_button(
+            search_row,
+            text='Go',
+            command=self._jump_to_first_search_result,
+        ).pack(side='left', padx=(10, 0))
+
+        search_status_label = tk.Label(
+            self.sidebar,
+            textvariable=self.search_status_var,
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=SIDEBAR_WIDTH - 32,
+        )
+        search_status_label.pack(anchor='w', padx=16, pady=(0, 12))
+
         checklist_section = self._make_collapsible_sidebar_section('Checklist', expanded=True)
         checklist_top_row = tk.Frame(checklist_section, bg=BACKGROUND_COLOR)
         checklist_top_row.pack(fill='x', padx=16, pady=(4, 12))
@@ -5550,36 +5698,6 @@ class MetroMapViewer:
             bg=INFO_BOX_BACKGROUND,
         )
         self.priority_list_frame.pack(fill='x', padx=12, pady=12)
-
-        self._make_sidebar_caption('Search').pack(anchor='w', padx=16)
-        search_row = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
-        search_row.pack(fill='x', padx=16, pady=(4, 6))
-        self.search_entry = self._make_sidebar_entry(search_row, self.search_var)
-        self.search_entry.pack(side='left', fill='x', expand=True)
-        self.search_entry.bind('<Return>', self._on_search_submit)
-        self._bind_suggestion_entry(
-            self.search_entry,
-            self.search_var,
-            include_nodes=False,
-            on_select=self._select_search_suggestion,
-        )
-        self._make_sidebar_button(
-            search_row,
-            text='Go',
-            command=self._jump_to_first_search_result,
-        ).pack(side='left', padx=(10, 0))
-
-        search_status_label = tk.Label(
-            self.sidebar,
-            textvariable=self.search_status_var,
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            anchor='w',
-            justify='left',
-            wraplength=SIDEBAR_WIDTH - 32,
-        )
-        search_status_label.pack(anchor='w', padx=16, pady=(0, 12))
 
         railway_section = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
         self._make_sidebar_hint(
@@ -6741,6 +6859,7 @@ class MetroMapViewer:
             f'From {origin_label}. Click a station below.'
         )
         entries = _priority_list_entries(origin_key, **self._route_graph_options())
+        _write_priority_list_csv(entries)
         self._refresh_priority_filter_menu(entries)
         self._populate_priority_list(self._priority_filter_entries(entries))
 

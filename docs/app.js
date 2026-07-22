@@ -49,6 +49,10 @@ const CONSTANTS = {
   routeOutline: '#ffffff',
   routeOutlineWidth: 10,
   routeWidth: 6,
+  searchPointColor: '#8ad4ff',
+  searchPointOutline: '#050505',
+  searchPointRadius: 6,
+  lineHitToleranceMeters: 1.5,
   connectorPathColor: '#f0f0f0',
   walkingPathColor: '#f7c7db',
   walkingPathDash: [8, 6],
@@ -67,8 +71,10 @@ const state = {
   visibleLines: new Set(),
   selectedStop: null,
   selectedPathEdge: null,
+  selectedSearchPoint: null,
   hoverStop: null,
   searchMatches: [],
+  searchPointResult: null,
   preferredRouteInput: null,
   currentRoute: null,
   routeRequest: null,
@@ -279,6 +285,7 @@ function bindEvents() {
     }
     state.selectedStop = null;
     state.selectedPathEdge = null;
+    state.selectedSearchPoint = null;
     hidePopup();
     render();
   });
@@ -458,6 +465,7 @@ function render() {
   drawExtraEdges();
   drawSuggestedWalkingPaths();
   drawCurrentRoute();
+  drawSearchPoint();
   drawStations();
   positionInfoPopup();
 }
@@ -624,6 +632,30 @@ function drawCurrentRoute() {
   ctx.restore();
 }
 
+function drawSearchPoint() {
+  const result = state.searchPointResult || state.selectedSearchPoint;
+  if (!result) {
+    return;
+  }
+  const point = plotToCanvas(result.point);
+  ctx.save();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = CONSTANTS.searchPointOutline;
+  ctx.fillStyle = CONSTANTS.searchPointColor;
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, CONSTANTS.searchPointRadius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(point.x - 11, point.y);
+  ctx.lineTo(point.x + 11, point.y);
+  ctx.moveTo(point.x, point.y - 11);
+  ctx.lineTo(point.x, point.y + 11);
+  ctx.stroke();
+  ctx.restore();
+}
+
 function extraEdgePlotPoints(edge) {
   const rawPathPoints = Array.isArray(edge.path_points) ? edge.path_points : [];
   if (rawPathPoints.length) {
@@ -736,12 +768,26 @@ function drawStations() {
   const labelFontSize = labelFontSizeForZoom();
   ctx.font = `${labelFontSize}px Helvetica, Arial, sans-serif`;
   ctx.textBaseline = 'alphabetic';
-
-  for (const stop of state.data.stops) {
-    if (!stopHasVisibleLine(stop)) {
-      continue;
-    }
+  const visibleStops = state.data.stops.filter((stop) => stopHasVisibleLine(stop));
+  const stationRects = visibleStops.map((stop) => {
     const point = plotToCanvas(stationPlotPoint(stop));
+    return {
+      stop,
+      point,
+      rect: {
+        minX: point.x - CONSTANTS.stationRadius - 2,
+        maxX: point.x + CONSTANTS.stationRadius + 2,
+        minY: point.y - CONSTANTS.stationRadius - 2,
+        maxY: point.y + CONSTANTS.stationRadius + 2,
+      },
+    };
+  });
+  const labelLayout = showLabelsInput.checked
+    ? placeStationLabels(stationRects, labelFontSize)
+    : new Map();
+
+  for (const item of stationRects) {
+    const { stop, point } = item;
     const fill = stationColor(stop);
     ctx.beginPath();
     ctx.arc(point.x, point.y, CONSTANTS.stationRadius, 0, Math.PI * 2);
@@ -749,10 +795,15 @@ function drawStations() {
     ctx.fill();
 
     if (showLabelsInput.checked) {
+      const label = labelLayout.get(stop.var) || {
+        text: displayLabel(stop.lbl),
+        x: point.x + labelOffset(),
+        y: point.y - labelOffset(),
+      };
       drawRotatedLabel(
-        displayLabel(stop.lbl),
-        point.x + labelOffset(),
-        point.y - labelOffset(),
+        label.text,
+        label.x,
+        label.y,
         stationLabelColor(stop),
         labelFontSize,
         false,
@@ -760,6 +811,154 @@ function drawStations() {
     }
   }
   ctx.restore();
+}
+
+function placeStationLabels(stationItems, fontSize) {
+  const mapRect = currentMapScreenRect();
+  const linePaths = visibleLineCanvasPaths();
+  const occupiedRects = stationItems.map((item) => item.rect);
+  const labels = new Map();
+  const orderedItems = [...stationItems].sort((a, b) => (
+    distanceToRectEdge(a.point, mapRect) - distanceToRectEdge(b.point, mapRect)
+  ));
+
+  for (const item of orderedItems) {
+    const text = displayLabel(item.stop.lbl);
+    const candidates = labelCandidatesForStation(item.point, text, fontSize);
+    let best = null;
+    for (const candidate of candidates) {
+      const placed = clampLabelCandidate(candidate, text, fontSize, mapRect);
+      const score = labelPlacementScore(placed.rect, occupiedRects, linePaths, mapRect) + candidate.preference;
+      if (!best || score < best.score) {
+        best = { ...placed, score, text };
+      }
+      if (score === 0) {
+        break;
+      }
+    }
+    if (!best) {
+      continue;
+    }
+    labels.set(item.stop.var, best);
+    occupiedRects.push(expandRect(best.rect, 2));
+  }
+  return labels;
+}
+
+function labelCandidatesForStation(point, text, fontSize) {
+  const width = ctx.measureText(text).width;
+  const textCenter = rotatedVector(width / 2, -fontSize / 2, CONSTANTS.labelAngle);
+  const baseOffset = labelOffset();
+  const candidates = [
+    {
+      x: point.x + baseOffset,
+      y: point.y - baseOffset,
+      preference: 0,
+    },
+  ];
+  const distances = [
+    CONSTANTS.stationRadius + Math.max(16, fontSize) + (Math.min(width, 90) / 2),
+    CONSTANTS.stationRadius + Math.max(30, fontSize * 2),
+    CONSTANTS.stationRadius + Math.max(48, fontSize * 3),
+    CONSTANTS.stationRadius + Math.max(70, fontSize * 4),
+  ];
+  const angles = [-45, -90, 0, 45, 90, 135, 180, -135, -30, 30, -120, 120];
+  for (let distanceIndex = 0; distanceIndex < distances.length; distanceIndex += 1) {
+    const distance = distances[distanceIndex];
+    for (let angleIndex = 0; angleIndex < angles.length; angleIndex += 1) {
+      const radians = angles[angleIndex] * Math.PI / 180;
+      const center = {
+        x: point.x + (Math.cos(radians) * distance),
+        y: point.y + (Math.sin(radians) * distance),
+      };
+      candidates.push({
+        x: center.x - textCenter.x,
+        y: center.y - textCenter.y,
+        preference: 1 + (distanceIndex * 2) + (angleIndex / 100),
+      });
+    }
+  }
+  return candidates;
+}
+
+function clampLabelCandidate(candidate, text, fontSize, mapRect) {
+  let x = candidate.x;
+  let y = candidate.y;
+  let rect = rotatedLabelBounds(text, x, y, fontSize);
+  for (let index = 0; index < 3; index += 1) {
+    const dx = rect.maxX > mapRect.maxX
+      ? mapRect.maxX - rect.maxX
+      : rect.minX < mapRect.minX
+        ? mapRect.minX - rect.minX
+        : 0;
+    const dy = rect.maxY > mapRect.maxY
+      ? mapRect.maxY - rect.maxY
+      : rect.minY < mapRect.minY
+        ? mapRect.minY - rect.minY
+        : 0;
+    if (dx === 0 && dy === 0) {
+      break;
+    }
+    x += dx;
+    y += dy;
+    rect = rotatedLabelBounds(text, x, y, fontSize);
+  }
+  return { x, y, rect };
+}
+
+function rotatedLabelBounds(text, x, y, fontSize) {
+  const width = ctx.measureText(text).width;
+  const padding = CONSTANTS.labelCasingWidth + 1;
+  const corners = [
+    { x: -padding, y: -fontSize - padding },
+    { x: width + padding, y: -fontSize - padding },
+    { x: width + padding, y: padding },
+    { x: -padding, y: padding },
+  ].map((corner) => {
+    const rotated = rotatedVector(corner.x, corner.y, CONSTANTS.labelAngle);
+    return { x: x + rotated.x, y: y + rotated.y };
+  });
+  return boundsForScreenPoints(corners);
+}
+
+function labelPlacementScore(rect, occupiedRects, linePaths, mapRect) {
+  let score = 0;
+  if (!rectContainsRect(mapRect, rect)) {
+    score += 1000000;
+  }
+  for (const occupied of occupiedRects) {
+    if (rectsOverlap(rect, occupied)) {
+      score += 100000 + rectOverlapArea(rect, occupied);
+    }
+  }
+  const expanded = expandRect(rect, 3);
+  for (const path of linePaths) {
+    if (polylineIntersectsRect(path, expanded)) {
+      score += 50000;
+    }
+  }
+  return score;
+}
+
+function currentMapScreenRect() {
+  const bounds = currentTerrainBounds();
+  if (!bounds) {
+    return {
+      minX: 0,
+      minY: 0,
+      maxX: state.camera.viewportWidth,
+      maxY: state.camera.viewportHeight,
+    };
+  }
+  const first = plotToCanvas({ x: bounds.minX, y: -bounds.maxZ });
+  const second = plotToCanvas({ x: bounds.maxX, y: -bounds.minZ });
+  return normalizedScreenRect(first, second);
+}
+
+function visibleLineCanvasPaths() {
+  return state.lineSegments
+    .filter((segment) => state.visibleLines.has(segment.lineName) && segment.points.length >= 2)
+    .map((segment) => segment.points.map(plotToCanvas));
 }
 
 function drawPlotPolyline(points) {
@@ -848,6 +1047,7 @@ function findExtraEdgeAt(screenX, screenY) {
 function selectStop(stop, options = {}) {
   state.selectedStop = stop;
   state.selectedPathEdge = null;
+  state.selectedSearchPoint = null;
   if (options.pan) {
     centerOnPlotPoint(stationPlotPoint(stop));
   }
@@ -861,6 +1061,19 @@ function selectStop(stop, options = {}) {
 function selectPathEdge(edge) {
   state.selectedStop = null;
   state.selectedPathEdge = edge;
+  state.selectedSearchPoint = null;
+  updateInfoPopup();
+  render();
+}
+
+function selectSearchPoint(result, options = {}) {
+  state.selectedStop = null;
+  state.selectedPathEdge = null;
+  state.selectedSearchPoint = result;
+  state.searchPointResult = result;
+  if (options.pan) {
+    centerOnPlotPoint(result.point);
+  }
   updateInfoPopup();
   render();
 }
@@ -868,7 +1081,9 @@ function selectPathEdge(edge) {
 function clearSelection() {
   state.selectedStop = null;
   state.selectedPathEdge = null;
+  state.selectedSearchPoint = null;
   state.searchMatches = [];
+  state.searchPointResult = null;
   searchInput.value = '';
   refreshSearch();
   hidePopup();
@@ -876,8 +1091,12 @@ function clearSelection() {
 }
 
 function updateInfoPopup() {
-  if (!state.selectedStop && !state.selectedPathEdge) {
+  if (!state.selectedStop && !state.selectedPathEdge && !state.selectedSearchPoint) {
     hidePopup();
+    return;
+  }
+  if (state.selectedSearchPoint) {
+    updateSearchPointPopup(state.selectedSearchPoint);
     return;
   }
   if (state.selectedPathEdge) {
@@ -893,6 +1112,23 @@ function updateInfoPopup() {
     <h2>${escapeHtml(displayLabel(stop.lbl))}</h2>
     <p>Coords: (${stop.x}, ${stop.y})<br>Lines: ${escapeHtml(linesForStop(stop).join(', '))}<br>Status: ${statusText}</p>
     ${chimeText}
+  `;
+  infoPopup.hidden = false;
+  positionInfoPopup();
+}
+
+function updateSearchPointPopup(result) {
+  const lineNames = result.lineHits.map((hit) => hit.lineName);
+  const distanceRows = searchPointDistanceRows(result);
+  const distanceText = distanceRows.length
+    ? distanceRows.map((row) => `${escapeHtml(row.lineName)} · ${escapeHtml(row.label)}: ${formatTrackDistance(row.distance)}`).join('<br>')
+    : 'This point is not on a metro line.';
+  const lineText = lineNames.length ? `Line${lineNames.length === 1 ? '' : 's'} ${lineNames.join(', ')}` : 'No line';
+  infoPopup.innerHTML = `
+    <h2>(${formatCoordinate(result.worldPoint.x)}, ${formatCoordinate(result.worldPoint.y)})</h2>
+    <p>${escapeHtml(lineText)}</p>
+    <p class="section-label">Track Distances</p>
+    <p>${distanceText}</p>
   `;
   infoPopup.hidden = false;
   positionInfoPopup();
@@ -918,12 +1154,14 @@ function updatePathEdgePopup(edge) {
 }
 
 function positionInfoPopup() {
-  if ((!state.selectedStop && !state.selectedPathEdge) || infoPopup.hidden) {
+  if ((!state.selectedStop && !state.selectedPathEdge && !state.selectedSearchPoint) || infoPopup.hidden) {
     return;
   }
   const point = state.selectedStop
     ? plotToCanvas(stationPlotPoint(state.selectedStop))
-    : selectedPathEdgeAnchorPoint(state.selectedPathEdge);
+    : state.selectedPathEdge
+      ? selectedPathEdgeAnchorPoint(state.selectedPathEdge)
+      : plotToCanvas(state.selectedSearchPoint.point);
   const stageRect = canvas.getBoundingClientRect();
   const box = infoPopup.getBoundingClientRect();
   const margin = CONSTANTS.padding / 2;
@@ -947,16 +1185,32 @@ function hidePopup() {
 
 function refreshSearch() {
   const query = searchInput.value.trim();
-  state.searchMatches = searchMatches(query);
+  state.searchMatches = searchResults(query);
+  state.searchPointResult = state.searchMatches.find((result) => result.kind === 'point') || null;
+  if (
+    state.selectedSearchPoint
+    && (
+      !state.searchPointResult
+      || state.selectedSearchPoint.worldPoint.x !== state.searchPointResult.worldPoint.x
+      || state.selectedSearchPoint.worldPoint.y !== state.searchPointResult.worldPoint.y
+    )
+  ) {
+    state.selectedSearchPoint = null;
+    hidePopup();
+  }
   if (!query) {
-    searchStatus.textContent = 'Search stations by village name or station code.';
+    searchStatus.textContent = 'Search by station, or enter x, y to plot a point.';
   } else if (state.searchMatches.length === 0) {
-    searchStatus.textContent = 'No station matches that search.';
+    state.searchPointResult = null;
+    searchStatus.textContent = 'No station or point matches that search.';
+  } else if (state.searchPointResult) {
+    searchStatus.textContent = searchPointStatusText(state.searchPointResult);
   } else if (state.searchMatches.length === 1) {
     searchStatus.textContent = 'Press Enter or click Go to jump to the match.';
   } else {
     searchStatus.textContent = `${state.searchMatches.length} matches. Press Enter or click Go to jump to the best match.`;
   }
+  render();
 }
 
 function jumpToSearchResult() {
@@ -965,7 +1219,19 @@ function jumpToSearchResult() {
   if (!first) {
     return;
   }
-  selectStop(first, { pan: true, updateRouteStart: true });
+  if (first.kind === 'point') {
+    selectSearchPoint(first, { pan: true });
+    return;
+  }
+  selectStop(first.stop, { pan: true, updateRouteStart: true });
+}
+
+function searchResults(query) {
+  const point = coordinateQueryPoint(query);
+  if (point) {
+    return [searchPointResult(point)];
+  }
+  return searchMatches(query).map((stop) => ({ kind: 'station', stop }));
 }
 
 function searchMatches(query) {
@@ -998,6 +1264,162 @@ function searchMatches(query) {
   }
   ranked.sort((a, b) => compareRank(a.rank, b.rank));
   return ranked.map((item) => item.stop);
+}
+
+function coordinateQueryPoint(query) {
+  const match = /^\s*\(?\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\)?\s*$/.exec(query);
+  if (!match) {
+    return null;
+  }
+  const x = Number(match[1]);
+  const y = Number(match[2]);
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null;
+}
+
+function searchPointResult(worldPoint) {
+  const point = { x: worldPoint.x, y: -worldPoint.y };
+  return {
+    kind: 'point',
+    worldPoint,
+    point,
+    lineHits: lineHitsForPoint(point),
+  };
+}
+
+function lineHitsForPoint(point) {
+  const bestByLine = new Map();
+  for (const segment of state.lineSegments) {
+    if (segment.points.length < 2) {
+      continue;
+    }
+    const projection = pointProjectionOnPolyline(point, segment.points);
+    if (!projection || projection.distance > CONSTANTS.lineHitToleranceMeters) {
+      continue;
+    }
+    const hit = {
+      lineName: segment.lineName,
+      segment,
+      projectedPoint: projection.point,
+      alongSegmentDistance: projection.alongDistance,
+      distanceFromLine: projection.distance,
+    };
+    const current = bestByLine.get(segment.lineName);
+    if (
+      !current
+      || hit.distanceFromLine < current.distanceFromLine
+      || (
+        hit.distanceFromLine === current.distanceFromLine
+        && hit.alongSegmentDistance < current.alongSegmentDistance
+      )
+    ) {
+      bestByLine.set(segment.lineName, hit);
+    }
+  }
+  return [...bestByLine.values()].sort((a, b) => a.lineName.localeCompare(b.lineName, undefined, { numeric: true }));
+}
+
+function searchPointDistanceRows(result) {
+  const rows = [];
+  for (const hit of result.lineHits) {
+    const lineDistances = cumulativeLineDistances(hit.lineName);
+    const pointDistance = (lineDistances.distances.get(hit.segment.startVar) || 0) + hit.alongSegmentDistance;
+    for (const stopVar of lineDistances.stopVars) {
+      const stop = state.stopsByVar.get(stopVar);
+      const stationDistance = lineDistances.distances.get(stopVar);
+      if (!stop || stationDistance === undefined) {
+        continue;
+      }
+      const distance = Math.round(Math.abs(stationDistance - pointDistance));
+      if (distance === 0) {
+        continue;
+      }
+      rows.push({
+        lineName: hit.lineName,
+        stopVar,
+        label: displayLabel(stop.lbl),
+        distance,
+      });
+    }
+  }
+  rows.sort((a, b) => a.distance - b.distance || a.lineName.localeCompare(b.lineName, undefined, { numeric: true }) || a.label.localeCompare(b.label));
+  return rows;
+}
+
+function searchPointStatusText(result) {
+  const coordinateText = `(${formatCoordinate(result.worldPoint.x)}, ${formatCoordinate(result.worldPoint.y)})`;
+  if (!result.lineHits.length) {
+    return `Plotted ${coordinateText}. It is not on a metro line.`;
+  }
+  const lineNames = result.lineHits.map((hit) => hit.lineName);
+  const lineText = `Line${lineNames.length === 1 ? '' : 's'} ${lineNames.join(', ')}`;
+  const rows = searchPointDistanceRows(result);
+  if (!rows.length) {
+    return `Plotted ${coordinateText} on ${lineText}.`;
+  }
+  return [
+    `Plotted ${coordinateText} on ${lineText}.`,
+    'Distances by track:',
+    ...rows.map((row) => `${row.lineName} · ${row.label}: ${formatTrackDistance(row.distance)}`),
+  ].join('\n');
+}
+
+function cumulativeLineDistances(lineName) {
+  const stopVars = state.data.line_stop_vars[lineName] || [];
+  const distances = new Map();
+  let total = 0;
+  if (stopVars.length) {
+    distances.set(stopVars[0], total);
+  }
+  for (let index = 0; index < stopVars.length - 1; index += 1) {
+    const startVar = stopVars[index];
+    const endVar = stopVars[index + 1];
+    const segment = state.lineSegments.find((candidate) => (
+      candidate.lineName === lineName
+      && candidate.startVar === startVar
+      && candidate.endVar === endVar
+    ));
+    total += segment ? polylineDistance(segment.points) : 0;
+    distances.set(endVar, total);
+  }
+  return { stopVars, distances };
+}
+
+function pointProjectionOnPolyline(point, points) {
+  if (points.length < 2) {
+    return null;
+  }
+  let best = null;
+  let traversed = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const first = points[index];
+    const second = points[index + 1];
+    const dx = second.x - first.x;
+    const dy = second.y - first.y;
+    const length = Math.hypot(dx, dy);
+    const lengthSq = (dx * dx) + (dy * dy);
+    const t = lengthSq === 0
+      ? 0
+      : clamp(
+        (((point.x - first.x) * dx) + ((point.y - first.y) * dy)) / lengthSq,
+        0,
+        1,
+      );
+    const projected = {
+      x: first.x + (dx * t),
+      y: first.y + (dy * t),
+    };
+    const distance = Math.hypot(point.x - projected.x, point.y - projected.y);
+    const candidate = {
+      point: projected,
+      distance,
+      alongDistance: traversed + (length * t),
+    };
+    if (!best || candidate.distance < best.distance) {
+      best = candidate;
+    }
+    traversed += length;
+  }
+  return best;
 }
 
 function planRoute() {
@@ -1481,6 +1903,140 @@ function normalizedWorldBounds(first, second) {
   };
 }
 
+function normalizedScreenRect(first, second) {
+  return {
+    minX: Math.min(first.x, second.x),
+    maxX: Math.max(first.x, second.x),
+    minY: Math.min(first.y, second.y),
+    maxY: Math.max(first.y, second.y),
+  };
+}
+
+function boundsForScreenPoints(points) {
+  return points.reduce((bounds, point) => ({
+    minX: Math.min(bounds.minX, point.x),
+    minY: Math.min(bounds.minY, point.y),
+    maxX: Math.max(bounds.maxX, point.x),
+    maxY: Math.max(bounds.maxY, point.y),
+  }), {
+    minX: Infinity,
+    minY: Infinity,
+    maxX: -Infinity,
+    maxY: -Infinity,
+  });
+}
+
+function rotatedVector(x, y, angle) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return {
+    x: (x * cos) - (y * sin),
+    y: (x * sin) + (y * cos),
+  };
+}
+
+function expandRect(rect, padding) {
+  return {
+    minX: rect.minX - padding,
+    maxX: rect.maxX + padding,
+    minY: rect.minY - padding,
+    maxY: rect.maxY + padding,
+  };
+}
+
+function rectContainsRect(outer, inner) {
+  return inner.minX >= outer.minX
+    && inner.maxX <= outer.maxX
+    && inner.minY >= outer.minY
+    && inner.maxY <= outer.maxY;
+}
+
+function rectsOverlap(first, second) {
+  return first.minX < second.maxX
+    && first.maxX > second.minX
+    && first.minY < second.maxY
+    && first.maxY > second.minY;
+}
+
+function rectOverlapArea(first, second) {
+  const width = Math.max(0, Math.min(first.maxX, second.maxX) - Math.max(first.minX, second.minX));
+  const height = Math.max(0, Math.min(first.maxY, second.maxY) - Math.max(first.minY, second.minY));
+  return width * height;
+}
+
+function distanceToRectEdge(point, rect) {
+  return Math.min(
+    Math.abs(point.x - rect.minX),
+    Math.abs(point.x - rect.maxX),
+    Math.abs(point.y - rect.minY),
+    Math.abs(point.y - rect.maxY),
+  );
+}
+
+function polylineIntersectsRect(points, rect) {
+  for (let index = 0; index < points.length - 1; index += 1) {
+    if (segmentIntersectsRect(points[index], points[index + 1], rect)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function segmentIntersectsRect(first, second, rect) {
+  if (pointInRect(first, rect) || pointInRect(second, rect)) {
+    return true;
+  }
+  const corners = [
+    { x: rect.minX, y: rect.minY },
+    { x: rect.maxX, y: rect.minY },
+    { x: rect.maxX, y: rect.maxY },
+    { x: rect.minX, y: rect.maxY },
+  ];
+  for (let index = 0; index < corners.length; index += 1) {
+    const start = corners[index];
+    const end = corners[(index + 1) % corners.length];
+    if (segmentsIntersect(first, second, start, end)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function pointInRect(point, rect) {
+  return point.x >= rect.minX
+    && point.x <= rect.maxX
+    && point.y >= rect.minY
+    && point.y <= rect.maxY;
+}
+
+function segmentsIntersect(a, b, c, d) {
+  const abC = orientation(a, b, c);
+  const abD = orientation(a, b, d);
+  const cdA = orientation(c, d, a);
+  const cdB = orientation(c, d, b);
+
+  if (abC === 0 && pointOnSegment(c, a, b)) return true;
+  if (abD === 0 && pointOnSegment(d, a, b)) return true;
+  if (cdA === 0 && pointOnSegment(a, c, d)) return true;
+  if (cdB === 0 && pointOnSegment(b, c, d)) return true;
+  return (abC > 0) !== (abD > 0) && (cdA > 0) !== (cdB > 0);
+}
+
+function orientation(a, b, c) {
+  const value = ((b.y - a.y) * (c.x - b.x)) - ((b.x - a.x) * (c.y - b.y));
+  if (Math.abs(value) < 0.000001) {
+    return 0;
+  }
+  return value > 0 ? 1 : -1;
+}
+
+function pointOnSegment(point, first, second) {
+  return point.x <= Math.max(first.x, second.x) + 0.000001
+    && point.x >= Math.min(first.x, second.x) - 0.000001
+    && point.y <= Math.max(first.y, second.y) + 0.000001
+    && point.y >= Math.min(first.y, second.y) - 0.000001;
+}
+
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
@@ -1655,6 +2211,10 @@ function formatTrackDistance(distanceMeters) {
     return `${Math.round(distanceMeters).toLocaleString()} m`;
   }
   return `${Number((distanceMeters / 1000).toFixed(1)).toLocaleString()} km`;
+}
+
+function formatCoordinate(value) {
+  return Number.isInteger(value) ? value.toLocaleString() : Number(value.toFixed(2)).toLocaleString();
 }
 
 function terrainStationBounds(stops) {

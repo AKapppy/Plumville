@@ -13,7 +13,7 @@ class StationSignageTest(unittest.TestCase):
 
     def test_placeholder_junction_labels_do_not_get_repeated_suffixes(self) -> None:
         self.assertEqual(base._station_signage_label("P_AF", "A"), "Cherry Hole (F)")
-        self.assertEqual(base._station_signage_label("P_BJ", "B"), "BJ")
+        self.assertEqual(base._station_signage_label("P_GH", "G"), "GH")
 
     def test_triarchidia_default_direction_lists_match_example_layout(self) -> None:
         left_stop_vars, right_stop_vars = base._station_signage_direction_stop_vars("P_C3", "C")

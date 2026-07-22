@@ -44,8 +44,12 @@ assert(indexHtml.includes('<details class="collapsible-section" open>'), 'Direct
 assert(indexHtml.includes('id="stationSuggestions"'), 'Directions station suggestions are missing from index.html.');
 assert(indexHtml.includes('id="showSuggestedWalkingPathsInput"'), 'Suggested walking path view toggle is missing from index.html.');
 assert(indexHtml.includes('id="searchInput"'), 'Station search input is missing from index.html.');
+assert(indexHtml.indexOf('id="searchInput"') < indexHtml.indexOf('id="showWorldMapInput"'), 'Search should sit above the view checklist.');
 assert(appJs.includes('function routeInputTargetForStop'), 'Directions station selection helper is missing from app.js.');
 assert(appJs.includes('function drawSuggestedWalkingPaths'), 'app.js is missing suggested walking path rendering.');
+assert(appJs.includes('function coordinateQueryPoint'), 'app.js is missing coordinate search parsing.');
+assert(appJs.includes('function searchPointDistanceRows'), 'app.js is missing along-track point distance reporting.');
+assert(appJs.includes('function placeStationLabels'), 'app.js is missing automatic station label placement.');
 assert(!appJs.includes('stopRouteInputPropagation'), 'Route inputs still intercept native pointer/click events.');
 assert(!indexHtml.includes('Checklist'), 'Maintenance checklist is visible in the public viewer.');
 assert(!indexHtml.includes('showAlignmentInput'), 'Alignment maintenance overlay control is visible in the public viewer.');
