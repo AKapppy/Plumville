@@ -17,6 +17,7 @@ const stationSuggestions = document.querySelector('#stationSuggestions');
 const resetViewButton = document.querySelector('#resetViewButton');
 const fitMapButton = document.querySelector('#fitMapButton');
 const blackportButton = document.querySelector('#blackportButton');
+const copyLinkButton = document.querySelector('#copyLinkButton');
 const clearSelectionButton = document.querySelector('#clearSelectionButton');
 const mapZoomInButton = document.querySelector('#mapZoomInButton');
 const mapZoomOutButton = document.querySelector('#mapZoomOutButton');
@@ -24,6 +25,7 @@ const mapFitButton = document.querySelector('#mapFitButton');
 const showWorldMapInput = document.querySelector('#showWorldMapInput');
 const showLabelsInput = document.querySelector('#showLabelsInput');
 const showSuggestedWalkingPathsInput = document.querySelector('#showSuggestedWalkingPathsInput');
+const lineLegend = document.querySelector('#lineLegend');
 
 const CONSTANTS = {
   padding: 80,
@@ -57,6 +59,7 @@ const CONSTANTS = {
   walkingPathColor: '#f7c7db',
   walkingPathDash: [8, 6],
   extraPathWidth: 4,
+  minecartSpeedMps: 8,
   worldMapAlpha: 0.745,
   underlayOverscanPixels: 1,
   sharpUnderlayUpscaleThreshold: 1.5,
@@ -109,6 +112,7 @@ const state = {
   dragging: false,
   dragDistance: 0,
   lastPointer: null,
+  renderScheduled: false,
 };
 
 init();
@@ -125,10 +129,120 @@ async function init() {
     bindEvents();
     resizeCanvas();
     resetView();
-    refreshSearch();
+    if (!applyInitialUrlState()) {
+      refreshSearch();
+    }
     render();
   } catch (error) {
-    summaryText.textContent = error.message;
+    showPublicLoadError(error);
+  }
+}
+
+function showPublicLoadError(error) {
+  console.error(error);
+  summaryText.textContent = 'The public map could not load.';
+  searchStatus.textContent = 'Try refreshing this page. If it still fails, the map export may be updating.';
+  routeSummary.textContent = 'Map unavailable.';
+  routeSteps.textContent = 'Directions will be available after the public map loads.';
+}
+
+function applyInitialUrlState() {
+  const params = new URLSearchParams(window.location.search);
+  applyVisibleLinesFromUrl(params);
+  const from = params.get('from') || '';
+  const to = params.get('to') || '';
+  if (from || to) {
+    routeStartInput.value = from;
+    routeEndInput.value = to;
+    if (from && to) {
+      planRoute({ syncUrl: false });
+    }
+    return true;
+  }
+
+  const query = params.get('q') || '';
+  if (query) {
+    searchInput.value = query;
+    refreshSearch();
+    jumpToSearchResult({ syncUrl: false });
+    return true;
+  }
+  return false;
+}
+
+function replaceShareParams(nextParams) {
+  if (!window.history?.replaceState) {
+    return;
+  }
+  const url = new URL(window.location.href);
+  for (const key of ['q', 'from', 'to', 'lines']) {
+    url.searchParams.delete(key);
+  }
+  for (const [key, value] of Object.entries(nextParams)) {
+    const text = String(value || '').trim();
+    if (text) {
+      url.searchParams.set(key, text);
+    }
+  }
+  const query = url.searchParams.toString();
+  window.history.replaceState(null, '', `${url.pathname}${query ? `?${query}` : ''}${url.hash}`);
+}
+
+function allLineNames() {
+  return Object.keys(state.data?.line_stop_vars || {}).sort((first, second) => (
+    first.localeCompare(second, undefined, { numeric: true })
+  ));
+}
+
+function visibleLineShareParam() {
+  const lineNames = allLineNames();
+  if (!lineNames.length || state.visibleLines.size === lineNames.length) {
+    return '';
+  }
+  return lineNames.filter((lineName) => state.visibleLines.has(lineName)).join(',');
+}
+
+function lineShareParams() {
+  const lines = visibleLineShareParam();
+  return lines ? { lines } : {};
+}
+
+function currentShareParams() {
+  if (routeStartInput.value.trim() && routeEndInput.value.trim()) {
+    return { from: routeStartInput.value, to: routeEndInput.value, ...lineShareParams() };
+  }
+  if (searchInput.value.trim()) {
+    return { q: searchInput.value, ...lineShareParams() };
+  }
+  return lineShareParams();
+}
+
+function applyVisibleLinesFromUrl(params) {
+  const rawLines = params.get('lines');
+  if (!rawLines) {
+    return;
+  }
+  const availableLines = new Set(allLineNames());
+  const requestedLines = rawLines
+    .split(',')
+    .map((lineName) => lineName.trim())
+    .filter((lineName) => availableLines.has(lineName));
+  if (requestedLines.length) {
+    state.visibleLines = new Set(requestedLines);
+  }
+}
+
+async function copyCurrentLink() {
+  const currentUrl = window.location.href;
+  if (!navigator.clipboard?.writeText) {
+    searchStatus.textContent = 'Copy the current page address to share this view.';
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(currentUrl);
+    searchStatus.textContent = 'Link copied.';
+  } catch (_error) {
+    searchStatus.textContent = 'Copy the current page address to share this view.';
   }
 }
 
@@ -154,8 +268,68 @@ function hydrateNetwork(data) {
   ];
   state.plotBounds = boundsForPoints(allPoints);
   state.terrain.stationBounds = terrainStationBounds(data.stops);
+  applyVisibleLinesFromUrl(new URLSearchParams(window.location.search));
   populateStationSuggestions();
+  populateLineLegend();
   summaryText.textContent = networkSummary();
+}
+
+function populateLineLegend() {
+  if (!lineLegend) {
+    return;
+  }
+  lineLegend.replaceChildren();
+  const lineNames = Object.keys(state.data.line_stop_vars || {}).sort((first, second) => (
+    first.localeCompare(second, undefined, { numeric: true })
+  ));
+  for (const lineName of lineNames) {
+    const label = document.createElement('label');
+    label.className = 'line-toggle';
+    label.title = lineLegendStatusText(lineName);
+
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = state.visibleLines.has(lineName);
+    input.addEventListener('change', () => {
+      if (input.checked) {
+        state.visibleLines.add(lineName);
+      } else {
+        state.visibleLines.delete(lineName);
+      }
+      updateInfoPopup();
+      if (routeStartInput.value.trim() && routeEndInput.value.trim()) {
+        planRoute();
+      } else {
+        replaceShareParams(currentShareParams());
+        render();
+      }
+    });
+
+    const swatch = document.createElement('span');
+    swatch.className = 'line-swatch';
+    swatch.style.backgroundColor = colorForLine(lineName);
+
+    const text = document.createElement('span');
+    text.textContent = lineName;
+
+    label.append(input, swatch, text);
+    lineLegend.append(label);
+  }
+}
+
+function lineLegendStatusText(lineName) {
+  const segments = state.lineSegments.filter((segment) => segment.lineName === lineName);
+  const openCount = segments.filter((segment) => segment.routingOpen).length;
+  const plannedCount = segments.length - openCount;
+  const checklistGapCount = segments.filter((segment) => segment.constructionStatus === 'open_checklist_incomplete').length;
+  const parts = [`${openCount}/${segments.length} open`];
+  if (plannedCount) {
+    parts.push(`${plannedCount} planned`);
+  }
+  if (checklistGapCount) {
+    parts.push(`${checklistGapCount} checklist gap${checklistGapCount === 1 ? '' : 's'}`);
+  }
+  return `Line ${lineName}: ${parts.join(', ')}`;
 }
 
 function populateStationSuggestions() {
@@ -217,15 +391,37 @@ function segmentsForLine(lineName, stopVars, specs) {
     const startStop = state.stopsByVar.get(startVar);
     const endStop = state.stopsByVar.get(endVar);
     const connected = Boolean(startStop?.is_connected && endStop?.is_connected);
-    segments.push({ lineName, startVar, endVar, points, connected });
+    segments.push({
+      lineName,
+      startVar,
+      endVar,
+      points,
+      connected,
+      ...segmentConstructionStatus(startStop, endStop, connected),
+    });
   }
   return segments;
+}
+
+function segmentConstructionStatus(startStop, endStop, routingOpen) {
+  const stationChecklistComplete = Boolean(startStop?.has_finished_railway && endStop?.has_finished_railway);
+  let constructionStatus = 'planned';
+  if (routingOpen && stationChecklistComplete) {
+    constructionStatus = 'finished';
+  } else if (routingOpen) {
+    constructionStatus = 'open_checklist_incomplete';
+  }
+  return {
+    routingOpen,
+    stationChecklistComplete,
+    constructionStatus,
+  };
 }
 
 function bindEvents() {
   window.addEventListener('resize', () => {
     resizeCanvas();
-    render();
+    requestRender();
   });
 
   canvas.addEventListener('pointerdown', (event) => {
@@ -243,7 +439,7 @@ function bindEvents() {
       panBy(dx, dy);
       state.dragDistance += Math.abs(dx) + Math.abs(dy);
       state.lastPointer = { x: event.clientX, y: event.clientY };
-      render();
+      requestRender();
       return;
     }
     updateHover(event);
@@ -333,6 +529,7 @@ function bindEvents() {
   });
   fitMapButton.addEventListener('click', fitRenderedMap);
   blackportButton.addEventListener('click', showBlackportView);
+  copyLinkButton.addEventListener('click', copyCurrentLink);
   clearSelectionButton.addEventListener('click', clearSelection);
   mapZoomInButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom * CONSTANTS.zoomStep));
   mapZoomOutButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom / CONSTANTS.zoomStep));
@@ -342,7 +539,7 @@ function bindEvents() {
   });
 
   for (const input of [showWorldMapInput, showLabelsInput, showSuggestedWalkingPathsInput]) {
-    input.addEventListener('change', render);
+    input.addEventListener('change', requestRender);
   }
 }
 
@@ -456,6 +653,7 @@ function hotkeysAreSuppressed(target) {
 }
 
 function render() {
+  state.renderScheduled = false;
   if (!state.data) {
     return;
   }
@@ -475,6 +673,14 @@ function render() {
   drawSearchPoint();
   drawStations();
   positionInfoPopup();
+}
+
+function requestRender() {
+  if (state.renderScheduled) {
+    return;
+  }
+  state.renderScheduled = true;
+  window.requestAnimationFrame(render);
 }
 
 function loadTerrainImage() {
@@ -1331,6 +1537,11 @@ function clearSelection() {
   searchInput.value = '';
   refreshSearch();
   hidePopup();
+  if (state.currentRoute && routeStartInput.value.trim() && routeEndInput.value.trim()) {
+    replaceShareParams({ from: routeStartInput.value, to: routeEndInput.value, ...lineShareParams() });
+  } else {
+    replaceShareParams(lineShareParams());
+  }
   render();
 }
 
@@ -1349,23 +1560,36 @@ function updateInfoPopup() {
   }
   const stop = state.selectedStop;
   const statusText = stop.is_connected ? 'Open' : 'Planned';
+  const railwayText = stop.has_finished_railway ? 'Railway checklist complete' : 'Railway checklist incomplete';
+  const lineBadgeText = lineBadgesHtml(linesForStop(stop));
   const chimeText = stop.is_connected && stop.chime_directions?.length
     ? `<p class="section-label">Chimes</p><p>${stop.chime_directions.map(capitalize).join(', ')}</p>`
     : '';
   infoPopup.innerHTML = `
     <h2>${escapeHtml(displayLabel(stop.lbl))}</h2>
-    <p>Coords: (${stop.x}, ${stop.y})<br>Lines: ${escapeHtml(linesForStop(stop).join(', '))}<br>Status: ${statusText}</p>
+    <p>Coords: (${stop.x}, ${stop.y})<br>Status: ${statusText}<br>${railwayText}</p>
+    <p class="section-label">Lines</p>
+    <div class="line-badges">${lineBadgeText}</div>
     ${chimeText}
   `;
   infoPopup.hidden = false;
   positionInfoPopup();
 }
 
+function lineBadgesHtml(lineNames) {
+  if (!lineNames.length) {
+    return '<span class="line-badge muted">None</span>';
+  }
+  return lineNames.map((lineName) => (
+    `<span class="line-badge" style="--line-color: ${escapeHtml(colorForLine(lineName))}">${escapeHtml(lineName)}</span>`
+  )).join('');
+}
+
 function updateSearchPointPopup(result) {
   const lineNames = result.lineHits.map((hit) => hit.lineName);
   const distanceRows = searchPointDistanceRows(result);
   const distanceText = distanceRows.length
-    ? distanceRows.map((row) => `${escapeHtml(row.lineName)} · ${escapeHtml(row.label)}: ${formatTrackDistance(row.distance)}`).join('<br>')
+    ? distanceRows.map((row) => `${escapeHtml(row.lineName)} · ${escapeHtml(row.label)}: ${formatDistanceAndTime(row.distance)}`).join('<br>')
     : 'This point is not on a metro line.';
   const lineText = lineNames.length ? `Line${lineNames.length === 1 ? '' : 's'} ${lineNames.join(', ')}` : 'No line';
   infoPopup.innerHTML = `
@@ -1384,12 +1608,13 @@ function updatePathEdgePopup(edge) {
   const fromLabel = endpointLabel(edge.from_endpoint || endpointFromLegacyStop(edge.from_var));
   const toLabel = endpointLabel(edge.to_endpoint || endpointFromLegacyStop(edge.to_var));
   const kindLabel = edge.kind === 'walk' ? 'Walking path' : 'Metro connector';
+  const distance = Math.round(polylineDistance(points.map((point) => ({ x: point.x, y: -point.y }))));
   const turnText = turnPoints.length
     ? turnPoints.map((point) => `(${point.x}, ${point.y})`).join('<br>')
     : 'No turn coordinates';
   infoPopup.innerHTML = `
     <h2>${kindLabel}</h2>
-    <p>From: ${escapeHtml(fromLabel)}<br>To: ${escapeHtml(toLabel)}<br>Distance: ${formatTrackDistance(Math.round(polylineDistance(points.map((point) => ({ x: point.x, y: -point.y })))))}<br>Shape: ${turnPoints.length ? 'turn' : 'direct'}</p>
+    <p>From: ${escapeHtml(fromLabel)}<br>To: ${escapeHtml(toLabel)}<br>Distance: ${formatDistanceAndTime(distance)}<br>Shape: ${turnPoints.length ? 'turn' : 'direct'}</p>
     <p class="section-label">Turn Coordinates</p>
     <p>${turnText}</p>
   `;
@@ -1457,7 +1682,7 @@ function refreshSearch() {
   render();
 }
 
-function jumpToSearchResult() {
+function jumpToSearchResult(options = {}) {
   refreshSearch();
   const [first] = state.searchMatches;
   if (!first) {
@@ -1465,9 +1690,12 @@ function jumpToSearchResult() {
   }
   if (first.kind === 'point') {
     selectSearchPoint(first, { pan: true });
-    return;
+  } else {
+    selectStop(first.stop, { pan: true, updateRouteStart: true });
   }
-  selectStop(first.stop, { pan: true, updateRouteStart: true });
+  if (options.syncUrl !== false) {
+    replaceShareParams({ q: searchInput.value, ...lineShareParams() });
+  }
 }
 
 function searchResults(query) {
@@ -1603,7 +1831,7 @@ function searchPointStatusText(result) {
   return [
     `Plotted ${coordinateText} on ${lineText}.`,
     'Distances by track:',
-    ...rows.map((row) => `${row.lineName} · ${row.label}: ${formatTrackDistance(row.distance)}`),
+    ...rows.map((row) => `${row.lineName} · ${row.label}: ${formatDistanceAndTime(row.distance)}`),
   ].join('\n');
 }
 
@@ -1666,25 +1894,28 @@ function pointProjectionOnPolyline(point, points) {
   return best;
 }
 
-function planRoute() {
+function planRoute(options = {}) {
   const start = resolveStop(routeStartInput.value);
   const end = resolveStop(routeEndInput.value);
   if (!start || !end) {
     state.currentRoute = null;
     state.routeRequest = null;
     routeSummary.textContent = 'Choose two stations.';
-    routeSteps.textContent = 'Could not find one of those station names.';
+    routeSteps.textContent = 'Could not find one of those stations. Use Search for coordinates like x, y.';
     render();
     return;
+  }
+  if (options.syncUrl !== false) {
+    replaceShareParams({ from: routeStartInput.value, to: routeEndInput.value, ...lineShareParams() });
   }
   state.routeRequest = [start.var, end.var];
   const route = findRoute(start.var, end.var);
   state.currentRoute = route;
   if (!route) {
     routeSummary.textContent = `No route from ${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}.`;
-    routeSteps.textContent = 'No route exists for those endpoints with the current metro data.';
+    routeSteps.textContent = 'No route exists using the currently visible metro lines.';
   } else {
-    routeSummary.textContent = `${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}\n${formatTrackDistance(route.totalDistance)}, ${route.totalInterchanges} interchange(s)`;
+    routeSummary.textContent = `${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}\n${formatDistanceAndTime(route.totalDistance)}, ${formatInterchangeCount(route.totalInterchanges)}`;
     routeSteps.textContent = routeInstructions(route);
   }
   render();
@@ -1694,7 +1925,7 @@ function clearRouteStateForInput() {
   state.currentRoute = null;
   state.routeRequest = null;
   routeSummary.textContent = 'Choose two stations.';
-  routeSteps.textContent = 'Enter or select a start and destination, then press Route.';
+  routeSteps.textContent = 'Enter or select two stations, then press Route.';
 }
 
 function prepareRouteInput(input) {
@@ -1720,7 +1951,8 @@ function clearRoute() {
   routeStartInput.value = '';
   routeEndInput.value = '';
   routeSummary.textContent = 'Choose two stations.';
-  routeSteps.textContent = 'Enter or select a start and destination, then press Route.';
+  routeSteps.textContent = 'Enter or select two stations, then press Route.';
+  replaceShareParams(lineShareParams());
   render();
 }
 
@@ -1826,7 +2058,7 @@ function findMetroRoute(startVar, endVar) {
 function buildRouteGraph() {
   const graph = new Map();
   for (const stop of state.data.stops) {
-    const lines = linesForStop(stop);
+    const lines = linesForStop(stop).filter((lineName) => state.visibleLines.has(lineName));
     for (const lineName of lines) {
       ensureGraphNode(graph, { stopVar: stop.var, lineName });
     }
@@ -1854,6 +2086,9 @@ function buildRouteGraph() {
     }
   }
   for (const segment of state.lineSegments) {
+    if (!state.visibleLines.has(segment.lineName)) {
+      continue;
+    }
     const distance = Math.round(polylineDistance(segment.points));
     appendGraphEdge(graph, {
       start: { stopVar: segment.startVar, lineName: segment.lineName },
@@ -1919,11 +2154,11 @@ function routeInstructions(route) {
   const start = state.stopsByVar.get(route.startVar);
   const end = state.stopsByVar.get(route.endVar);
   if (!route.steps.length) {
-    return `You are already at ${displayLabel(start.lbl)}.\nTrack distance: ${formatTrackDistance(0)}.`;
+    return `You are already at ${displayLabel(start.lbl)}.\nTrack distance: ${formatDistanceAndTime(0)}.`;
   }
   const lines = [
-    `Track distance: ${formatTrackDistance(route.totalDistance)}`,
-    `Interchanges: ${route.totalInterchanges}`,
+    `Track distance: ${formatDistanceAndTime(route.totalDistance)}`,
+    `Interchanges: ${formatInterchangeCount(route.totalInterchanges)}`,
     '',
   ];
   route.steps.forEach((step, index) => {
@@ -1933,24 +2168,24 @@ function routeInstructions(route) {
     const endLabel = displayLabel(stepEnd.lbl);
     if (step.kind === 'ride') {
       const stopCount = Math.max(0, step.stopVars.length - 1);
-      lines.push(`${index + 1}. Take Line ${step.lineName} from ${startLabel} to ${endLabel} for ${formatTrackDistance(step.distance)} (${stopCount} ${stopCount === 1 ? 'stop' : 'stops'}).`);
+      lines.push(`${index + 1}. Take Line ${step.lineName} from ${startLabel} to ${endLabel} for ${formatDistanceAndTime(step.distance)} (${stopCount} ${stopCount === 1 ? 'stop' : 'stops'}).`);
     } else if (step.kind === 'transfer') {
       lines.push(`${index + 1}. Transfer at ${startLabel} to Line ${step.lineName}.`);
     }
   });
   lines.push('');
-  const unfinishedLineNames = unfinishedRouteLineNames(route);
-  if (unfinishedLineNames.length) {
-    const lineWord = unfinishedLineNames.length === 1 ? 'line is' : 'lines are';
-    lines.push(`Warning: the ${formatLineList(unfinishedLineNames)} ${lineWord} not fully constructed for this route. Consider direct flying instead.`);
+  const warningLines = routeConstructionWarningLines(route);
+  if (warningLines.length) {
+    lines.push(...warningLines);
     lines.push('');
   }
   lines.push(`Route from ${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}.`);
   return lines.join('\n');
 }
 
-function unfinishedRouteLineNames(route) {
-  const lineNames = new Set();
+function routeConstructionWarningLines(route) {
+  const plannedLineNames = new Set();
+  const checklistLineNames = new Set();
   for (const step of route.steps) {
     if (step.kind !== 'ride' || !step.lineName || step.stopVars.length < 2) {
       continue;
@@ -1964,11 +2199,24 @@ function unfinishedRouteLineNames(route) {
         )
       ));
       if (segment && !segment.connected) {
-        lineNames.add(step.lineName);
+        plannedLineNames.add(step.lineName);
+      } else if (segment && segment.constructionStatus === 'open_checklist_incomplete') {
+        checklistLineNames.add(step.lineName);
       }
     }
   }
-  return [...lineNames].sort();
+  const lines = [];
+  const plannedLines = [...plannedLineNames].sort();
+  const checklistLines = [...checklistLineNames].sort();
+  if (plannedLines.length) {
+    const lineWord = plannedLines.length === 1 ? 'line has' : 'lines have';
+    lines.push(`Warning: the ${formatLineList(plannedLines)} ${lineWord} planned segments on this route. Consider direct flying instead.`);
+  }
+  if (checklistLines.length) {
+    const lineWord = checklistLines.length === 1 ? 'line has' : 'lines have';
+    lines.push(`Note: the ${formatLineList(checklistLines)} ${lineWord} open track with unfinished station checklist work.`);
+  }
+  return lines;
 }
 
 function formatLineList(lineNames) {
@@ -1976,6 +2224,10 @@ function formatLineList(lineNames) {
     return lineNames.join(lineNames.length === 2 ? ' and ' : '');
   }
   return `${lineNames.slice(0, -1).join(', ')}, and ${lineNames[lineNames.length - 1]}`;
+}
+
+function formatInterchangeCount(count) {
+  return `${count} ${count === 1 ? 'interchange' : 'interchanges'}`;
 }
 
 function stationPlotPoint(stop) {
@@ -2077,7 +2329,7 @@ function zoomAtScreenPoint(screenX, screenY, nextZoom) {
   state.camera.userChangedView = true;
   clampCamera();
   hidePopup();
-  render();
+  requestRender();
 }
 
 function panBy(deltaX, deltaY) {
@@ -2455,6 +2707,34 @@ function formatTrackDistance(distanceMeters) {
     return `${Math.round(distanceMeters).toLocaleString()} m`;
   }
   return `${Number((distanceMeters / 1000).toFixed(1)).toLocaleString()} km`;
+}
+
+function travelTimeSeconds(distanceMeters) {
+  return Math.max(0, Math.round(Number(distanceMeters) / CONSTANTS.minecartSpeedMps));
+}
+
+function formatTravelTime(seconds) {
+  const safeSeconds = Math.max(0, Math.trunc(seconds));
+  if (safeSeconds < 60) {
+    return `${safeSeconds}s`;
+  }
+  const minutes = Math.trunc(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  if (minutes < 60) {
+    return remainingSeconds === 0 ? `${minutes}m` : `${minutes}m ${remainingSeconds}s`;
+  }
+  const hours = Math.trunc(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes === 0 ? `${hours}h` : `${hours}h ${remainingMinutes}m`;
+}
+
+function formatTravelTimeForDistance(distanceMeters) {
+  return formatTravelTime(travelTimeSeconds(distanceMeters));
+}
+
+function formatDistanceAndTime(distanceMeters) {
+  const roundedDistance = Math.round(Number(distanceMeters));
+  return `${formatTrackDistance(roundedDistance)} / ${formatTravelTimeForDistance(roundedDistance)}`;
 }
 
 function formatCoordinate(value) {

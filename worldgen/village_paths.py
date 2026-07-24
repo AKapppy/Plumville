@@ -290,15 +290,30 @@ def _normalized_block_name(block_name: str) -> str:
     return block_name.strip().lower().removeprefix("minecraft:")
 
 
-def _is_path_block(block_name: str, *, extra_path_block_names: Iterable[str] = ()) -> bool:
+def _normalized_extra_path_block_names(extra_path_block_names: Iterable[str]) -> frozenset[str]:
+    return frozenset(_normalized_block_name(name) for name in extra_path_block_names)
+
+
+def _is_path_block_with_normalized_extra(
+    block_name: str,
+    *,
+    extra_names: frozenset[str],
+) -> bool:
     normalized = _normalized_block_name(block_name)
-    extra_names = {_normalized_block_name(name) for name in extra_path_block_names}
     if normalized in extra_names:
         return True
-    if _normalized_block_name(block_name) in PATH_BLOCK_NAMES:
+    if normalized in PATH_BLOCK_NAMES:
         return True
     render_block_name = render_mod._resolve_block_name_for_render(block_name)  # type: ignore[attr-defined]
-    return _normalized_block_name(render_block_name) in PATH_BLOCK_NAMES or _normalized_block_name(render_block_name) in extra_names
+    normalized_render_name = _normalized_block_name(render_block_name)
+    return normalized_render_name in PATH_BLOCK_NAMES or normalized_render_name in extra_names
+
+
+def _is_path_block(block_name: str, *, extra_path_block_names: Iterable[str] = ()) -> bool:
+    return _is_path_block_with_normalized_extra(
+        block_name,
+        extra_names=_normalized_extra_path_block_names(extra_path_block_names),
+    )
 
 
 def _path_points_from_scan(
@@ -306,10 +321,11 @@ def _path_points_from_scan(
     *,
     extra_path_block_names: Iterable[str] = (),
 ) -> set[tuple[int, int]]:
+    extra_names = _normalized_extra_path_block_names(extra_path_block_names)
     return {
         coordinates
         for coordinates, surface_point in scan.surface_points.items()
-        if _is_path_block(surface_point.block_name, extra_path_block_names=extra_path_block_names)
+        if _is_path_block_with_normalized_extra(surface_point.block_name, extra_names=extra_names)
     }
 
 

@@ -1,8 +1,12 @@
 {
   "name": "plumville",
   "scripts": {
+    "test": "npm run smoke:docs && npm run validate:public && npm run preview:public:check",
     "smoke:docs": "node docs/smoke_test.js",
     "smoke:tk": "python3 scripts/smoke_tk_sidebar.py",
+    "validate:public": "python3 scripts/validate_public_export.py",
+    "preview:public": "python3 scripts/preview_public_docs.py",
+    "preview:public:check": "python3 scripts/preview_public_docs.py --check",
     "test:paths": "python3 -m unittest tests.test_village_paths"
   },
   "dependencies": {

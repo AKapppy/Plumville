@@ -4,10 +4,12 @@ import errno
 import json
 import math
 import os
+import random
 import shutil
 import subprocess
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -33,9 +35,9 @@ HEADLESS_LOADER_RETRY_DELAY_SECONDS = 5
 HEADLESS_LOADER_STARTUP_TIMEOUT_SECONDS = 300
 HEADLESS_LOADER_STOP_GRACE_SECONDS = 10
 HEADLESS_LOADER_STOP_COMMAND_TIMEOUT_SECONDS = 25
-HEADLESS_LOADER_CONNECT_SETTLE_SECONDS = 4.0
-HEADLESS_LOADER_FIRST_TELEPORT_DELAY_SECONDS = 1.0
-HEADLESS_LOADER_SETTLE_AFTER_LAST_TELEPORT_SECONDS = 12.0
+HEADLESS_LOADER_CONNECT_SETTLE_SECONDS = 2.0
+HEADLESS_LOADER_FIRST_TELEPORT_DELAY_SECONDS = 0.5
+HEADLESS_LOADER_SETTLE_AFTER_LAST_TELEPORT_SECONDS = 6.0
 TELEPORT_TARGET_COVERAGE_THRESHOLD = 0.85
 TELEPORT_TARGET_PLANNER_VERSION = 'blank-pixel-nearest-complete-v4'
 TELEPORT_TARGET_MIN_ACTIONABLE_BLANK_PIXELS = 2_048
@@ -43,8 +45,8 @@ TELEPORT_TARGET_STALL_SKIP_COUNT = 1
 CHUNK_TOUCH_BLOCK = 'bedrock'
 CHUNK_TOUCH_Y = -64
 CHUNK_TOUCH_MAX_BLOCKS = 30_000
-INCREMENTAL_RENDER_BATCH_PIXELS = 25_000
-INCREMENTAL_RENDER_MAX_SCAN_PIXELS = 5_000_000
+INCREMENTAL_RENDER_BATCH_PIXELS = 100_000
+INCREMENTAL_RENDER_MAX_SCAN_PIXELS = 15_000_000
 TARGET_LOAD_MIN_X = -8000
 TARGET_LOAD_MAX_X = 9000
 TARGET_LOAD_MIN_Z = -5000
@@ -158,6 +160,23 @@ class _BlankRenderCoverage:
     blank_pixels_by_chunk: dict[tuple[int, int], int]
     blank_pixel_count: int
     total_pixels: int
+
+
+@dataclass(frozen=True, slots=True)
+class _BlankChunkComponent:
+    chunk_counts: dict[tuple[int, int], int]
+    total_blank_pixels: int
+    min_chunk_x: int
+    max_chunk_x: int
+    min_chunk_z: int
+    max_chunk_z: int
+    centroid_chunk_x: float
+    centroid_chunk_z: float
+    is_internal: bool
+    mapped_distance_chunks: float
+
+
+_BLANK_CHUNK_COMPONENT_CACHE: dict[tuple[object, ...], tuple[_BlankChunkComponent, ...]] = {}
 
 
 class BedrockWorldGenerator:
@@ -885,6 +904,7 @@ class BedrockWorldGenerator:
             image_progress_callback=image_progress_callback,
             image_progress_interval=image_progress_interval,
             pixel_keys=pixel_keys,
+            compact_packet_cache=False,
         )
         _copy_file_best_effort(self.paths.render_image_path, self.paths.docs_render_image_path)
         _copy_file_best_effort(
@@ -900,17 +920,42 @@ class BedrockWorldGenerator:
         image_progress_callback: Callable[[int], None] | None = None,
         image_progress_interval: int = 0,
     ) -> RenderResult:
-        pixel_keys = _teleport_target_pixel_keys(self.config, target)
+        pixel_keys = _blank_target_pixel_keys(self.config, self.paths.render_image_path, target)
+        if not pixel_keys:
+            pixel_keys = _teleport_target_pixel_keys(self.config, target)
         if not pixel_keys:
             return self.render_map(
                 image_progress_callback=image_progress_callback,
                 image_progress_interval=image_progress_interval,
             )
-        return self.render_map(
+        packet_cache_paths = self._incremental_render_packet_cache_paths()
+        if not packet_cache_paths:
+            return self.render_map(
+                image_progress_callback=image_progress_callback,
+                image_progress_interval=image_progress_interval,
+                pixel_keys=pixel_keys,
+            )
+
+        self.paths.ensure_runtime_dirs()
+        result = render_topdown_map(
+            self.config,
+            None,
+            image_path=self.paths.render_image_path,
+            metadata_path=self.paths.render_cache_path,
+            packet_cache_paths=packet_cache_paths,
+            read_persistent_bedrock=False,
+            preserve_existing_image=True,
+            pixel_keys=pixel_keys,
+            compact_packet_cache=False,
             image_progress_callback=image_progress_callback,
             image_progress_interval=image_progress_interval,
-            pixel_keys=pixel_keys,
         )
+        _copy_file_best_effort(self.paths.render_image_path, self.paths.docs_render_image_path)
+        _copy_file_best_effort(
+            self.paths.render_cache_path,
+            _docs_render_metadata_path(self.paths.docs_render_image_path),
+        )
+        return result
 
     def render_lan_map(self, mode_key: str) -> RenderResult:
         mode = worldgen_mode(mode_key)
@@ -940,15 +985,19 @@ class BedrockWorldGenerator:
     def render_cached_blank_pixel_batch(
         self,
         *,
-        batch_size: int = INCREMENTAL_RENDER_BATCH_PIXELS,
+        batch_size: int | None = None,
     ) -> CachedPixelRenderResult | None:
         if not self.paths.render_image_path.exists():
             return None
 
+        effective_batch_size = INCREMENTAL_RENDER_BATCH_PIXELS
+        if batch_size is not None:
+            effective_batch_size = max(int(batch_size), INCREMENTAL_RENDER_BATCH_PIXELS)
+
         spiral_batch = _blank_pixel_spiral_batch(
             self.config,
             self.paths.render_image_path,
-            batch_size=batch_size,
+            batch_size=effective_batch_size,
             max_scan_pixels=INCREMENTAL_RENDER_MAX_SCAN_PIXELS,
         )
         self._write_spiral_check_preview(spiral_batch)
@@ -1437,14 +1486,26 @@ def _next_undercovered_teleport_index(
 
     normalized_start_index = start_index % len(teleport_points)
     if blank_coverage is not None:
-        fallback_index: int | None = None
-        for index, point in enumerate(teleport_points):
+        promoted_points = _promoted_largest_targets(config, blank_coverage)
+        for promoted_point in promoted_points:
+            if promoted_point not in teleport_points:
+                continue
+            missing_pixels = _teleport_point_missing_pixel_count(config, promoted_point, blank_coverage)
+            if missing_pixels > 0:
+                return teleport_points.index(promoted_point)
+
+        first_positive_index: int | None = None
+        for offset in range(len(teleport_points)):
+            index = (normalized_start_index + offset) % len(teleport_points)
+            point = teleport_points[index]
             missing_pixels = _teleport_point_missing_pixel_count(config, point, blank_coverage)
             if missing_pixels > TELEPORT_TARGET_MIN_ACTIONABLE_BLANK_PIXELS:
                 return index
-            if missing_pixels > 0 and fallback_index is None:
-                fallback_index = index
-        return fallback_index or 0
+            if missing_pixels > 0 and first_positive_index is None:
+                first_positive_index = index
+        if first_positive_index is not None:
+            return first_positive_index
+        return normalized_start_index
 
     if world_path is None or not world_path.exists():
         return start_index % len(teleport_points)
@@ -1717,7 +1778,9 @@ def _render_area_teleport_points(
     blank_coverage: _BlankRenderCoverage | None = None,
 ) -> tuple[tuple[int, int], ...]:
     if blank_coverage is not None:
-        return _blank_pixel_fill_teleport_points(config, blank_coverage.blank_pixels_by_chunk)
+        blank_fill_points = _blank_pixel_fill_teleport_points(config, blank_coverage.blank_pixels_by_chunk)
+        promoted_points = _promoted_largest_targets(config, blank_coverage)
+        return _prepend_unique_teleport_points(promoted_points, blank_fill_points)
 
     saved_columns: set[tuple[int, int]] = set()
     if world_path is not None and world_path.exists():
@@ -2032,6 +2095,312 @@ def _blank_pixel_fill_teleport_points(
         _chunk_center_world_pair(center_chunk)
         for _distance_from_center, _negative_blank_pixel_count, center_chunk in candidates
     )
+
+
+def _load_render_metadata(config: WorldgenConfig) -> dict[str, object]:
+    try:
+        metadata_text = config.paths.render_cache_path.read_text(encoding='utf-8')
+    except OSError:
+        return {}
+    try:
+        payload = json.loads(metadata_text)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _colored_chunk_bounds(metadata: dict[str, object]) -> tuple[int, int, int, int] | None:
+    def metadata_int(key: str) -> int:
+        value = metadata[key]
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, str):
+            return int(value)
+        raise TypeError(key)
+
+    try:
+        colored_min_x = metadata_int('colored_min_x') // 16
+        colored_max_x = metadata_int('colored_max_x') // 16
+        colored_min_z = metadata_int('colored_min_z') // 16
+        colored_max_z = metadata_int('colored_max_z') // 16
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (colored_min_x, colored_max_x, colored_min_z, colored_max_z)
+
+
+def _component_is_internal(
+    component_chunk_counts: dict[tuple[int, int], int],
+    *,
+    config: WorldgenConfig,
+    metadata: dict[str, object],
+) -> bool:
+    colored_bounds = _colored_chunk_bounds(metadata)
+    if colored_bounds is None:
+        return False
+
+    render_min_chunk_x, render_max_chunk_x, render_min_chunk_z, render_max_chunk_z = (
+        _render_area_chunk_bounds(config)
+    )
+    colored_min_chunk_x, colored_max_chunk_x, colored_min_chunk_z, colored_max_chunk_z = colored_bounds
+
+    min_chunk_x = min(chunk_x for chunk_x, _chunk_z in component_chunk_counts)
+    max_chunk_x = max(chunk_x for chunk_x, _chunk_z in component_chunk_counts)
+    min_chunk_z = min(chunk_z for _chunk_x, chunk_z in component_chunk_counts)
+    max_chunk_z = max(chunk_z for _chunk_x, chunk_z in component_chunk_counts)
+
+    top_ok = (
+        min_chunk_z >= colored_min_chunk_z
+        or (min_chunk_z == render_min_chunk_z and colored_min_chunk_z == render_min_chunk_z)
+    )
+    bottom_ok = (
+        max_chunk_z <= colored_max_chunk_z
+        or (max_chunk_z == render_max_chunk_z and colored_max_chunk_z == render_max_chunk_z)
+    )
+    left_ok = (
+        min_chunk_x >= colored_min_chunk_x
+        or (min_chunk_x == render_min_chunk_x and colored_min_chunk_x == render_min_chunk_x)
+    )
+    right_ok = (
+        max_chunk_x <= colored_max_chunk_x
+        or (max_chunk_x == render_max_chunk_x and colored_max_chunk_x == render_max_chunk_x)
+    )
+    return top_ok and bottom_ok and left_ok and right_ok
+
+
+def _component_distance_to_colored_bounds(
+    component_chunk_counts: dict[tuple[int, int], int],
+    metadata: dict[str, object],
+) -> float:
+    colored_bounds = _colored_chunk_bounds(metadata)
+    if colored_bounds is None:
+        return 0.0
+
+    colored_min_x, colored_max_x, colored_min_z, colored_max_z = colored_bounds
+    min_chunk_x = min(chunk_x for chunk_x, _chunk_z in component_chunk_counts)
+    max_chunk_x = max(chunk_x for chunk_x, _chunk_z in component_chunk_counts)
+    min_chunk_z = min(chunk_z for _chunk_x, chunk_z in component_chunk_counts)
+    max_chunk_z = max(chunk_z for _chunk_x, chunk_z in component_chunk_counts)
+
+    gap_x = 0
+    if max_chunk_x < colored_min_x:
+        gap_x = colored_min_x - max_chunk_x
+    elif min_chunk_x > colored_max_x:
+        gap_x = min_chunk_x - colored_max_x
+
+    gap_z = 0
+    if max_chunk_z < colored_min_z:
+        gap_z = colored_min_z - max_chunk_z
+    elif min_chunk_z > colored_max_z:
+        gap_z = min_chunk_z - colored_max_z
+
+    return math.hypot(gap_x, gap_z)
+
+
+def _blank_chunk_components(
+    config: WorldgenConfig,
+    blank_coverage: _BlankRenderCoverage | None,
+) -> tuple[_BlankChunkComponent, ...]:
+    if blank_coverage is None or not blank_coverage.blank_pixels_by_chunk:
+        return ()
+
+    cache_key = (
+        blank_coverage.image_stat,
+        _file_stat_tuple(config.paths.render_cache_path),
+        config.render.min_x,
+        config.render.max_x,
+        config.render.min_z,
+        config.render.max_z,
+    )
+    cached = _BLANK_CHUNK_COMPONENT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    metadata = _load_render_metadata(config)
+    remaining = set(blank_coverage.blank_pixels_by_chunk)
+    components: list[_BlankChunkComponent] = []
+
+    while remaining:
+        seed = remaining.pop()
+        queue = deque([seed])
+        component_chunk_counts: dict[tuple[int, int], int] = {
+            seed: blank_coverage.blank_pixels_by_chunk[seed]
+        }
+
+        while queue:
+            current_x, current_z = queue.popleft()
+            for neighbor in (
+                (current_x + 1, current_z),
+                (current_x - 1, current_z),
+                (current_x, current_z + 1),
+                (current_x, current_z - 1),
+            ):
+                if neighbor not in remaining:
+                    continue
+                remaining.remove(neighbor)
+                component_chunk_counts[neighbor] = blank_coverage.blank_pixels_by_chunk[neighbor]
+                queue.append(neighbor)
+
+        total_blank_pixels = sum(component_chunk_counts.values())
+        weighted_x = sum(chunk_x * count for (chunk_x, _chunk_z), count in component_chunk_counts.items())
+        weighted_z = sum(chunk_z * count for (_chunk_x, chunk_z), count in component_chunk_counts.items())
+        components.append(
+            _BlankChunkComponent(
+                chunk_counts=component_chunk_counts,
+                total_blank_pixels=total_blank_pixels,
+                min_chunk_x=min(chunk_x for chunk_x, _chunk_z in component_chunk_counts),
+                max_chunk_x=max(chunk_x for chunk_x, _chunk_z in component_chunk_counts),
+                min_chunk_z=min(chunk_z for _chunk_x, chunk_z in component_chunk_counts),
+                max_chunk_z=max(chunk_z for _chunk_x, chunk_z in component_chunk_counts),
+                centroid_chunk_x=weighted_x / max(1, total_blank_pixels),
+                centroid_chunk_z=weighted_z / max(1, total_blank_pixels),
+                is_internal=_component_is_internal(
+                    component_chunk_counts,
+                    config=config,
+                    metadata=metadata,
+                ),
+                mapped_distance_chunks=_component_distance_to_colored_bounds(
+                    component_chunk_counts,
+                    metadata,
+                ),
+            )
+        )
+
+    components.sort(
+        key=lambda component: (
+            1 if component.is_internal else 0,
+            -component.mapped_distance_chunks,
+            -component.total_blank_pixels,
+            component.min_chunk_z,
+            component.min_chunk_x,
+        )
+    )
+    result = tuple(components)
+    _BLANK_CHUNK_COMPONENT_CACHE[cache_key] = result
+    return result
+
+
+def _clamp_target_chunk_center(center_chunk: tuple[int, int]) -> tuple[int, int]:
+    min_chunk_x, max_chunk_x, min_chunk_z, max_chunk_z = _target_load_chunk_bounds()
+    chunk_x = max(min_chunk_x, min(max_chunk_x, center_chunk[0]))
+    chunk_z = max(min_chunk_z, min(max_chunk_z, center_chunk[1]))
+    return (chunk_x, chunk_z)
+
+
+def _coast_candidate_centers(
+    config: WorldgenConfig,
+    component: _BlankChunkComponent,
+) -> list[tuple[int, int]]:
+    radius = config.headless_loader.chunk_radius
+    component_chunks = set(component.chunk_counts)
+    candidates: list[tuple[int, int]] = []
+
+    for chunk_x, chunk_z in component_chunks:
+        if (chunk_x - 1, chunk_z) not in component_chunks:
+            candidates.append((chunk_x - 1 + radius, chunk_z))
+        if (chunk_x + 1, chunk_z) not in component_chunks:
+            candidates.append((chunk_x + 1 - radius, chunk_z))
+        if (chunk_x, chunk_z - 1) not in component_chunks:
+            candidates.append((chunk_x, chunk_z - 1 + radius))
+        if (chunk_x, chunk_z + 1) not in component_chunks:
+            candidates.append((chunk_x, chunk_z + 1 - radius))
+
+    deduped: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for candidate in candidates:
+        clamped = _clamp_target_chunk_center(candidate)
+        if clamped in seen:
+            continue
+        seen.add(clamped)
+        deduped.append(clamped)
+    return deduped
+
+
+def _component_target(config: WorldgenConfig, component: _BlankChunkComponent) -> tuple[int, int]:
+    coast_candidates = _coast_candidate_centers(config, component)
+    if coast_candidates:
+        metadata = _load_render_metadata(config)
+        colored_bounds = _colored_chunk_bounds(metadata)
+        if colored_bounds is not None:
+            colored_min_x, colored_max_x, colored_min_z, colored_max_z = colored_bounds
+
+            def distance_to_colored_bounds(candidate: tuple[int, int]) -> float:
+                chunk_x, chunk_z = candidate
+                gap_x = 0
+                if chunk_x < colored_min_x:
+                    gap_x = colored_min_x - chunk_x
+                elif chunk_x > colored_max_x:
+                    gap_x = chunk_x - colored_max_x
+                gap_z = 0
+                if chunk_z < colored_min_z:
+                    gap_z = colored_min_z - chunk_z
+                elif chunk_z > colored_max_z:
+                    gap_z = chunk_z - colored_max_z
+                return math.hypot(gap_x, gap_z)
+
+            return max(
+                coast_candidates,
+                key=lambda candidate: (
+                    distance_to_colored_bounds(candidate),
+                    component.chunk_counts.get(candidate, 0),
+                    -abs(candidate[0] - component.centroid_chunk_x),
+                    -abs(candidate[1] - component.centroid_chunk_z),
+                ),
+            )
+
+        seed_value = hash((
+            config.render.min_x,
+            config.render.max_x,
+            config.render.min_z,
+            config.render.max_z,
+            round(component.centroid_chunk_x, 3),
+            round(component.centroid_chunk_z, 3),
+            component.total_blank_pixels,
+        ))
+        rng = random.Random(seed_value)
+        return coast_candidates[rng.randrange(len(coast_candidates))]
+
+    dense_chunk = max(
+        component.chunk_counts.items(),
+        key=lambda item: (
+            item[1],
+            -((item[0][0] - component.centroid_chunk_x) ** 2 + (item[0][1] - component.centroid_chunk_z) ** 2),
+        ),
+    )[0]
+    return _clamp_target_chunk_center(dense_chunk)
+
+
+def _promoted_largest_targets(
+    config: WorldgenConfig,
+    blank_coverage: _BlankRenderCoverage | None,
+) -> tuple[tuple[int, int], ...]:
+    if blank_coverage is None:
+        return ()
+
+    targets: list[tuple[int, int]] = []
+    seen_targets: set[tuple[int, int]] = set()
+    for component in _blank_chunk_components(config, blank_coverage):
+        target = _chunk_center_world_pair(_component_target(config, component))
+        if target in seen_targets:
+            continue
+        seen_targets.add(target)
+        targets.append(target)
+    return tuple(targets)
+
+
+def _prepend_unique_teleport_points(
+    first_points: tuple[tuple[int, int], ...],
+    remaining_points: tuple[tuple[int, int], ...],
+) -> tuple[tuple[int, int], ...]:
+    result: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for point in first_points + remaining_points:
+        if point in seen:
+            continue
+        seen.add(point)
+        result.append(point)
+    return tuple(result)
 
 
 def _teleport_center_blank_pixel_count(
@@ -2564,6 +2933,32 @@ def _teleport_target_pixel_keys(
         for pixel_z in range(min_pixel_z, max_pixel_z + 1)
         for pixel_x in range(min_pixel_x, max_pixel_x + 1)
     }
+
+
+def _blank_target_pixel_keys(
+    config: WorldgenConfig,
+    image_path: Path,
+    target: tuple[int, int],
+) -> set[tuple[int, int]]:
+    pixel_keys = _teleport_target_pixel_keys(config, target)
+    if not pixel_keys:
+        return set()
+
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as source_image:
+            alpha = source_image.convert('RGBA').getchannel('A')
+            alpha_pixels = alpha.load()
+            if alpha_pixels is None:
+                return pixel_keys
+            return {
+                (pixel_x, pixel_z)
+                for pixel_x, pixel_z in pixel_keys
+                if alpha_pixels[pixel_x, pixel_z] == 0
+            }
+    except Exception:
+        return pixel_keys
 
 
 def _target_load_chunk_bounds() -> tuple[int, int, int, int]:

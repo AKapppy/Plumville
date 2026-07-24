@@ -27,3 +27,4 @@ yarn-error.log*
 exports/
 metro_network.history/
 metro_network.last.json
+path_detection_state.json

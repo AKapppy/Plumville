@@ -1,66 +1,1350 @@
-Water body and coastline detection plan
+PLUMVILLE DEVELOPMENT NOTES AND ROADMAP
 
-Yes, this is possible. The app already has enough world-map/render infrastructure to start from a water mask, then classify connected water regions as lakes, seas/ocean, and rivers. The best result should come from block/render data, not screenshot color matching alone.
+Status legend:
+- [x] complete
+- [ ] not started or not complete
+- [progress] started but not complete
+- [info] reference section, not a task
+- [deferred] intentionally postponed
 
-1. Persist a water mask during world-map rendering.
-   - While `worldgen.render.render_topdown_map` classifies surface blocks, also write a compact per-pixel classification layer for at least: water, land, unknown/unrendered.
-   - Use the existing waterlike logic and block categories (`water`, `minecraft:water`, `kelp`, `seagrass`, `bubble_column`, waterlogged blocks where appropriate).
-   - Store the mask beside the render cache, for example `water_mask.npz` or a small PNG plus metadata with `min_x`, `min_z`, `sample_step`, width, and height.
+Active task queue:
+Remove items from this queue when they are fully complete; keep the detailed roadmap sections below as the source notes.
 
-2. Clean the raw water mask.
-   - Remove isolated one-pixel noise.
-   - Fill tiny holes inside water regions where render gaps or unknown blocks create speckles.
-   - Keep unknown/unrendered pixels separate so we do not accidentally mark map gaps as coastline.
+1. In progress
+   - [progress] Consolidate remaining temporary patch modules into canonical implementations.
+   - [progress] Continue behavior-preserving `legacy_core.py` extraction into `plumville/core/` only in tested slices.
 
-3. Split water into connected components.
-   - Run connected-component labeling on the cleaned water mask.
-   - Record each component's area, bounding box, perimeter, compactness, major/minor axis, endpoint count, and whether it touches target-map boundaries.
-   - Save these features into a water-analysis JSON cache.
+2. Necessary improvements
+   - [deferred] Finish worldgen speed/reliability follow-through after consolidation.
 
-4. Classify large boundary-connected water as sea/ocean.
-   - Components touching the target boundary and exceeding an area threshold should be classified as sea/ocean.
-   - Components connected to boundary water through a narrow neck should probably remain sea/ocean unless the neck is below a tunable channel width.
-   - Use this as the first-pass classifier because it is the most reliable rule.
+3. Cool/quality of life improvements
 
-5. Classify enclosed broad water as lakes.
-   - Components that do not touch the target boundary and have a large area with relatively compact shape should be lakes.
-   - Use area, width, and compactness thresholds so ponds can either be ignored or classified separately later.
-   - Optionally merge lake components separated by tiny land bridges if the map render has obvious sampling artifacts.
+4. Other
+   - Add the public read-only construction dashboard after the public data contract is stable.
+   - Defer water-body, river, and coastline detection until cleanup, performance, segment status, construction dashboard, export, and visitor-navigation work are complete.
 
-6. Classify long narrow water as rivers.
-   - Skeletonize each water component and measure length-to-width ratio.
-   - Rivers should generally have high elongation, narrow median width, and two or more meaningful endpoints.
-   - River components may connect lakes to seas; if so, classify the narrow branches as river while keeping the broad connected areas lake/sea.
-   - This likely needs a graph pass: broad blobs become lake/sea nodes, narrow corridors become river edges.
+5. Completed items
+   - [x] Final low-usage validation checkpoint: full Python suite, full npm test script, and `git diff --check` passed after the lightweight improvement run.
+   - [x] Inspected `metro_station_extensions.py`, `path_detection.py`, and `ui_extensions.py`; chose `ui_extensions.py` idempotence as the low-risk consolidation-support slice.
+   - [x] `ui_extensions.py` now has an idempotent apply guard so direct coordinator calls do not stack runtime patches.
+   - [x] `worldgen_target_fix.py` consolidated into `worldgen/generator.py`; shim no longer monkeypatches.
+   - [x] `worldgen_speedups.py` consolidated into `worldgen/generator.py` and `legacy_core.py`; shim no longer monkeypatches.
+   - [x] `world_map_overrides.py` consolidated into `legacy_core.py`; shim no longer monkeypatches.
+   - [x] `path_rendering.py` consolidated into `legacy_core.py`; shim no longer monkeypatches.
+   - [x] `poi_extensions.py` consolidated into `legacy_core.py`; shim no longer monkeypatches.
+   - [x] Necessary test coverage improvement: added/updated focused coverage for railway segment status, path detection normalization reuse, extra-edge endpoint indexing, public segment status, and public preview validation.
+   - [x] Add or improve tests before each migration slice, especially extension entrypoints, path endpoint behavior, station/path editing, and public export safety.
+   - [x] Establish GUI/browser/live-world performance baselines that this shell cannot measure.
+   - [x] Necessary baseline improvement: `scripts/performance_probe.py` can now write JSON baseline files with `--output` for repeatable local comparisons.
+   - [x] Necessary baseline improvement: added `PERFORMANCE_BASELINE_CHECKLIST_2026-07-24.md` for manual GUI/browser/live-world timings that cannot be captured from this shell.
+   - [x] Improve station/path addition and path-detection speed using measured bottlenecks.
+   - [x] Necessary path-detection speed improvement: normalized runtime path-block names once per scan instead of once per scanned block.
+   - [x] Necessary station/path speed improvement: indexed extra edges by endpoint for repeated station/path-node sidebar lookups.
+   - [x] Add explicit railway-segment construction status while preserving station checklist fields.
+   - [x] Necessary segment-status improvement: added read-only per-segment construction status derived separately from routing availability and station checklist completion.
+   - [x] Necessary segment-status improvement: public viewer segment objects now expose explicit routing-open, station-checklist, and construction-status fields.
+   - [x] Improve desktop-to-web export workflow with sanitized local preview/build validation.
+   - [x] Necessary workflow improvement: added `npm run preview:public` and `npm run preview:public:check` for validated local docs preview without publishing.
+   - [x] Improve visitor directions and map UX: open-route defaults, route options, line badges, legends, shareable links, coordinate links, and construction-task links.
+   - [x] Lightweight web improvement: directions now clarify station-only route inputs and point coordinate users back to Search.
+   - [x] Lightweight web improvement: route/search pages restore and update shareable URL params (`?q=...`, `?from=...&to=...`).
+   - [x] Lightweight web improvement: public viewer has a Copy link action for the current shareable URL.
+   - [x] Lightweight web improvement: public viewer has a compact line legend with per-line visibility toggles.
+   - [x] Lightweight web improvement: hidden-line choices are included in shareable URLs with `lines=...`.
+   - [x] Lightweight web improvement: public route planning respects visible-line toggles and replans active routes when toggles change.
+   - [x] Lightweight web improvement: public route summaries, route steps, and coordinate-on-track distances now show distance plus minecart travel time.
+   - [x] Show minecart travel time consistently throughout desktop and web views.
+   - [x] Lightweight web improvement: station popups now show railway checklist completion status.
+   - [x] Lightweight web improvement: route warnings now distinguish planned track from open track with unfinished station checklist work.
+   - [x] Lightweight web improvement: station popups now show compact line badges.
+   - [x] Lightweight web improvement: path-edge popups now show distance plus minecart travel time.
+   - [x] Lightweight web improvement: line visibility toggles now expose open/planned/checklist status in compact hover text.
+   - [x] Lightweight desktop improvement: desktop path-edge summaries now show distance plus minecart travel time.
+   - [x] Lightweight web improvement: public load failures now show visitor-friendly text while technical details stay in the browser console.
+   - [x] Lightweight web performance improvement: repeated public viewer render requests now coalesce through `requestAnimationFrame`.
+   - [x] General visual and usability polish.
+   - [x] Lightweight web polish: route summaries now use clean singular/plural interchange text.
+   - [x] Improve desktop and web panning, zooming, rendering, and label performance after baselines exist.
+   - [x] Simplify normal UI and keep debug details behind explicit developer/error-detail affordances.
+   - [x] Lightweight web polish: public route failures now avoid technical endpoint wording.
 
-7. Separate river mouths, straits, and narrow sea channels carefully.
-   - If a narrow water corridor connects two sea/ocean regions, label it as a strait/channel rather than river.
-   - If a narrow corridor connects inland water to sea/ocean, label the corridor as river and the boundary contact as river mouth.
-   - If a corridor starts and ends inside the same lake/sea component, treat it as bay/channel unless terrain context suggests otherwise.
+<details>
+<summary>[info] PROJECT PURPOSE</summary>
 
-8. Extract coastlines.
-   - Coastline is the land/water boundary around sea/ocean components.
-   - Lake shorelines are similar geometry but should be stored separately as lake shorelines.
-   - River banks should be stored separately because they are long paired boundaries rather than coast.
-   - Generate simplified polylines from mask boundaries using contour tracing and Douglas-Peucker simplification.
 
-9. Add desktop overlays.
-   - Add toggles for Water Bodies, Coastlines, Lake Shores, and Rivers.
-   - Draw seas/ocean, lakes, rivers, and coastlines with distinct colors and line styles.
-   - Add hover/click inspection showing water-body type, area, approximate width/length, and coordinates.
+Plumville is a Minecraft Bedrock world transportation and planning project.
 
-10. Add exports and cache invalidation.
-   - Save water-body analysis outputs into `worldgen/cache` or beside the render cache.
-   - Invalidate/rebuild when the render image/cache, render bounds, sample step, or selected world-map mode changes.
-   - Include water overlays in SVG/PNG export options.
+The project currently has two distinct user-facing applications:
 
-11. Validate with known map areas.
-   - Start with manually known examples: obvious ocean/coast, enclosed lakes, and several rivers.
-   - Add a debug view that colors raw mask components by ID.
-   - Tune thresholds against false positives: thin beaches, swamps, ponds, river deltas, and incomplete/unrendered map edges.
+1. Desktop application
+   - Private authoring and administration tool.
+   - Used by me on my computer.
+   - Has full editing access.
+   - May access private local data, world files, caches, diagnostics, Docker tools, rendering tools, construction records, and other backend systems.
 
-12. Expected limitations.
-   - Rivers versus narrow sea channels may need heuristic tuning.
-   - Incomplete rendered areas can create false coastlines unless unknown pixels are handled explicitly.
-   - Very small ponds should probably be ignored or classified as ponds instead of lakes.
-   - Biome data would improve ocean/river naming, but block-shape analysis should be enough for useful first-pass detection.
+2. Web application
+   - Public, read-only visitor and helper guide.
+   - Hosted from docs/ through GitHub Pages.
+   - Used to view the map, search for locations, find directions, copy coordinates, understand which routes are usable, and see selected construction information.
+   - Must not expose private desktop data or provide editing controls.
+
+The world normally has no more than approximately four active players. This is not intended to model real-world transit capacity, passenger volume, scheduling, or station throughput. The goal is practical navigation around a large Minecraft world.
+
+The A-Z line naming system should remain. Line names and existing station names should not be changed during structural or performance work unless explicitly requested.
+
+</details>
+
+<details>
+<summary>[info] AUTHORITATIVE WORKSPACE AND CODEX RULES</summary>
+
+
+The Plumville workspace currently open in VS Code is the authoritative development copy.
+
+The public GitHub repository may be incomplete, behind the local workspace, or intentionally missing private backend files, generated data, world files, caches, and desktop-only information.
+
+Whenever Codex works on this project:
+
+- Inspect the actual local VS Code workspace before editing.
+- Do not assume the public GitHub repository represents the complete project.
+- Run git status before making changes.
+- Preserve all uncommitted, untracked, and gitignored work.
+- Do not reset, checkout over, delete, regenerate, or overwrite unrelated work.
+- Do not commit, push, create branches, open pull requests, or change GitHub settings unless explicitly requested.
+- Make changes directly in the local workspace.
+- Keep changes focused and integrated with the existing implementation.
+- Do not create parallel replacement systems unless there is a documented migration plan.
+- Run relevant local tests after making changes.
+- Report every file created, moved, deleted, or modified.
+- Report exact commands run and whether they succeeded.
+- Clearly identify anything requiring manual review.
+- Never expose private data, credentials, world files, local paths, caches, backups, diagnostics, or desktop-only information in docs/.
+
+</details>
+
+<details>
+<summary>[info] CORE ARCHITECTURAL RULES</summary>
+
+
+Desktop = authoring, editing, maintenance, world generation, diagnostics, and administration.
+
+Web = read-only map viewing, visitor directions, coordinates, public construction information, and helper tools.
+
+The public web application should not become a smaller copy of the desktop editor.
+
+The desktop application may contain:
+
+- Station editing
+- Line editing
+- Path editing
+- Construction status editing
+- Station checklist editing
+- World generation
+- Chunk loading
+- Terrain rendering
+- Path detection
+- Points-of-interest editing
+- City-limit editing
+- Alignment tools
+- Priority calculations
+- History and undo data
+- Diagnostics
+- Error logs
+- Private notes
+- Publishing/export controls
+
+The web application may contain:
+
+- Map viewing
+- Panning and zooming
+- Station search
+- Coordinate search
+- Directions
+- Route highlighting
+- Line visibility controls
+- Station and line information
+- Minecart travel estimates
+- Public points of interest
+- Public walking paths
+- Construction dashboard
+- Public help-needed tasks
+- Shareable station, route, coordinate, and construction links
+
+The web application must remain read-only.
+
+</details>
+
+<details>
+<summary>[info] NONNEGOTIABLE REFACTOR REQUIREMENT</summary>
+
+
+Clean up and reorganize the project without changing existing functionality.
+
+Before moving, consolidating, or deleting code:
+
+- Trace how the code is used.
+- Account for dynamic imports and monkey patches.
+- Add or improve tests where needed.
+- Establish baseline behavior.
+- Move code in small stages.
+- Keep temporary compatibility imports or wrappers when appropriate.
+- Confirm that entry points still work.
+
+Do not delete a file merely because a normal text search does not show an import. Several parts of the project currently use runtime patching and extension application.
+
+Preserve these entry points unless a later migration explicitly replaces them with compatibility wrappers:
+
+- metro_stops.py
+- python3 -m worldgen
+- GitHub Pages from docs/
+
+</details>
+
+<details>
+<summary>[progress] CURRENT PRIORITY ORDER</summary>
+
+
+- [x] 1. Audit the complete local workspace.
+- [x] 2. Establish reliable tests and performance baselines.
+- [ ] 3. Reorganize the project without changing behavior. Started with tested `plumville.core` extractions.
+- [ ] 4. Identify obsolete, redundant, duplicated, or transitional code. Initial audit done; cleanup decisions still pending.
+- [ ] 5. Consolidate temporary patch modules into canonical implementations.
+- [ ] 6. Improve worldgen speed and reliability.
+- [x] 7. Improve station/path addition and path-detection speed. Added path-detection normalization reuse and indexed extra-edge endpoint lookups.
+- [ ] 8. Improve desktop zooming and panning.
+- [ ] 9. Improve web zooming, panning, rendering, and label performance.
+- [x] 10. Add or improve explicit railway-segment construction status. Added desktop/read-only segment status records and public viewer segment status fields.
+- [ ] 11. Add the read-only construction dashboard to the web viewer.
+- [ ] 12. Improve visitor directions, route options, line badges, legends, and shareable links.
+- [ ] 13. Show minecart travel time consistently throughout both applications. Started with `plumville.core.travel_time`.
+- [ ] 14. Improve the desktop-to-web export workflow.
+- [ ] 15. Simplify normal UI and show technical debug details only when needed.
+- [ ] 16. General visual and usability polish.
+- [ ] 17. Water-body, river, and coastline detection last.
+
+</details>
+
+<details>
+<summary>[progress] STRUCTURAL CLEANUP GOALS</summary>
+
+
+The current project grew organically. Some modules may now be:
+
+- Compatibility wrappers
+- Runtime monkey patches
+- Temporary fixes
+- Performance overlays
+- Duplicate implementations
+- Experimental scripts
+- Generated files mixed with source
+- Old scripts that are no longer used
+- Scripts that should be absorbed into a package
+- Scripts that should be moved into development or diagnostics folders
+
+Pay special attention to:
+
+- legacy_core.py
+- metro_stops.py
+- ui_extensions.py
+- metro_station_extensions.py
+- worldgen_speedups.py
+- worldgen_target_fix.py
+- world_map_overrides.py
+- path_detection.py
+- path_rendering.py
+- poi_extensions.py
+- the worldgen package
+- docs/app.js
+- scripts/
+- tests/
+- generated JSON and image files
+- local cache and history folders
+
+Possible long-term organization:
+
+Plumville/
+    metro_stops.py
+
+    plumville/
+        core/
+            models.py
+            network.py
+            geometry.py
+            routing.py
+            travel_time.py
+            validation.py
+            serialization.py
+
+        desktop/
+            app.py
+            viewer.py
+            station_editor.py
+            line_editor.py
+            path_editor.py
+            construction.py
+            publishing.py
+            diagnostics.py
+            sidebar/
+
+        publishing/
+            public_export.py
+            terrain_export.py
+            sanitization.py
+            validation.py
+
+    worldgen/
+        generator.py
+        config.py
+        modes.py
+
+        loading/
+            headless.py
+            targets.py
+            coverage.py
+
+        rendering/
+            renderer.py
+            tiles.py
+            classification.py
+            metadata.py
+
+        analysis/
+            village_paths.py
+            water.py
+
+        diagnostics/
+            unknown_blocks.py
+            repair.py
+            profiling.py
+
+    docs/
+        index.html
+        styles.css
+
+        js/
+            main.js
+            state.js
+            network.js
+            geometry.js
+            camera.js
+            routing.js
+            rendering.js
+            labels.js
+            construction.js
+            ui.js
+
+        assets/
+
+    scripts/
+    tests/
+    development/
+
+This is a target direction, not permission to move everything at once.
+
+Recommended migration approach:
+
+- First extract pure logic.
+- Then replace runtime patches one at a time.
+- Keep old modules as temporary re-export wrappers.
+- Update imports gradually.
+- Delete compatibility files only after tests prove they are unnecessary.
+- Do not combine structural cleanup with unrelated feature changes.
+
+</details>
+
+<details>
+<summary>[progress] PERFORMANCE PRIORITIES</summary>
+
+
+Performance work must begin with measurements rather than assumptions.
+
+Create an opt-in developer profiling mode that records at least:
+
+Desktop:
+- Application startup
+- Network loading
+- Initial render
+- Full redraw
+- Pan-frame time
+- Zoom-frame time
+- Label layout
+- Route planning
+- Station addition
+- Station movement
+- Path addition
+- Save operations
+- History snapshot creation
+- Village-path scan
+- Village-path preview generation
+
+Worldgen:
+- Docker/server startup
+- Headless client connection
+- Target selection
+- Chunk loading
+- Packet-cache reading
+- Subchunk decoding
+- Surface classification
+- Raster updating
+- PNG encoding
+- Metadata writing
+- Public-asset copying
+- Total Auto Fill step
+
+Web:
+- Initial data load
+- Terrain-image load
+- Initial map render
+- Pan-frame time
+- Zoom-frame time
+- Station-label placement
+- Hit testing
+- Search
+- Route graph construction
+- Route calculation
+
+Profiling must not clutter normal user interfaces.
+
+</details>
+
+<details>
+<summary>[ ] ZOOMING AND PANNING</summary>
+
+
+Desktop and web interaction should feel smooth even when the world map is large.
+
+Potential improvements to evaluate through profiling:
+
+- Coalesce repeated movement and wheel events.
+- Use requestAnimationFrame in the browser.
+- Permit only one pending browser redraw.
+- Use a fast interaction render while moving.
+- Trigger one higher-quality redraw after interaction stops.
+- Cache label layouts by zoom range, viewport, and visible-line selection.
+- Cache transformed route geometry.
+- Cache line and segment bounds.
+- Precompute hit-test indexes.
+- Avoid recalculating every station and line during every pointer movement.
+- Separate static and dynamic drawing layers.
+- Draw the terrain, railway network, labels, and temporary overlays separately.
+- Reduce visible detail at distant zoom levels.
+- Avoid rendering off-screen objects.
+- Preserve pixel-sharp terrain at block-level zoom.
+- Do not re-read or recreate large images unnecessarily.
+
+</details>
+
+<details>
+<summary>[ ] PATH ADDITION AND DETECTION</summary>
+
+
+Path editing should update only affected records and visuals.
+
+Potential improvements:
+
+- Cache surface scans by world mode, bounds, and source-file revision.
+- Reuse scans when seeds are added or removed.
+- Recalculate only affected connected components when practical.
+- Maintain indexed station, line, path-anchor, and endpoint lookups.
+- Avoid rebuilding the entire network after one path edit.
+- Avoid redrawing the entire map when only one path changed.
+- Debounce disk writes and history snapshots.
+- Validate the changed object immediately.
+- Run full-network validation in the background or after save.
+- Keep path detection in a worker thread or process.
+- Provide responsive progress and cancellation.
+- Preserve the existing path-preview workflow and functionality.
+
+</details>
+
+<details>
+<summary>[ ] WORLDGEN PERFORMANCE</summary>
+
+
+Worldgen and Auto Fill are major performance priorities.
+
+Existing speedup and targeting patch modules likely contain useful working logic. Their behavior should be profiled and gradually integrated into proper worldgen modules rather than simply deleted.
+
+Potential improvements:
+
+- Move speed settings into configuration rather than mutating global constants.
+- Keep the Bedrock process alive across safe batches when practical.
+- Reduce unnecessary server restarts.
+- Render only newly loaded or changed areas.
+- Avoid rewriting the complete world PNG after every small update.
+- Evaluate tiled render storage.
+- Assemble a full public image only when exporting or publishing.
+- Separate and time:
+  - loading
+  - decoding
+  - classification
+  - raster updates
+  - PNG encoding
+  - metadata writing
+  - public copying
+- Cache target-planning results using clear invalidation rules.
+- Make target selection deterministic and testable.
+- Use atomic writes.
+- Preserve recoverable progress after crashes.
+- Avoid reprocessing unchanged packet or chunk data.
+- Use parallel CPU work only after profiling shows a real benefit.
+- Keep all existing generation modes working.
+
+</details>
+
+<details>
+<summary>[ ] DEBUG AND ERROR HANDLING</summary>
+
+
+Normal users should not see large amounts of diagnostic information.
+
+Normal desktop behavior:
+
+- Concise status messages
+- Clear progress
+- Friendly success messages
+- Friendly error messages
+- Retry where appropriate
+
+After an error, offer:
+
+- Show Technical Details
+- Copy Error Details
+- Open Log Folder
+- Retry
+
+Developer mode may show:
+
+- Stack traces
+- Raw block IDs
+- Unknown runtime values
+- Component IDs
+- Cache paths
+- Timing data
+- Target overlays
+- Packet and chunk statistics
+- Full diagnostic output
+
+The web viewer should show a simple visitor-friendly error. Technical details may appear in a collapsible section or browser console.
+
+Use structured rotating logs locally where practical.
+
+</details>
+
+<details>
+<summary>[progress] PUBLIC EXPORT AND PUBLISHING BOUNDARY</summary>
+
+
+The local desktop workspace is authoritative.
+
+The web files should be generated locally and reviewed before I manually commit and push them.
+
+The application must not automatically push to GitHub.
+
+Preferred workflow:
+
+Private desktop data
+    ->
+Desktop editing and validation
+    ->
+Build sanitized public snapshot
+    ->
+Preview public viewer locally
+    ->
+Manual review
+    ->
+I commit and push when ready
+
+A desktop action may be named:
+
+- Build Public Viewer
+- Export Web Map
+- Prepare Web Release
+
+It should generate or update public files such as:
+
+- docs/metro_network.json
+- docs/assets/blackport_topdown.png
+- docs/assets/blackport_topdown.render.json
+- other intentionally public path, POI, and construction files
+
+Public output may contain:
+
+- Stable station identity
+- Station name
+- Abbreviation
+- Coordinates
+- Line membership
+- Line colors
+- Public track geometry
+- Segment availability
+- Public entrances
+- Public walking connections
+- Public points of interest
+- Routing information
+- Sanitized public construction tasks
+- Export schema version
+- Export time
+- Optional source revision
+
+Public output must exclude:
+
+- Personal filesystem paths
+- Home-directory paths
+- Docker internals
+- Worldgen cache paths
+- Backup paths
+- Private world locations
+- Credentials
+- Diagnostic dumps
+- Internal history
+- Undo data
+- Priority calculation internals
+- Private notes
+- Debug-only objects
+- Editing state
+- Raw error logs
+- Unknown-block diagnostics unless explicitly published
+
+The desktop should have a dry-run or preview report showing:
+
+- Stations exported
+- Lines exported
+- Track segments by status
+- POIs exported
+- Walking paths exported
+- Construction tasks exported
+- Private records excluded
+- Validation errors
+- Validation warnings
+- Public files that will change
+
+</details>
+
+<details>
+<summary>[ ] STATION AND SEGMENT DATA</summary>
+
+
+Station identity should eventually be stable and independent of line membership.
+
+Current station vars may continue as compatibility aliases during migration.
+
+Do not perform this migration casually. It needs:
+
+- Schema versioning
+- Backward-compatible loading
+- Deterministic stable IDs
+- Collision handling
+- Data backup
+- Validation
+- Tests
+- Gradual migration of references
+
+Railway construction availability should be stored per segment rather than inferred only from station flags.
+
+Recommended segment statuses:
+
+- open
+- under_construction
+- planned
+
+Segment status controls:
+
+- Desktop may edit them.
+- Web may display them.
+- Web may not edit them.
+
+Suggested visual meaning:
+
+- Open = solid
+- Under construction = dashed
+- Planned/unconnected = dotted
+
+Keep these separate from station completion fields:
+
+- Station built
+- Entrance built
+- Signs
+- Chimes
+- Walking paths
+- City limits
+- Name
+- Façade
+- Alignment
+
+</details>
+
+<details>
+<summary>[info] WEB VIEWER PURPOSE</summary>
+
+
+The web viewer should answer these questions quickly:
+
+1. Where is a station, city, POI, or coordinate?
+2. How do I get there?
+3. Is the route currently usable?
+4. How long will the trip take?
+5. What coordinates do I need?
+6. What construction projects need help?
+
+</details>
+
+<details>
+<summary>[ ] WEB NAVIGATION FEATURES</summary>
+
+
+Prioritized features:
+
+- Open routes only by default
+- Optional inclusion of planned or under-construction routes
+- Fastest route
+- Fewest transfers
+- Shortest rail distance
+- Terminal-based direction language
+- Stops per ride step
+- Track distance
+- Minecart travel time
+- Transfer instructions
+- Copy coordinates
+- Shareable links
+- Station selection links
+- Route links
+- Coordinate links
+- Construction-task links
+- Line visibility filtering
+- Open/planned/both map filtering
+- Terrain-opacity control
+- Clear symbol and line-style legend
+
+Example instruction:
+
+Take Line B toward Toot'n'Cummin.
+Ride 5 stops to Clifton.
+Transfer to Line K toward KU.
+Estimated ride time: 4m 20s.
+
+When no open route exists:
+
+No completed metro route currently exists.
+
+Planned route:
+Line B to Clifton
+Transfer to Line K
+Unfinished segment: Clifton to KL
+
+</details>
+
+<details>
+<summary>[ ] LINE BADGES</summary>
+
+
+Add reusable circular line badges.
+
+Each badge should have:
+
+- Line color fill
+- Bold upright letter
+- Automatic black or white text based on contrast
+- Thin contrasting border
+- Fixed readable screen size
+
+Use badges in:
+
+- Line legend
+- Station popups
+- Junction displays
+- Route instructions
+- Terminals
+- Major junctions
+- Construction dashboard
+
+Use zoom-aware visibility so badges do not overwhelm the full-world view.
+
+</details>
+
+<details>
+<summary>[ ] WEB CONSTRUCTION DASHBOARD</summary>
+
+
+The construction dashboard should be public and read-only.
+
+It is intended to help world members and helpers understand progress and choose useful projects.
+
+Only sanitized public construction information should be exported.
+
+Suggested overview:
+
+- Total stations
+- Open stations
+- Open railway distance
+- Under-construction railway distance
+- Planned railway distance
+- Completion by line
+- Placeholder stations needing names
+- Public help-needed tasks
+
+Suggested per-line information:
+
+- Line badge
+- Endpoints
+- Station count
+- Junction count
+- Open/total distance
+- Estimated complete end-to-end minecart time
+- Current construction frontier
+- Unfinished segments
+- Stations with incomplete public-facing tasks
+
+Suggested help-needed filters:
+
+- Line
+- Task type
+- Priority
+- Nearest open station
+- Smallest remaining project
+- Projects that connect completed regions
+- Naming needed
+- Railway needed
+- Station needed
+- Entrance needed
+- Signs needed
+- Walking paths needed
+- Chimes needed
+
+Selecting a task should:
+
+- Highlight it on the map
+- Show coordinates
+- Show the nearest usable station
+- Show directions from a selected starting station
+- Show estimated minecart time
+- Create a shareable link
+
+Do not expose private notes, internal weights, debugging data, or editing controls.
+
+</details>
+
+<details>
+<summary>[progress] MINECART TRAVEL TIME</summary>
+
+
+The underlying minecart travel-time logic already exists and should be reused rather than duplicated.
+
+Centralize travel assumptions such as:
+
+- Minecart speed
+- Transfer penalty
+- Optional station-stop penalty
+- Walking speed
+- Flying speed
+
+Display minecart time in:
+
+- Route summary
+- Each ride step
+- Station-to-adjacent-station information
+- Line summaries
+- Segment popups
+- Construction dashboard
+- Nearest-station results
+- Coordinate search results along a line
+- Desktop construction and route panels
+
+Example:
+
+Line N: Aesopia to Michael
+1.8 km
+Approximately 3m 45s
+
+</details>
+
+<details>
+<summary>[progress] TESTING EXPECTATIONS</summary>
+
+
+Before major restructuring:
+
+- [x] Record current behavior.
+- [x] Run all current Python tests.
+- [x] Run all current Node tests.
+- [ ] Run desktop smoke tests where a display is available.
+- [x] Add regression tests for important workflows.
+
+Tests should eventually cover:
+
+Core:
+- [x] Network loading
+- [ ] Validation
+- [ ] Stable identifiers
+- [x] Line membership
+- [ ] Segment status
+- [ ] Routing
+- [x] Travel time
+- [x] Search normalization
+- [x] Geometry
+- [x] Path endpoint handling
+- [ ] Serialization
+
+Desktop:
+- [x] Sidebar construction
+- [ ] Station editing
+- [x] Line editing
+- [x] Path editing
+- [ ] Undo/history
+- [ ] Public export
+- [ ] Worldgen controls
+- [ ] Error details
+
+Worldgen:
+- [x] Target selection
+- [ ] Cache invalidation
+- [ ] Incremental rendering
+- [x] Metadata
+- [ ] Completion calculation
+- [x] Public metadata sanitization
+- [ ] Water classification later
+
+Web:
+- [ ] Camera transforms
+- [ ] Panning and zooming
+- [x] Coordinate parsing
+- [x] Search
+- [ ] Routing
+- [ ] Status filtering
+- [ ] Badge contrast
+- [ ] Shareable URL state
+- [ ] Construction dashboard
+- [x] Public-data validation
+
+Public-output tests must verify that no output contains:
+
+- [x] /Users/
+- [x] home-directory paths
+- [x] credentials
+- [x] Docker paths
+- [x] cache paths
+- [x] backup paths
+- [x] private notes
+- [x] internal diagnostic fields
+
+</details>
+
+<details>
+<summary>[x] FIRST CODEX TASK: LOCAL ARCHITECTURE AND PERFORMANCE AUDIT</summary>
+
+
+Work directly in the Plumville workspace currently open in VS Code.
+
+Important context:
+- The local workspace is authoritative and may contain private or uncommitted files not present on GitHub.
+- The Tk desktop app is the full private editor and administration tool.
+- The docs/ web viewer is read-only but supports visitors and helpers with map viewing, directions, coordinates, public construction information, and public points of interest.
+- Preserve all current functionality.
+- Do not commit, push, reset, discard, or overwrite unrelated work.
+- Water-body and coastline detection is explicitly out of scope for current cleanup and optimization work.
+
+This task is an architecture and performance audit. Do not begin a broad refactor yet.
+
+Audit progress:
+- [x] Read notes.txt project context and deferred water/coastline scope.
+- [x] Ran git status before changes and identified existing modified/ignored work.
+- [x] Inspect complete local workspace and classify active/public/private/generated files.
+- [x] Build Python import/dependency map.
+- [x] Review dynamic patch and compatibility modules without assuming unused status.
+- [x] Run Python tests and record exact result.
+- [x] Run Node/web tests and record exact result.
+- [x] Establish available performance baselines and identify gaps needing instrumentation.
+- [x] Add lightweight opt-in profiling tools only if needed.
+- [x] Write architecture audit document outside docs/.
+- [x] Include target tree, dependency diagram, migration sequence, bottlenecks, cleanup opportunities, risks, test plan, redundant/transitional files, manual-review files, first refactor task, changed files, and command log.
+
+Baseline hardening progress:
+- [x] Resolve deterministic Python and Node test gaps found during audit.
+- [x] Add extension-entrypoint idempotency regression coverage.
+- [x] Add broader public-output sanitization regression coverage.
+- [x] Rerun Python and Node tests after baseline hardening.
+
+First core extraction progress:
+- [x] Create `plumville.core.travel_time` with pure minecart distance/time formatting.
+- [x] Keep `legacy_core` travel-time compatibility wrappers.
+- [x] Add direct core travel-time regression coverage.
+- [x] Rerun Python and Node tests after extraction.
+
+Core geometry extraction progress:
+- [x] Create `plumville.core.geometry` for pure polyline/distance helpers.
+- [x] Keep `legacy_core` geometry compatibility wrappers.
+- [x] Add direct core geometry regression coverage.
+- [x] Rerun Python and Node tests after geometry extraction.
+
+Core text/identity extraction progress:
+- [x] Create `plumville.core.text` for display labels, identity normalization, and line value normalization.
+- [x] Keep `legacy_core` text/identity compatibility wrappers.
+- [x] Add direct core text/identity regression coverage.
+- [x] Rerun Python and Node tests after text/identity extraction.
+
+Core routing extraction progress:
+- [x] Create `plumville.core.routing` for pure route models and route-step coalescing.
+- [x] Keep `legacy_core` routing model and `_append_route_step` compatibility aliases/wrappers.
+- [x] Add direct core routing regression coverage.
+- [x] Rerun Python and Node tests after routing model extraction.
+
+Core routing algorithm extraction progress:
+- [x] Add generic shortest-route and route-cost helpers to `plumville.core.routing`.
+- [x] Use the generic routing helpers from `legacy_core._find_route` and `_route_costs_from_endpoint_key`.
+- [x] Add direct core routing algorithm regression coverage.
+- [x] Rerun Python and Node tests after routing algorithm extraction.
+
+Core route graph construction progress:
+- [x] Move generic graph-edge append and endpoint node lookup helpers to `plumville.core.routing`.
+- [x] Move route graph transfer and line-edge assembly behind a core-compatible boundary.
+- [x] Move extra-edge graph assembly behind a core-compatible boundary.
+- [x] Add direct route graph construction regression coverage.
+- [x] Keep station city-path anchor graph assembly as an explicit legacy-world adapter.
+- [x] Rerun Python and Node tests after route graph construction extraction.
+
+Core unfinished-route helper extraction progress:
+- [x] Move unfinished route line-name detection to `plumville.core.routing`.
+- [x] Keep `legacy_core._unfinished_route_line_names` as a compatibility wrapper.
+- [x] Add direct core and wrapper regression coverage.
+- [x] Rerun Python and Node tests after unfinished-route helper extraction.
+
+Core route instruction extraction progress:
+- [x] Move route instruction text generation to `plumville.core.routing`.
+- [x] Keep UI-specific endpoint labels and distance/time formatting as injected legacy callbacks.
+- [x] Keep `legacy_core._format_line_name_list` as a compatibility wrapper.
+- [x] Add direct route instruction formatting regression coverage.
+- [x] Rerun Python and Node tests after route instruction extraction.
+
+Core network serialization extraction progress:
+- [x] Create `plumville.core.network` for payload JSON serialization and network history file behavior.
+- [x] Delegate legacy history snapshot, payload write, and restore wrappers to `plumville.core.network`.
+- [x] Add direct temp-directory regression coverage for first writes, backups, history dedupe/trimming, and restore fallback.
+- [x] Rerun Python and Node tests after network serialization extraction.
+
+Core network payload normalization progress:
+- [x] Move stop checkpoint, station-entry, and chime-list normalization to `plumville.core.network`.
+- [x] Keep legacy `_coerce_int` and `_normalized_chime_directions` as compatibility wrappers.
+- [x] Add direct core normalization regression coverage.
+- [x] Move railway finish progress/origin normalization to `plumville.core.network`.
+- [x] Move path-node normalization to `plumville.core.network`.
+- [x] Move extra-edge, endpoint, and city-limit normalization to `plumville.core.network`.
+- [x] Move alignment reminder normalization to `plumville.core.network`.
+- [x] Rerun Python and Node tests after payload normalization extraction.
+
+Core network payload application progress:
+- [x] Move line color, wool color, line-stop, stop-line, and railway finish mapping projections to `plumville.core.network`.
+- [x] Use those projections from `legacy_core._apply_network_payload`.
+- [x] Add direct projection regression coverage.
+- [x] Move line path spec/coordinate projections to `plumville.core.network`.
+- [x] Move path-node, extra-edge, and alignment runtime tuple construction behind a core-compatible boundary.
+- [x] Rerun Python and Node tests after payload application extraction.
+
+Core network validation extraction progress:
+- [x] Move line sequence, line path spec, line color, path node, extra edge, stop-line, and stop-record validation rules to `plumville.core.network`.
+- [x] Keep legacy validation function names as wrappers around core validators.
+- [x] Add direct validation regression coverage.
+- [x] Rerun Python and Node tests after validation extraction.
+
+Public export boundary progress:
+- [x] Create `plumville.core.public_export` for reusable public docs validation.
+- [x] Add `scripts/validate_public_export.py` dry-run validator for the current `docs/` export.
+- [x] Wire `npm test` to run docs smoke plus public export validation.
+- [x] Move existing public-output tests onto the shared validator.
+- [x] Add direct validator regression coverage.
+- [x] Rerun focused Python tests and `npm test` after public validator extraction.
+- [x] Add or improve desktop export preview/dry-run workflow.
+- [x] Add export-time validation hooks for generated public data before publish/copy.
+
+File classification progress:
+- [x] Create `FILE_CLASSIFICATION_2026-07-24.md`.
+- [x] Classify definitely active tracked files.
+- [x] Classify active transitional patch/helper modules.
+- [x] Classify public assets that must be retained and validated.
+- [x] Classify generated/local runtime data that should stay ignored and unpublished.
+- [x] Identify approval-required cleanup candidates without deleting anything.
+
+Patch module consolidation progress:
+- [x] Choose `worldgen_target_fix.py` as the first consolidation candidate.
+- [x] Add focused regression coverage for promoted target ordering and next-target selection.
+- [x] Move `worldgen_target_fix.py` planner behavior into canonical `worldgen/` modules.
+- [x] Remove or shrink `worldgen_target_fix.py` after canonical behavior is covered and `ui_extensions.py` no longer needs to monkeypatch it.
+- [x] Focused planner regression test: `python3 -m pytest tests/test_worldgen_target_fix.py`.
+- [x] Rerun Python and Node tests after first patch-module consolidation.
+- [x] Move `worldgen_speedups.py` generator-method behavior into canonical `worldgen/generator.py`.
+- [x] Add focused regression coverage for canonical worldgen speedup behavior.
+- [x] Focused speedup regression test: `python3 -m pytest tests/test_worldgen_speedups.py tests/test_worldgen_target_fix.py`.
+- [x] Move remaining `worldgen_speedups.py` desktop auto-fill status/finalize behavior into canonical desktop/world-map code.
+- [x] Shrink `worldgen_speedups.py` to a compatibility no-op after canonical behavior is covered.
+- [x] Focused full speedup-shim regression test: `python3 -m pytest tests/test_worldgen_speedups.py tests/test_worldgen_target_fix.py`.
+- [x] Rerun Python and Node tests after the `worldgen_speedups.py` consolidation slice.
+- [x] Move `world_map_overrides.py` underlay drawing, full-resolution SVG/image export, and block-PNG export behavior into canonical desktop code.
+- [x] Shrink `world_map_overrides.py` to a compatibility no-op after canonical behavior is covered.
+- [x] Focused world-map override regression test: `python3 -m pytest tests/test_world_map_overrides.py tests/test_worldgen_speedups.py tests/test_worldgen_target_fix.py`.
+- [x] Rerun Python and Node tests after the `world_map_overrides.py` consolidation slice.
+- [x] Move `path_rendering.py` suggested walking-path rendering and path-node visibility behavior into canonical desktop code.
+- [x] Shrink `path_rendering.py` to a compatibility no-op after canonical behavior is covered.
+- [x] Focused path-rendering regression test: `python3 -m pytest tests/test_path_rendering.py tests/test_entrypoints_and_public_output.py::EntrypointAndPublicOutputTests::test_metro_stops_extension_application_is_idempotent`.
+- [x] Rerun Python and Node tests after the `path_rendering.py` consolidation slice.
+- [x] Move `poi_extensions.py` point-of-interest data helper and Add PoI dialog into canonical desktop code.
+- [x] Shrink `poi_extensions.py` to a compatibility no-op after canonical behavior is covered.
+- [x] Focused PoI regression test: `python3 -m pytest tests/test_poi_extensions.py tests/test_entrypoints_and_public_output.py::EntrypointAndPublicOutputTests::test_metro_stops_extension_application_is_idempotent`.
+- [x] Rerun Python and Node tests after the `poi_extensions.py` consolidation slice.
+
+- [x] 1. Inspect the complete local workspace, including relevant untracked files, while respecting gitignored private data.
+
+- [x] 2. Run git status and preserve everything already present.
+
+- [x] 3. Identify all:
+   - executable entry points
+   - Python packages
+   - JavaScript modules
+   - scripts
+   - tests
+   - generated files
+   - cache folders
+   - history folders
+   - public assets
+   - private/local assets
+
+- [x] 4. Build an import and dependency map for the Python application.
+
+- [x] 5. Identify:
+   - files that are definitely active
+   - compatibility wrappers
+   - runtime monkey patches
+   - duplicated implementations
+   - transitional fixes
+   - likely obsolete scripts
+   - generated files mixed with source
+   - private/local files that must never enter docs/
+
+- [x] 6. Pay particular attention to:
+   - legacy_core.py
+   - metro_stops.py
+   - ui_extensions.py
+   - metro_station_extensions.py
+   - worldgen_speedups.py
+   - worldgen_target_fix.py
+   - world_map_overrides.py
+   - path_detection.py
+   - path_rendering.py
+   - poi_extensions.py
+   - the worldgen package
+   - docs/app.js
+
+- [x] 7. Do not mark dynamically patched files as unused solely because a normal import search does not find them.
+
+- [x] 8. Run all existing Python and Node tests and document the exact commands and results.
+
+- [x] 9. Establish performance baselines for available non-GUI probes, with GUI/live-world gaps documented for:
+   - desktop startup
+   - initial desktop render
+   - desktop panning
+   - desktop zooming
+   - web initial render
+   - web panning
+   - web zooming
+   - station-label placement
+   - route planning
+   - path addition
+   - village-path detection
+   - worldgen target planning
+   - chunk loading
+   - terrain decoding
+   - terrain rendering
+   - PNG writing
+   - public-asset copying
+
+- [x] 10. Add lightweight opt-in profiling tools only where needed. Do not expose profiling or debug information during normal use.
+
+- [x] 11. Read notes.txt to understand the complete project context. Water-body and coastline work is deferred and must not affect the current architecture, dependencies, data model, or task scope.
+
+- [x] 12. Propose a staged target directory structure and migration plan that:
+   - preserves metro_stops.py
+   - preserves python3 -m worldgen
+   - preserves GitHub Pages from docs/
+   - moves code incrementally
+   - keeps compatibility wrappers during migration
+   - separates core logic, desktop UI, worldgen, public exporting, diagnostics, tests, and generated assets
+   - keeps the public viewer read-only
+   - supports a read-only public construction dashboard
+
+- [x] 13. Recommend which scripts should be:
+   - retained unchanged
+   - moved
+   - consolidated
+   - absorbed into canonical modules
+   - converted into compatibility wrappers
+   - deprecated only after testing
+   - deleted only after explicit approval
+
+- [x] 14. Do not delete, move, or substantially rewrite files during this audit.
+
+- [x] 15. Write the results to a clearly named architecture audit document outside docs/ so it is not treated as a public web asset.
+
+The audit must conclude with:
+- [x] proposed target file tree
+- [x] dependency diagram in text or Mermaid
+- [x] prioritized migration sequence
+- [x] measured performance bottlenecks
+- [x] low-risk cleanup opportunities
+- [x] high-risk areas requiring tests
+- [x] proposed test plan
+- [x] list of likely redundant or transitional files
+- [x] list of files requiring manual review
+- [x] recommended first refactor task
+- [x] every file created or modified
+- [x] every command run
+
+Do not commit or push.
+
+</details>
+
+<details>
+<summary>[info] SCREENSHOTS THAT MAY BE PROVIDED FOR UI REVIEW</summary>
+
+
+Helpful screenshots include:
+
+- Entire desktop application at startup
+- Checklist and Priority List expanded
+- Selected station with full station controls visible
+- Pathing section expanded
+- Add Metro Station dialog
+- Path-detection dialog
+- World Map section during Auto Fill
+- World Map section after completion
+- Desktop view at the zoom level where performance is worst
+- Web viewer zoomed fully out
+- Web viewer at regional zoom
+- Web viewer showing a completed route
+- Web viewer showing an unfinished route
+- Any error state containing excessive debug information
+
+</details>
+
+<details>
+<summary>[deferred] DEFERRED BACKLOG: WATER BODY AND COASTLINE DETECTION</summary>
+
+
+Priority: last.
+
+Do not implement, prototype, optimize for, add dependencies for, or restructure the current application around this feature until the cleanup, performance, segment status, construction dashboard, public export, and visitor-navigation work are complete.
+
+When eventually implemented, use renderer/block data rather than relying primarily on screenshot color matching.
+
+Future plan:
+
+1. Persist a semantic surface mask during terrain rendering.
+   - Minimum classes:
+     - unknown/unrendered
+     - land
+     - water
+   - Later classes may include:
+     - ice
+     - lava
+     - artificial water
+     - marsh or waterlogged vegetation
+   - Include water, minecraft:water, kelp, seagrass, bubble columns, and appropriate waterlogged blocks.
+
+2. Store the semantic mask beside render caches.
+   - Prefer tiled storage suitable for incremental generation.
+   - Include:
+     - min_x
+     - min_z
+     - max_x
+     - max_z
+     - sample_step
+     - width
+     - height
+     - world-map mode
+     - renderer version
+     - classification version
+     - source revision
+
+3. Clean the raw water mask.
+   - Remove isolated noise.
+   - Fill tiny holes.
+   - Preserve unknown pixels separately.
+   - Never classify unrendered gaps as coastline.
+
+4. Split water into connected components.
+
+5. Record component features:
+   - area
+   - bounding box
+   - perimeter
+   - compactness
+   - major and minor axis
+   - width distribution
+   - endpoint count
+   - boundary contact
+   - known-versus-unknown border percentage
+
+6. First classify:
+   - sea/ocean
+   - lake
+   - pond
+   - uncertain water
+
+7. Classify large boundary-connected water as sea or ocean.
+
+8. Classify enclosed broad water as lakes.
+
+9. Classify small enclosed water as ponds or ignore it according to configurable thresholds.
+
+10. Detect long narrow water regions.
+    - Use width fields and skeletonization.
+    - Separate broad water blobs from narrow corridors.
+
+11. Build a water graph.
+    - Broad water bodies become nodes.
+    - Narrow corridors become edges.
+
+12. Classify corridors:
+    - Inland water to sea = likely river
+    - Sea to sea = strait or channel
+    - Lake to lake = river or channel
+    - Corridor returning to the same broad body = bay or channel
+
+13. Detect river mouths.
+
+14. Extract:
+    - coastlines
+    - lake shorelines
+    - river banks
+
+15. Generate simplified polylines using contour tracing and Douglas-Peucker simplification.
+
+16. Add desktop overlays:
+    - Water Bodies
+    - Coastlines
+    - Lake Shores
+    - Rivers
+    - Uncertain Water
+    - Component IDs in developer mode only
+
+17. Add optional public overlays only after the analysis is reliable.
+
+18. Add cache invalidation when:
+    - terrain render changes
+    - bounds change
+    - sample step changes
+    - world-map mode changes
+    - classification logic changes
+
+19. Validate against known examples:
+    - ocean
+    - coast
+    - enclosed lakes
+    - ponds
+    - rivers
+    - deltas
+    - swamps
+    - narrow channels
+    - incomplete map edges
+
+20. Keep confidence scores and allow future manual corrections.
+
+This deferred feature must not delay or complicate the current project cleanup.
+
+</details>

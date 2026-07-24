@@ -7,6 +7,44 @@ import legacy_core
 
 
 class LegacyPathMetadataTests(unittest.TestCase):
+    def test_extra_edges_for_endpoint_key_reuses_index_until_edges_change(self) -> None:
+        endpoint_a = legacy_core.PathEndpoint(kind="stop", key="P_A", x=0, y=0)
+        endpoint_b = legacy_core.PathEndpoint(kind="coord", key="coord:1,1", x=1, y=1)
+        first_edge = legacy_core.ExtraEdgeDefinition(
+            id="edge_a",
+            kind="walk",
+            from_endpoint=endpoint_a,
+            to_endpoint=endpoint_b,
+        )
+        second_edge = legacy_core.ExtraEdgeDefinition(
+            id="edge_b",
+            kind="walk",
+            from_endpoint=endpoint_b,
+            to_endpoint=legacy_core.PathEndpoint(kind="coord", key="coord:2,2", x=2, y=2),
+        )
+        previous_edges = legacy_core.EXTRA_EDGES
+        previous_cache_key = legacy_core._EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY
+        previous_cache = legacy_core._EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE
+        try:
+            legacy_core.EXTRA_EDGES = (first_edge,)
+            legacy_core._EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY = None
+            legacy_core._EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE = {}
+
+            first_result = legacy_core._extra_edges_for_endpoint_key(endpoint_b.key)
+            second_result = legacy_core._extra_edges_for_endpoint_key(endpoint_b.key)
+            self.assertEqual(first_result, (first_edge,))
+            self.assertIs(first_result, second_result)
+
+            legacy_core.EXTRA_EDGES = (first_edge, second_edge)
+            self.assertEqual(
+                legacy_core._extra_edges_for_endpoint_key(endpoint_b.key),
+                (first_edge, second_edge),
+            )
+        finally:
+            legacy_core.EXTRA_EDGES = previous_edges
+            legacy_core._EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY = previous_cache_key
+            legacy_core._EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE = previous_cache
+
     def test_station_entry_coordinates_anchor_stop_path_edges(self) -> None:
         payload = {
             "stops": [

@@ -42,6 +42,7 @@
             <input id="showSuggestedWalkingPathsInput" type="checkbox">
             <span>Suggested walking paths</span>
           </label>
+          <div id="lineLegend" class="line-legend" aria-label="Line visibility"></div>
         </section>
 
         <details class="collapsible-section" open>
@@ -49,11 +50,11 @@
           <section class="control-section">
             <label class="field-label" for="routeStartInput">From</label>
             <input id="routeStartInput" class="sidebar-input" type="search" autocomplete="off" list="stationSuggestions" placeholder="Blackport">
-            <p class="hint">Station label / var</p>
+            <p class="hint">Station label or code</p>
 
             <label class="field-label spaced" for="routeEndInput">To</label>
             <input id="routeEndInput" class="sidebar-input" type="search" autocomplete="off" list="stationSuggestions" placeholder="Dicton">
-            <p class="hint">Station label / var</p>
+            <p class="hint">Station label or code</p>
             <datalist id="stationSuggestions"></datalist>
 
             <div class="actions" aria-label="Route actions">
@@ -65,7 +66,7 @@
 
           <section class="text-panel" aria-live="polite">
             <p id="routeSummary">Choose two stations.</p>
-            <pre id="routeSteps">Enter or select a start and destination, then press Route.</pre>
+            <pre id="routeSteps">Enter or select two stations, then press Route.</pre>
           </section>
         </details>
 
@@ -73,6 +74,7 @@
           <button id="resetViewButton" type="button">Reset view</button>
           <button id="fitMapButton" type="button">Fit map</button>
           <button id="blackportButton" type="button">Blackport</button>
+          <button id="copyLinkButton" type="button">Copy link</button>
           <button id="clearSelectionButton" type="button">Clear selection</button>
         </div>
       </aside>

@@ -9,10 +9,10 @@ import path_rendering
 import poi_extensions
 import world_map_overrides
 import worldgen_speedups
-import worldgen_target_fix
 
 
 _ORIGINAL_BUILD_ROUTE_PANEL = base.MetroMapViewer._build_route_panel
+_APPLIED = False
 
 
 def _append_pathing_extensions(self: "base.MetroMapViewer", parent: tk.Misc) -> None:
@@ -110,7 +110,10 @@ def _patched_build_route_panel(self: "base.MetroMapViewer") -> None:
 
 
 def apply() -> None:
-    worldgen_target_fix.apply()
+    global _APPLIED
+    if _APPLIED:
+        return
+
     worldgen_speedups.apply()
     metro_station_extensions.apply()
     poi_extensions.apply()
@@ -118,3 +121,4 @@ def apply() -> None:
     path_rendering.apply()
     path_detection.apply()
     world_map_overrides.apply()
+    _APPLIED = True

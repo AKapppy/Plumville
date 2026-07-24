@@ -22,11 +22,11 @@
   "fixed_y": null,
   "generated_at": "2026-07-24T09:18:59+00:00",
   "height": 12001,
-  "image_path": "/Users/andrewkapetanakis/Library/Application Support/Plumville/worldgen/output/blackport_topdown.png",
+  "image_path": "assets/blackport_topdown.png",
   "map_completion_percent": 100.0,
   "max_x": 9000,
   "max_z": 7000,
-  "metadata_path": "/Users/andrewkapetanakis/Library/Application Support/Plumville/worldgen/cache/render_cache.json",
+  "metadata_path": "assets/blackport_topdown.render.json",
   "min_x": -8000,
   "min_z": -5000,
   "render_style": "surface",
@@ -51,14 +51,14 @@
     "minecraft:unknown_runtime_610820787": 1
   },
   "uncolored_block_occurrences": 23,
-  "uncolored_blocks_report_path": "/Users/andrewkapetanakis/Library/Application Support/Plumville/worldgen/output/uncolored_blocks_report.txt",
+  "uncolored_blocks_report_path": null,
   "unfinished_group_count": 0,
   "unfinished_point_count": 0,
-  "unfinished_points_path": "/Users/andrewkapetanakis/Library/Application Support/Plumville/worldgen/output/unfinished_points.json",
+  "unfinished_points_path": null,
   "unknown_block_diagnostics_path": null,
   "unknown_block_occurrences_csv_path": null,
   "unknown_block_persistent_candidates_path": null,
   "unknown_block_summary_path": null,
   "width": 17001,
-  "world_path": "/Users/andrewkapetanakis/Library/Application Support/Plumville/worldgen/cache/headless_chunk_packets_recent.jsonl"
+  "world_path": null
 }

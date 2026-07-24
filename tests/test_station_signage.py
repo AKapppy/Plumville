@@ -22,7 +22,7 @@ class StationSignageTest(unittest.TestCase):
 
         self.assertEqual(
             left_labels,
-            ["Everly (N)", "Amortay", "Neamegapolis", "Pinto Peak", "Prumpvatn", "Peapod (D)", "Aldinhöfn (T)"],
+            ["Everly (N)", "Amortay (U)", "Neamegapolis", "Pinto Peak", "Prumpvatn", "Peapod (D)", "Aldinhöfn (T)"],
         )
         self.assertEqual(right_labels, ["Ridgewater", "Blackport (ABDE)"])
 
@@ -38,7 +38,7 @@ class StationSignageTest(unittest.TestCase):
         )
         self.assertEqual(
             [base._station_signage_label(stop_var, "C") for stop_var in right_stop_vars],
-            ["Everly (N)", "Amortay", "Neamegapolis", "Pinto Peak", "Prumpvatn", "Peapod (D)", "Aldinhöfn (T)"],
+            ["Everly (N)", "Amortay (U)", "Neamegapolis", "Pinto Peak", "Prumpvatn", "Peapod (D)", "Aldinhöfn (T)"],
         )
 
     def test_line_endpoint_has_one_direction_list(self) -> None:

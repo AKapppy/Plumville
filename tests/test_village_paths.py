@@ -47,6 +47,30 @@ class VillagePathSurfaceScanTests(unittest.TestCase):
         self.assertEqual(point.block_name, "minecraft:grass_path")
         self.assertTrue(village_paths._is_path_block(point.block_name))
 
+    def test_path_points_from_scan_normalizes_extra_names_once(self) -> None:
+        scan = village_paths.SurfaceScan(
+            mode_key="local_seed_surface",
+            center=(0, 0),
+            radius=village_paths.DEFAULT_SCAN_RADIUS,
+            surface_points={
+                (0, 0): village_paths.SurfacePoint(0, 0, 64, "minecraft:unknown_runtime_-1"),
+                (1, 0): village_paths.SurfacePoint(1, 0, 64, "minecraft:unknown_runtime_-1"),
+            },
+        )
+
+        with patch.object(
+            village_paths,
+            "_normalized_extra_path_block_names",
+            wraps=village_paths._normalized_extra_path_block_names,
+        ) as normalize_extra:
+            path_points = village_paths._path_points_from_scan(
+                scan,
+                extra_path_block_names=("minecraft:unknown_runtime_-1",),
+            )
+
+        self.assertEqual(path_points, {(0, 0), (1, 0)})
+        self.assertEqual(normalize_extra.call_count, 1)
+
     def test_preview_scan_is_centered_on_first_seed(self) -> None:
         scan = village_paths.SurfaceScan(
             mode_key="local_seed_surface",

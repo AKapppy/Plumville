@@ -8,17 +8,19 @@ import io
 import json
 import queue
 import re
+import sys
 import threading
 import time
 import tkinter as tk
 from dataclasses import dataclass
 from datetime import datetime
-from itertools import combinations
 from math import ceil, dist, floor, log
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Final, Iterable, Literal, NotRequired, Sequence, TypedDict, cast
 
 from PIL import Image, ImageDraw, ImageTk
+
+from plumville.core import geometry, network, public_export, routing, text as core_text, travel_time
 
 Image.MAX_IMAGE_PIXELS = None
 
@@ -130,6 +132,11 @@ WORLD_MAP_ACTIVE_TARGET_COLOR: Final[str] = '#8ad4ff'
 WORLD_MAP_ACTIVE_TARGET_WIDTH: Final[int] = 2
 WORLD_MAP_ACTIVE_TARGET_DASH: Final[tuple[int, int]] = (10, 5)
 WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE: Final[int] = 24
+UNDERLAY_SEAM_OVERSCAN_PIXELS: Final[int] = 1
+SHARP_UNDERLAY_UPSCALE_THRESHOLD: Final[float] = 1.5
+WORLD_MAP_BOUNDARY_EDGE_COLOR: Final[str] = '#e5e7eb'
+WORLD_MAP_BOUNDARY_EDGE_WIDTH: Final[int] = 1
+WORLD_MAP_BOUNDARY_EDGE_TOUCH_BAND: Final[int] = 2
 WORLD_MAP_AUTO_LOAD_PASSES: Final[int] = 1
 WORLD_MAP_RENDER_PROGRESS_PIXEL_INTERVAL: Final[int] = 5_000
 WORLD_MAP_PREVIEW_MAX_DIMENSION: Final[int] = 4096
@@ -143,7 +150,7 @@ WORLD_MAP_SPIRAL_BLANK_MIN_CANVAS_SIZE: Final[int] = 18
 SIDEBAR_SCROLL_PIXELS: Final[int] = 36
 SIDEBAR_SCROLL_FRAMES: Final[int] = 3
 SIDEBAR_SCROLL_FRAME_DELAY_MS: Final[int] = 8
-MINECART_SPEED_MPS: Final[float] = 8.0
+MINECART_SPEED_MPS: Final[float] = travel_time.MINECART_SPEED_MPS
 VIEWPORT_REDRAW_BATCH_DELAY_MS: Final[int] = 16
 VIEWPORT_INTERACTION_FULL_REDRAW_DELAY_MS: Final[int] = 240
 TARGET_MAP_VIEW_MARGIN_PIXELS: Final[int] = 24
@@ -214,7 +221,7 @@ PRIORITY_NAME_WEIGHT: Final[int] = 1
 PRIORITY_JUNCTION_WEIGHT: Final[int] = 2
 PRIORITY_DISTANCE_WEIGHT: Final[int] = 3
 PRIORITY_STATION_WEIGHT: Final[int] = 4
-SUBSCRIPT_TRANSLATION: Final[dict[int, int]] = str.maketrans('0123456789-', '₀₁₂₃₄₅₆₇₈₉₋')
+SUBSCRIPT_TRANSLATION: Final[dict[int, int]] = core_text.SUBSCRIPT_TRANSLATION
 MAX_HISTORY_SNAPSHOTS: Final[int] = 100
 
 
@@ -346,8 +353,8 @@ CHECKPOINT_FIELDS: Final[tuple[CheckpointField, ...]] = (
 )
 AlignmentAxis = Literal['x', 'y']
 AlignmentAxisInput = Literal['x', 'y', 'auto']
-RouteNode = tuple[str, str]
-RouteKind = Literal['ride', 'transfer', 'connector', 'walk', 'fly']
+RouteNode = routing.RouteNode
+RouteKind = routing.RouteKind
 ExtraEdgeKind = Literal['connector', 'walk']
 PathEndpointKind = Literal['stop', 'coord', 'city_limit']
 MetroSegmentShape = Literal['direct', 'turn', 'custom']
@@ -430,16 +437,7 @@ class LinePathPointSpec:
         return (plot_x, -plot_y)
 
 
-@dataclass(frozen=True, slots=True)
-class RouteEdge:
-    start: RouteNode
-    end: RouteNode
-    distance: int
-    transfer_count: int
-    kind: RouteKind
-    line_name: str | None = None
-    label: str | None = None
-    path_points: tuple[tuple[int, int], ...] = ()
+RouteEdge = routing.RouteEdge
 
 
 @dataclass(frozen=True, slots=True)
@@ -537,30 +535,18 @@ class PathNode:
         return f'{self.display_label} ({self.x}, {self.y})'
 
 
+PoiKind = Literal['monument', 'pillager_tower']
+
+
 @dataclass(frozen=True, slots=True)
-class RouteStep:
-    kind: RouteKind
-    start_key: str
-    end_key: str
-    distance: int
-    path_points: tuple[tuple[int, int], ...]
-    line_name: str | None = None
-    label: str | None = None
-    stop_vars: tuple[str, ...] = ()
+class AddedPoi:
+    kind: PoiKind
+    label: str
+    coordinates: tuple[int, int]
+    node_key: str
 
-    @property
-    def display_name(self) -> str:
-        if self.kind == 'ride':
-            return f'Line {self.line_name}'
-        if self.label:
-            return self.label
-        return self.kind.title()
 
-    @property
-    def stop_count(self) -> int:
-        if len(self.stop_vars) < 2:
-            return 0
-        return max(0, len(self.stop_vars) - 1)
+RouteStep = routing.RouteStep
 
 
 def _path_node_type_label(path_node: PathNode) -> str:
@@ -571,13 +557,242 @@ def _path_node_type_label(path_node: PathNode) -> str:
     return 'saved' if path_node.is_explicit else 'derived from paths'
 
 
-@dataclass(frozen=True, slots=True)
-class RouteResult:
-    start_key: str
-    end_key: str
-    total_distance: int
-    total_interchanges: int
-    steps: tuple[RouteStep, ...]
+def add_custom_point_of_interest(
+    coordinates: tuple[int, int],
+    *,
+    kind: PoiKind,
+    label: str | None = None,
+    category: str | None = None,
+) -> AddedPoi:
+    payload = _load_network_payload()
+    if any((int(stop_record['x']), int(stop_record['y'])) == coordinates for stop_record in payload['stops']):
+        raise ValueError('A station already exists at those coordinates.')
+
+    raw_nodes = payload.setdefault('path_nodes', [])
+    for node in raw_nodes:
+        if not isinstance(node, dict):
+            continue
+        if (int(node.get('x', 0)), int(node.get('y', 0))) == coordinates:
+            raise ValueError('A node or PoI already exists at those coordinates.')
+
+    normalized_category = None if category is None else (category.strip() or None)
+    normalized_label = None if label is None else (label.strip() or None)
+    if kind == 'monument' and normalized_label is None:
+        normalized_label = f'Unnamed {normalized_category or "Monument"}'
+    if kind == 'pillager_tower' and normalized_label is None:
+        normalized_label = 'Pillager Tower'
+
+    node_id_prefix = 'monument' if kind == 'monument' else 'pillager_tower'
+    node_record: PathNodeRecord = {
+        'id': f'{node_id_prefix}_{len(raw_nodes) + 1}',
+        'x': int(coordinates[0]),
+        'y': int(coordinates[1]),
+        'poi_kind': kind,
+    }
+    if normalized_label:
+        node_record['label'] = normalized_label
+    if normalized_category:
+        node_record['category'] = normalized_category
+
+    raw_nodes.append(node_record)
+    _normalize_path_nodes(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+    return AddedPoi(
+        kind=kind,
+        label=normalized_label or node_record['id'],
+        coordinates=coordinates,
+        node_key=_coordinate_endpoint_key(coordinates[0], coordinates[1]),
+    )
+
+
+def _poi_categories() -> tuple[str, ...]:
+    categories: list[str] = []
+    for path_node in PATH_NODES:
+        if path_node.poi_kind == 'monument' and path_node.category:
+            categories.append(path_node.category)
+    return tuple(dict.fromkeys(sorted(categories, key=str.lower)))
+
+
+def _center_dialog(dialog: tk.Toplevel, root: tk.Tk) -> None:
+    dialog.update_idletasks()
+    width = max(dialog.winfo_reqwidth(), dialog.winfo_width())
+    height = max(dialog.winfo_reqheight(), dialog.winfo_height())
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+    left = max(0, round((screen_width - width) / 2))
+    top = max(0, round((screen_height - height) / 2))
+    dialog.geometry(f'{width}x{height}+{left}+{top}')
+
+
+def _refresh_viewer_after_add_poi(viewer: "MetroMapViewer", added: AddedPoi) -> None:
+    viewer.route_controls_dirty = True
+    viewer.route_dirty = True
+    viewer.priority_dirty = True
+    viewer.path_edge_list_dirty = True
+    viewer.selected_stop_var = None
+    viewer.selected_path_node_key = added.node_key
+    viewer.selected_metro_segment_key = None
+    viewer.cursor_readout_coordinates = added.coordinates
+    viewer.show_cursor_guides = False
+    viewer.redraw()
+
+
+def show_add_poi_dialog(viewer: "MetroMapViewer") -> None:
+    from tkinter import messagebox
+
+    dialog = tk.Toplevel(viewer.root)
+    dialog.title('Add PoI')
+    dialog.configure(bg=BACKGROUND_COLOR)
+    dialog.transient(viewer.root)
+    dialog.grab_set()
+
+    container = tk.Frame(dialog, bg=BACKGROUND_COLOR)
+    container.pack(fill='both', expand=True, padx=16, pady=16)
+
+    coordinates_var = tk.StringVar(master=dialog)
+    if viewer.cursor_readout_coordinates is not None:
+        coordinates_var.set(f'{viewer.cursor_readout_coordinates[0]}, {viewer.cursor_readout_coordinates[1]}')
+    kind_var = tk.StringVar(master=dialog, value='Monument')
+    monument_name_var = tk.StringVar(master=dialog)
+    monument_category_var = tk.StringVar(master=dialog)
+    current_coordinates = {'value': (0, 0)}
+
+    def clear() -> None:
+        for child in container.winfo_children():
+            child.destroy()
+
+    def label(text: str, *, bold: bool = False) -> tk.Label:
+        return tk.Label(
+            container,
+            text=text,
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE, 'bold' if bold else 'normal'),
+            anchor='w',
+            justify='left',
+            wraplength=420,
+        )
+
+    def button(parent: tk.Misc, text: str, command: Callable[[], None]) -> tk.Label:
+        return viewer._make_sidebar_button(parent, text=text, command=command)
+
+    def row() -> tk.Frame:
+        frame = tk.Frame(container, bg=BACKGROUND_COLOR)
+        frame.pack(fill='x', pady=(8, 0))
+        return frame
+
+    def validate_coordinates() -> tuple[int, int] | None:
+        coordinates = _parse_coordinate_text(coordinates_var.get())
+        if coordinates is None:
+            messagebox.showerror('Invalid Coordinates', 'Enter coordinates in the format: x, y', parent=dialog)
+            return None
+        current_coordinates['value'] = coordinates
+        return coordinates
+
+    def show_start() -> None:
+        clear()
+        label('Add PoI', bold=True).pack(anchor='w')
+        label('Coordinates').pack(anchor='w', pady=(12, 4))
+        viewer._make_sidebar_entry(container, coordinates_var).pack(fill='x')
+        label('Type').pack(anchor='w', pady=(12, 4))
+        kind_menu = viewer._make_sidebar_option_menu(container, kind_var)
+        kind_menu.pack(fill='x')
+        viewer._populate_option_menu(kind_menu, kind_var, ('Monument', 'Pillager Tower'))
+        actions = row()
+        button(actions, 'Continue', continue_from_start).pack(side='left')
+        button(actions, 'Cancel', dialog.destroy).pack(side='left', padx=(8, 0))
+        _center_dialog(dialog, viewer.root)
+
+    def continue_from_start() -> None:
+        if validate_coordinates() is None:
+            return
+        if kind_var.get() == 'Monument':
+            show_monument()
+        else:
+            show_pillager_confirm()
+
+    def show_monument() -> None:
+        clear()
+        coordinates = current_coordinates['value']
+        label('Monument', bold=True).pack(anchor='w')
+        label(f'Coords: {coordinates[0]}, {coordinates[1]}').pack(anchor='w', pady=(4, 8))
+        label('Name').pack(anchor='w')
+        viewer._make_sidebar_entry(container, monument_name_var).pack(fill='x', pady=(4, 8))
+        label('Category').pack(anchor='w')
+        viewer._make_sidebar_entry(container, monument_category_var).pack(fill='x', pady=(4, 8))
+        categories = _poi_categories()
+        if categories:
+            label('Previous categories').pack(anchor='w', pady=(0, 4))
+            shortcut_row = row()
+            for category in categories[:6]:
+                button(shortcut_row, category, lambda value=category: monument_category_var.set(value)).pack(
+                    side='left',
+                    padx=(0, 6),
+                )
+        actions = row()
+        button(actions, 'Back', show_start).pack(side='left')
+        button(actions, 'Review', show_monument_confirm).pack(side='left', padx=(8, 0))
+        _center_dialog(dialog, viewer.root)
+
+    def show_monument_confirm() -> None:
+        category = monument_category_var.get().strip()
+        if not category:
+            messagebox.showerror('Missing Category', 'Enter a monument category.', parent=dialog)
+            return
+        coordinates = current_coordinates['value']
+        name = monument_name_var.get().strip() or f'Unnamed {category}'
+        clear()
+        label('Confirm Monument', bold=True).pack(anchor='w')
+        label(f'Name: {name}\nCategory: {category}\nCoords: {coordinates[0]}, {coordinates[1]}').pack(
+            anchor='w',
+            pady=(8, 8),
+        )
+        actions = row()
+        button(actions, 'Back', show_monument).pack(side='left')
+        button(actions, 'Add Monument', save_monument).pack(side='left', padx=(8, 0))
+        _center_dialog(dialog, viewer.root)
+
+    def save_monument() -> None:
+        coordinates = current_coordinates['value']
+        try:
+            added = add_custom_point_of_interest(
+                coordinates,
+                kind='monument',
+                label=monument_name_var.get(),
+                category=monument_category_var.get(),
+            )
+        except ValueError as exc:
+            messagebox.showerror('Could Not Add Monument', str(exc), parent=dialog)
+            return
+        dialog.destroy()
+        _refresh_viewer_after_add_poi(viewer, added)
+
+    def show_pillager_confirm() -> None:
+        coordinates = current_coordinates['value']
+        clear()
+        label('Confirm Pillager Tower', bold=True).pack(anchor='w')
+        label(f'Coords: {coordinates[0]}, {coordinates[1]}').pack(anchor='w', pady=(8, 8))
+        actions = row()
+        button(actions, 'Back', show_start).pack(side='left')
+        button(actions, 'Add Tower', save_pillager).pack(side='left', padx=(8, 0))
+        _center_dialog(dialog, viewer.root)
+
+    def save_pillager() -> None:
+        coordinates = current_coordinates['value']
+        try:
+            added = add_custom_point_of_interest(coordinates, kind='pillager_tower')
+        except ValueError as exc:
+            messagebox.showerror('Could Not Add Pillager Tower', str(exc), parent=dialog)
+            return
+        dialog.destroy()
+        _refresh_viewer_after_add_poi(viewer, added)
+
+    show_start()
+    _center_dialog(dialog, viewer.root)
+
+
+RouteResult = routing.RouteResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -714,6 +929,27 @@ class MetroLineSegment:
             end_var=self.end_var,
         )
 
+
+@dataclass(frozen=True, slots=True)
+class RailwaySegmentConstructionStatus:
+    line_name: str
+    start_var: str
+    end_var: str
+    start_label: str
+    end_label: str
+    distance: int
+    routing_open: bool
+    station_checklist_complete: bool
+
+    @property
+    def construction_label(self) -> str:
+        if self.routing_open and self.station_checklist_complete:
+            return 'finished'
+        if self.routing_open:
+            return 'open; station checklist incomplete'
+        return 'planned'
+
+
 def d2blckprt(stop: MetroStop) -> int:
     blackport = _blackport_stop()
     return round(dist(stop.coordinates, blackport.coordinates))
@@ -726,7 +962,7 @@ def _blackport_stop() -> MetroStop:
 
 
 def _coordinate_endpoint_key(x: int, y: int) -> str:
-    return f'{COORDINATE_ENDPOINT_PREFIX}{x},{y}'
+    return network.coordinate_endpoint_key(x, y)
 
 
 def _city_limit_endpoint_key(stop_var: str) -> str:
@@ -738,20 +974,7 @@ def _city_limit_stop_var_from_key(endpoint_key: str) -> str:
 
 
 def _coerce_int(value: object) -> int | None:
-    try:
-        if isinstance(value, bool):
-            return int(value)
-        if isinstance(value, int):
-            return value
-        if isinstance(value, float):
-            return int(value)
-        if isinstance(value, str):
-            return int(value)
-        if isinstance(value, (bytes, bytearray)):
-            return int(value)
-        return None
-    except (TypeError, ValueError):
-        return None
+    return network.coerce_int(value)
 
 
 def _copy_path_spec_record(spec: LinePathSpecRecord) -> LinePathSpecRecord:
@@ -771,10 +994,7 @@ def _coordinates_from_endpoint_key(endpoint_key: str) -> tuple[int, int] | None:
 
 
 def _parse_coordinate_text(text: str) -> tuple[int, int] | None:
-    match = re.fullmatch(r'\(?\s*(-?\d+)\s*,\s*(-?\d+)\s*\)?', text.strip())
-    if not match:
-        return None
-    return (int(match.group(1)), int(match.group(2)))
+    return network.parse_coordinate_text(text)
 
 
 def _resolve_stop_var_runtime(identifier: str) -> str | None:
@@ -974,22 +1194,7 @@ def _path_endpoint_record_from_identifier(
     payload: MetroNetworkPayload,
     identifier: str,
 ) -> PathEndpointRecord | None:
-    stop_var = _resolve_stop_var_in_payload(payload, identifier)
-    if stop_var is not None:
-        return {'kind': 'stop', 'stop_var': stop_var}
-
-    path_node = _resolve_path_node_in_payload(payload, identifier)
-    if path_node is not None:
-        return {
-            'kind': 'coord',
-            'x': int(path_node['x']),
-            'y': int(path_node['y']),
-        }
-
-    coordinates = _parse_coordinate_text(identifier)
-    if coordinates is None:
-        return None
-    return {'kind': 'coord', 'x': coordinates[0], 'y': coordinates[1]}
+    return cast(PathEndpointRecord | None, network.path_endpoint_record_from_identifier(payload, identifier))
 
 
 def _path_endpoint_record_coordinates(endpoint_record: PathEndpointRecord) -> tuple[int, int]:
@@ -1035,7 +1240,7 @@ def _display_label_for_endpoint_key(endpoint_key: str) -> str:
 
 
 def _normalize_stop_identity(text: str) -> str:
-    return ''.join(char for char in text.upper() if char.isalnum())
+    return core_text.normalize_stop_identity(text)
 
 
 def _stop_has_name(stop: MetroStop) -> bool:
@@ -1048,11 +1253,7 @@ def _infer_alignment_axis_from_coordinates(
     second_x: int,
     second_y: int,
 ) -> AlignmentAxis:
-    if first_x == second_x and first_y != second_y:
-        return 'x'
-    if first_y == second_y and first_x != second_x:
-        return 'y'
-    return 'x' if abs(first_x - second_x) <= abs(first_y - second_y) else 'y'
+    return cast(AlignmentAxis, network.infer_alignment_axis(first_x, first_y, second_x, second_y))
 
 
 def _stops_are_aligned(first_stop: MetroStop, second_stop: MetroStop, axis: AlignmentAxis) -> bool:
@@ -1576,14 +1777,11 @@ def _station_fill(stop: MetroStop) -> str:
 
 
 def _display_label(lbl: str) -> str:
-    match = re.fullmatch(r'([A-Za-z]+)_\{?([0-9-]+)\}?', lbl)
-    if not match:
-        return lbl
-    return f"{match.group(1)}{match.group(2).translate(SUBSCRIPT_TRANSLATION)}"
+    return core_text.display_label(lbl)
 
 
 def _is_placeholder_station_label(lbl: str) -> bool:
-    return bool(re.fullmatch(r'[A-Z0-9_{}]+', lbl.strip()))
+    return core_text.is_placeholder_station_label(lbl)
 
 
 def _station_signage_label(stop_var: str, line_name: str) -> str:
@@ -1993,6 +2191,35 @@ def _build_map_svg(
     return '\n'.join(svg_lines) + '\n'
 
 
+def _build_validated_map_svg(
+    *,
+    width: int,
+    height: int,
+    padding: int,
+    zoom: float,
+    pan_x: float,
+    pan_y: float,
+    visible_line_names: set[str],
+    export_options: SvgExportOptions,
+    world_map_image: SvgRasterImage | None,
+    current_route: RouteResult | None,
+) -> str:
+    svg_text = _build_map_svg(
+        width=width,
+        height=height,
+        padding=padding,
+        zoom=zoom,
+        pan_x=pan_x,
+        pan_y=pan_y,
+        visible_line_names=visible_line_names,
+        export_options=export_options,
+        world_map_image=world_map_image,
+        current_route=current_route,
+    )
+    public_export.validate_public_text(svg_text)
+    return svg_text
+
+
 def _connected_route_plot_paths() -> list[tuple[tuple[int, int], ...]]:
     connected_paths: list[tuple[tuple[int, int], ...]] = []
 
@@ -2026,19 +2253,33 @@ def _connected_route_plot_paths() -> list[tuple[tuple[int, int], ...]]:
 
 
 def _extra_edges_for_stop(stop_var: str) -> tuple[ExtraEdgeDefinition, ...]:
-    return tuple(
-        extra_edge
-        for extra_edge in EXTRA_EDGES
-        if stop_var in (extra_edge.from_endpoint.key, extra_edge.to_endpoint.key)
-    )
+    return _extra_edges_for_endpoint_key(stop_var)
 
 
 def _extra_edges_for_endpoint_key(endpoint_key: str) -> tuple[ExtraEdgeDefinition, ...]:
-    return tuple(
-        extra_edge
-        for extra_edge in EXTRA_EDGES
-        if endpoint_key in (extra_edge.from_endpoint.key, extra_edge.to_endpoint.key)
-    )
+    return _extra_edges_by_endpoint_key().get(endpoint_key, ())
+
+
+def _extra_edges_by_endpoint_key() -> dict[str, tuple[ExtraEdgeDefinition, ...]]:
+    global _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY
+    global _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE
+
+    cache_key = id(EXTRA_EDGES)
+    if _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY == cache_key:
+        return _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE
+
+    grouped: dict[str, list[ExtraEdgeDefinition]] = {}
+    for extra_edge in EXTRA_EDGES:
+        grouped.setdefault(extra_edge.from_endpoint.key, []).append(extra_edge)
+        if extra_edge.to_endpoint.key != extra_edge.from_endpoint.key:
+            grouped.setdefault(extra_edge.to_endpoint.key, []).append(extra_edge)
+
+    _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY = cache_key
+    _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE = {
+        endpoint_key: tuple(edges)
+        for endpoint_key, edges in grouped.items()
+    }
+    return _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE
 
 
 def _extra_edge_other_endpoint(extra_edge: ExtraEdgeDefinition, stop_var: str) -> PathEndpoint:
@@ -2049,7 +2290,7 @@ def _extra_edge_summary(extra_edge: ExtraEdgeDefinition, stop_var: str) -> str:
     other_endpoint = _extra_edge_other_endpoint(extra_edge, stop_var)
     return (
         f'{extra_edge.display_label} to {other_endpoint.display_label} '
-        f'({_format_track_distance(extra_edge.resolved_distance)}, '
+        f'({_format_distance_and_time(extra_edge.resolved_distance)}, '
         f'{extra_edge.shape_label}{_extra_edge_turn_coordinate_suffix(extra_edge)})'
     )
 
@@ -2072,7 +2313,7 @@ def _extra_edge_full_summary(extra_edge: ExtraEdgeDefinition) -> str:
     return (
         f'{extra_edge.display_label}: {extra_edge.from_endpoint.display_label} '
         f'to {extra_edge.to_endpoint.display_label} '
-        f'({_format_track_distance(extra_edge.resolved_distance)}, '
+        f'({_format_distance_and_time(extra_edge.resolved_distance)}, '
         f'{extra_edge.shape_label}{_extra_edge_turn_coordinate_suffix(extra_edge)})'
     )
 
@@ -2085,13 +2326,13 @@ def _extra_edge_summary_for_endpoint(extra_edge: ExtraEdgeDefinition, endpoint_k
     )
     return (
         f'{extra_edge.display_label} to {other_endpoint.display_label} '
-        f'({_format_track_distance(extra_edge.resolved_distance)}, '
+        f'({_format_distance_and_time(extra_edge.resolved_distance)}, '
         f'{extra_edge.shape_label}{_extra_edge_turn_coordinate_suffix(extra_edge)})'
     )
 
 
 def _polyline_distance(points: tuple[tuple[int, int], ...]) -> int:
-    return sum(round(dist(start_point, end_point)) for start_point, end_point in zip(points, points[1:]))
+    return geometry.polyline_distance(points)
 
 
 def _point_to_segment_distance_sq(
@@ -2099,107 +2340,38 @@ def _point_to_segment_distance_sq(
     start_point: tuple[float, float],
     end_point: tuple[float, float],
 ) -> float:
-    point_x, point_y = point
-    start_x, start_y = start_point
-    end_x, end_y = end_point
-    delta_x = end_x - start_x
-    delta_y = end_y - start_y
-    segment_length_sq = (delta_x * delta_x) + (delta_y * delta_y)
-    if segment_length_sq == 0:
-        return ((point_x - start_x) ** 2) + ((point_y - start_y) ** 2)
-
-    projection = (
-        ((point_x - start_x) * delta_x) + ((point_y - start_y) * delta_y)
-    ) / segment_length_sq
-    clamped_projection = max(0.0, min(1.0, projection))
-    closest_x = start_x + (clamped_projection * delta_x)
-    closest_y = start_y + (clamped_projection * delta_y)
-    return ((point_x - closest_x) ** 2) + ((point_y - closest_y) ** 2)
+    return geometry.point_to_segment_distance_sq(point, start_point, end_point)
 
 
 def _point_to_polyline_distance_sq(
     point: tuple[float, float],
     polyline_points: tuple[tuple[float, float], ...],
 ) -> float | None:
-    if len(polyline_points) < 2:
-        return None
-
-    best_distance_sq: float | None = None
-    for start_point, end_point in zip(polyline_points, polyline_points[1:]):
-        distance_sq = _point_to_segment_distance_sq(point, start_point, end_point)
-        if best_distance_sq is None or distance_sq < best_distance_sq:
-            best_distance_sq = distance_sq
-    return best_distance_sq
+    return geometry.point_to_polyline_distance_sq(point, polyline_points)
 
 
 def _polyline_midpoint(points: tuple[tuple[float, float], ...]) -> tuple[float, float]:
-    if not points:
-        return (0.0, 0.0)
-    if len(points) == 1:
-        return points[0]
-
-    segment_lengths = [
-        dist(start_point, end_point)
-        for start_point, end_point in zip(points, points[1:])
-    ]
-    total_length = sum(segment_lengths)
-    if total_length <= 0:
-        return points[0]
-
-    target_length = total_length / 2
-    traversed_length = 0.0
-    for (start_x, start_y), (end_x, end_y), segment_length in zip(points, points[1:], segment_lengths):
-        if traversed_length + segment_length < target_length:
-            traversed_length += segment_length
-            continue
-        if segment_length == 0:
-            return (start_x, start_y)
-        ratio = (target_length - traversed_length) / segment_length
-        return (
-            start_x + ((end_x - start_x) * ratio),
-            start_y + ((end_y - start_y) * ratio),
-        )
-
-    return points[-1]
+    return geometry.polyline_midpoint(points)
 
 
 def _format_track_distance(distance_meters: int) -> str:
-    if distance_meters < 1000:
-        return f'{distance_meters:,} m'
-    distance_km = distance_meters / 1000
-    formatted_km = f'{distance_km:,.1f}'.rstrip('0').rstrip('.')
-    return f'{formatted_km} km'
+    return travel_time.format_track_distance(distance_meters)
 
 
 def _travel_time_seconds(distance_meters: int | float) -> int:
-    return max(0, round(float(distance_meters) / MINECART_SPEED_MPS))
+    return travel_time.travel_time_seconds(distance_meters)
 
 
 def _format_travel_time(seconds: int) -> str:
-    seconds = max(0, int(seconds))
-    if seconds < 60:
-        return f'{seconds}s'
-    minutes, remaining_seconds = divmod(seconds, 60)
-    if minutes < 60:
-        if remaining_seconds == 0:
-            return f'{minutes}m'
-        return f'{minutes}m {remaining_seconds}s'
-    hours, remaining_minutes = divmod(minutes, 60)
-    if remaining_minutes == 0:
-        return f'{hours}h'
-    return f'{hours}h {remaining_minutes}m'
+    return travel_time.format_travel_time(seconds)
 
 
 def _format_travel_time_for_distance(distance_meters: int | float) -> str:
-    return _format_travel_time(_travel_time_seconds(distance_meters))
+    return travel_time.format_travel_time_for_distance(distance_meters)
 
 
 def _format_distance_and_time(distance_meters: int | float) -> str:
-    rounded_distance = round(float(distance_meters))
-    return (
-        f'{_format_track_distance(rounded_distance)} / '
-        f'{_format_travel_time_for_distance(rounded_distance)}'
-    )
+    return travel_time.format_distance_and_time(distance_meters)
 
 
 def _planning_radius_distance() -> float:
@@ -2530,6 +2702,33 @@ def _world_map_completion_text_from_result(result: Any) -> str:
     return _world_map_completion_text_from_payload(payload)
 
 
+def _world_map_essential_render_lines(
+    render_result: Any,
+    *,
+    step_label: str,
+    pixels_filled: int,
+    render_target: tuple[int, int] | None = None,
+    load_passes: int | None = None,
+) -> list[str]:
+    lines = [
+        f'{step_label} finished.',
+        _world_map_completion_text_from_result(render_result),
+        f'Pixels filled: {pixels_filled}',
+    ]
+    if render_target is not None:
+        lines.append(f'Target: {render_target[0]},{render_target[1]}')
+    if load_passes is not None:
+        lines.append(f'Load passes: {load_passes}')
+    if render_result.unfinished_group_count:
+        lines.append(f'Unfinished groups: {render_result.unfinished_group_count}')
+    if render_result.uncolored_block_occurrences:
+        lines.append(f'Uncolored blocks: {render_result.uncolored_block_occurrences}')
+    if render_result.subchunk_decode_errors:
+        lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
+    lines.append('Ready for the next step.')
+    return lines
+
+
 def _render_cache_int(payload: dict[str, object], key: str) -> int:
     value = payload[key]
     if not isinstance(value, (int, float, str)):
@@ -2539,6 +2738,390 @@ def _render_cache_int(payload: dict[str, object], key: str) -> int:
 
 def _limit_world_map_alpha(value: int) -> int:
     return min(value, WORLD_MAP_RENDER_ALPHA)
+
+
+def _world_map_render_canvas_rect(
+    viewer: "MetroMapViewer",
+    payload: dict[str, object],
+) -> tuple[float, float, float, float] | None:
+    try:
+        render_min_x = _render_cache_int(payload, 'min_x')
+        render_max_x = _render_cache_int(payload, 'max_x')
+        render_min_z = _render_cache_int(payload, 'min_z')
+        render_max_z = _render_cache_int(payload, 'max_z')
+    except (KeyError, TypeError, ValueError):
+        return None
+
+    top_left_x, top_left_y = viewer.world_to_canvas((render_min_x, -render_min_z))
+    bottom_right_x, bottom_right_y = viewer.world_to_canvas((render_max_x, -render_max_z))
+    return (
+        min(top_left_x, bottom_right_x),
+        min(top_left_y, bottom_right_y),
+        max(top_left_x, bottom_right_x),
+        max(top_left_y, bottom_right_y),
+    )
+
+
+def _world_map_underlay_draw_plan(
+    viewer: "MetroMapViewer",
+    payload: dict[str, object],
+    source_image: Image.Image,
+) -> tuple[float, float, int, int, tuple[int, int, int, int]] | None:
+    render_rect = _world_map_render_canvas_rect(viewer, payload)
+    if render_rect is None:
+        return None
+    left, top, right, bottom = render_rect
+    if right <= left or bottom <= top:
+        return None
+
+    visible_left = max(0.0, left)
+    visible_top = max(0.0, top)
+    visible_right = min(float(viewer.width), right)
+    visible_bottom = min(float(viewer.height), bottom)
+    if visible_right <= visible_left or visible_bottom <= visible_top:
+        return None
+
+    image_width, image_height = source_image.size
+    source_left = floor(max(0, min(image_width, ((visible_left - left) / (right - left)) * image_width)))
+    source_right = ceil(max(0, min(image_width, ((visible_right - left) / (right - left)) * image_width)))
+    source_top = floor(max(0, min(image_height, ((visible_top - top) / (bottom - top)) * image_height)))
+    source_bottom = ceil(max(0, min(image_height, ((visible_bottom - top) / (bottom - top)) * image_height)))
+    if source_right <= source_left or source_bottom <= source_top:
+        return None
+
+    overscan = UNDERLAY_SEAM_OVERSCAN_PIXELS
+    padded_source_left = max(0, source_left - overscan)
+    padded_source_top = max(0, source_top - overscan)
+    padded_source_right = min(image_width, source_right + overscan)
+    padded_source_bottom = min(image_height, source_bottom + overscan)
+
+    x_scale = (right - left) / max(1, image_width)
+    y_scale = (bottom - top) / max(1, image_height)
+    draw_left = left + (padded_source_left * x_scale)
+    draw_top = top + (padded_source_top * y_scale)
+    draw_right = left + (padded_source_right * x_scale)
+    draw_bottom = top + (padded_source_bottom * y_scale)
+
+    target_width = max(1, round(draw_right - draw_left))
+    target_height = max(1, round(draw_bottom - draw_top))
+    source_box = (
+        padded_source_left,
+        padded_source_top,
+        padded_source_right,
+        padded_source_bottom,
+    )
+    return (draw_left, draw_top, target_width, target_height, source_box)
+
+
+def _world_map_underlay_resampling_filter(
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+) -> int:
+    source_left, source_top, source_right, source_bottom = source_box
+    source_width = max(1, source_right - source_left)
+    source_height = max(1, source_bottom - source_top)
+    upscale = max(target_width / source_width, target_height / source_height)
+    if upscale >= SHARP_UNDERLAY_UPSCALE_THRESHOLD:
+        try:
+            return Image.Resampling.NEAREST
+        except AttributeError:
+            return cast(Any, Image).NEAREST
+    try:
+        return Image.Resampling.BILINEAR
+    except AttributeError:
+        return cast(Any, Image).BILINEAR
+
+
+def _world_map_native_block_image_size(payload: dict[str, object]) -> tuple[int, int] | None:
+    try:
+        render_min_x = _render_cache_int(payload, 'min_x')
+        render_max_x = _render_cache_int(payload, 'max_x')
+        render_min_z = _render_cache_int(payload, 'min_z')
+        render_max_z = _render_cache_int(payload, 'max_z')
+    except (KeyError, TypeError, ValueError):
+        return None
+    return (render_max_x - render_min_x + 1, render_max_z - render_min_z + 1)
+
+
+def _world_map_image_is_native_block_resolution(payload: dict[str, object], image: Image.Image) -> bool:
+    native_size = _world_map_native_block_image_size(payload)
+    return native_size is not None and image.size == native_size
+
+
+def _world_map_full_resolution_image_candidates(
+    viewer: "MetroMapViewer",
+    payload: dict[str, object],
+) -> list[Path]:
+    candidates: list[Path] = []
+    payload_image_path = payload.get('image_path')
+    if isinstance(payload_image_path, str) and payload_image_path:
+        candidates.append(Path(payload_image_path))
+
+    try:
+        from worldgen.config import load_config
+        from worldgen.generator import BedrockWorldGenerator
+
+        config = load_config()
+        mode_paths = BedrockWorldGenerator(config).paths_for_mode(viewer._selected_world_map_mode_key())
+        candidates.extend(
+            [
+                mode_paths.docs_render_image_path,
+                mode_paths.render_image_path,
+                config.repo_root / 'worldgen_output' / mode_paths.render_image_path.name,
+                config.repo_root / 'docs' / 'assets' / mode_paths.render_image_path.name,
+            ]
+        )
+    except Exception:
+        pass
+
+    return candidates
+
+
+def _world_map_full_resolution_render_source(
+    viewer: "MetroMapViewer",
+    payload: dict[str, object],
+    source_image: Image.Image,
+) -> Image.Image:
+    if _world_map_image_is_native_block_resolution(payload, source_image):
+        return source_image
+
+    native_size = _world_map_native_block_image_size(payload)
+    if native_size is None:
+        return source_image
+
+    candidates = _world_map_full_resolution_image_candidates(viewer, payload)
+    resolved_candidates: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved_candidates.add(candidate.resolve())
+        except OSError:
+            resolved_candidates.add(candidate)
+
+    cached_path = getattr(viewer, '_world_map_full_render_image_path', None)
+    cached_stat = getattr(viewer, '_world_map_full_render_image_stat', None)
+    cached_image = getattr(viewer, '_world_map_full_render_source_image', None)
+    if isinstance(cached_path, Path) and isinstance(cached_image, Image.Image):
+        try:
+            resolved_cached_path = cached_path.resolve()
+        except OSError:
+            resolved_cached_path = cached_path
+        image_stat = _file_stat_key(cached_path)
+        if (
+            resolved_cached_path in resolved_candidates
+            and image_stat is not None
+            and image_stat == cached_stat
+            and cached_image.size == native_size
+        ):
+            return cached_image
+
+    seen_paths: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved_candidate = candidate.resolve()
+        except OSError:
+            resolved_candidate = candidate
+        if resolved_candidate in seen_paths:
+            continue
+        seen_paths.add(resolved_candidate)
+
+        image_stat = _file_stat_key(candidate)
+        if image_stat is None:
+            continue
+        try:
+            with Image.open(candidate) as candidate_image:
+                if candidate_image.size != native_size:
+                    continue
+                full_source = candidate_image.convert('RGBA')
+        except OSError:
+            continue
+
+        viewer._world_map_full_render_image_path = candidate
+        viewer._world_map_full_render_image_stat = image_stat
+        viewer._world_map_full_render_source_image = full_source
+        return full_source
+
+    return source_image
+
+
+def _world_map_draw_plan_is_upscaled(
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+) -> bool:
+    source_left, source_top, source_right, source_bottom = source_box
+    source_width = max(1, source_right - source_left)
+    source_height = max(1, source_bottom - source_top)
+    return max(target_width / source_width, target_height / source_height) >= SHARP_UNDERLAY_UPSCALE_THRESHOLD
+
+
+def _world_map_alpha_limited_copy(image: Image.Image) -> Image.Image:
+    underlay = image.convert('RGBA')
+    alpha = underlay.getchannel('A').point(_limit_world_map_alpha)
+    underlay.putalpha(alpha)
+    return underlay
+
+
+def _world_map_alpha_limited_source(viewer: "MetroMapViewer", source_image: Image.Image) -> Image.Image:
+    cache_key = id(source_image)
+    cached = getattr(viewer, '_world_map_alpha_limited_source_cache', None)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == cache_key:
+        cached_image = cached[1]
+        if isinstance(cached_image, Image.Image):
+            return cached_image
+
+    alpha_limited = _world_map_alpha_limited_copy(source_image)
+    viewer._world_map_alpha_limited_source_cache = (cache_key, alpha_limited)
+    return alpha_limited
+
+
+def _world_map_underlay_cache_key(
+    source_image: Image.Image,
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+    fast_resample: bool,
+) -> tuple[int, int, int, tuple[int, int, int, int], bool]:
+    return (id(source_image), target_width, target_height, source_box, fast_resample)
+
+
+def _world_map_cached_underlay_photo(
+    viewer: "MetroMapViewer",
+    source_image: Image.Image,
+    target_width: int,
+    target_height: int,
+    source_box: tuple[int, int, int, int],
+    *,
+    fast_resample: bool,
+) -> ImageTk.PhotoImage:
+    cache_key = _world_map_underlay_cache_key(source_image, target_width, target_height, source_box, fast_resample)
+    cached = getattr(viewer, '_world_map_underlay_photo_cache', None)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == cache_key:
+        cached_photo = cached[1]
+        if isinstance(cached_photo, ImageTk.PhotoImage):
+            return cached_photo
+
+    underlay = _world_map_alpha_limited_source(viewer, source_image).crop(source_box)
+    if fast_resample:
+        try:
+            resampling_filter = Image.Resampling.NEAREST
+        except AttributeError:
+            resampling_filter = cast(Any, Image).NEAREST
+    else:
+        resampling_filter = _world_map_underlay_resampling_filter(target_width, target_height, source_box)
+    underlay = underlay.resize((target_width, target_height), resampling_filter)
+    underlay_image = ImageTk.PhotoImage(underlay)
+    viewer._world_map_underlay_photo_cache = (cache_key, underlay_image)
+    return underlay_image
+
+
+def _world_map_edge_runs(edge_mask: Any) -> list[tuple[int, int]]:
+    runs: list[tuple[int, int]] = []
+    run_start = None
+    for index, value in enumerate(edge_mask.tolist()):
+        if value and run_start is None:
+            run_start = index
+        elif not value and run_start is not None:
+            runs.append((run_start, index - 1))
+            run_start = None
+    if run_start is not None:
+        runs.append((run_start, len(edge_mask) - 1))
+    return runs
+
+
+def _draw_world_boundary_completion_edges(
+    viewer: "MetroMapViewer",
+    payload: dict[str, object],
+    source_image: Image.Image,
+) -> None:
+    if not viewer.show_world_map_render_var.get():
+        return
+
+    render_rect = _world_map_render_canvas_rect(viewer, payload)
+    if render_rect is None:
+        return
+    render_left, render_top, render_right, render_bottom = render_rect
+
+    visible_bounds = _world_map_visible_render_bounds_from_payload(payload)
+    if visible_bounds is None:
+        return
+
+    try:
+        render_min_x = _render_cache_int(payload, 'min_x')
+        render_max_x = _render_cache_int(payload, 'max_x')
+        render_min_z = _render_cache_int(payload, 'min_z')
+        render_max_z = _render_cache_int(payload, 'max_z')
+    except (KeyError, TypeError, ValueError):
+        return
+
+    colored_min_x, colored_max_x, colored_min_z, colored_max_z = visible_bounds
+
+    import numpy as np
+
+    alpha = np.asarray(source_image.getchannel('A'), dtype=np.uint8)
+    rendered = alpha > 8
+    if rendered.size == 0:
+        return
+    image_height, image_width = rendered.shape
+
+    x_scale = (render_right - render_left) / max(1, image_width)
+    y_scale = (render_bottom - render_top) / max(1, image_height)
+
+    if colored_min_z == render_min_z:
+        top_mask = np.any(rendered[:WORLD_MAP_BOUNDARY_EDGE_TOUCH_BAND, :], axis=0)
+        for run_start, run_end in _world_map_edge_runs(top_mask):
+            x0 = render_left + (run_start * x_scale)
+            x1 = render_left + ((run_end + 1) * x_scale)
+            viewer.canvas.create_line(
+                x0,
+                render_top,
+                x1,
+                render_top,
+                fill=WORLD_MAP_BOUNDARY_EDGE_COLOR,
+                width=WORLD_MAP_BOUNDARY_EDGE_WIDTH,
+            )
+
+    if colored_max_z == render_max_z:
+        bottom_mask = np.any(rendered[max(0, image_height - WORLD_MAP_BOUNDARY_EDGE_TOUCH_BAND):, :], axis=0)
+        for run_start, run_end in _world_map_edge_runs(bottom_mask):
+            x0 = render_left + (run_start * x_scale)
+            x1 = render_left + ((run_end + 1) * x_scale)
+            viewer.canvas.create_line(
+                x0,
+                render_bottom,
+                x1,
+                render_bottom,
+                fill=WORLD_MAP_BOUNDARY_EDGE_COLOR,
+                width=WORLD_MAP_BOUNDARY_EDGE_WIDTH,
+            )
+
+    if colored_min_x == render_min_x:
+        left_mask = np.any(rendered[:, :WORLD_MAP_BOUNDARY_EDGE_TOUCH_BAND], axis=1)
+        for run_start, run_end in _world_map_edge_runs(left_mask):
+            y0 = render_top + (run_start * y_scale)
+            y1 = render_top + ((run_end + 1) * y_scale)
+            viewer.canvas.create_line(
+                render_left,
+                y0,
+                render_left,
+                y1,
+                fill=WORLD_MAP_BOUNDARY_EDGE_COLOR,
+                width=WORLD_MAP_BOUNDARY_EDGE_WIDTH,
+            )
+
+    if colored_max_x == render_max_x:
+        right_mask = np.any(rendered[:, max(0, image_width - WORLD_MAP_BOUNDARY_EDGE_TOUCH_BAND):], axis=1)
+        for run_start, run_end in _world_map_edge_runs(right_mask):
+            y0 = render_top + (run_start * y_scale)
+            y1 = render_top + ((run_end + 1) * y_scale)
+            viewer.canvas.create_line(
+                render_right,
+                y0,
+                render_right,
+                y1,
+                fill=WORLD_MAP_BOUNDARY_EDGE_COLOR,
+                width=WORLD_MAP_BOUNDARY_EDGE_WIDTH,
+            )
 
 
 def _world_map_service_status_label(service_running: bool | None) -> str:
@@ -2717,40 +3300,18 @@ def _world_map_auto_fill_step_text_for_generator(
     cached_pixel_result = generator.render_cached_blank_pixel_batch()
     if cached_pixel_result is not None and cached_pixel_result.colored_pixels_added > 0:
         render_result = cached_pixel_result.render_result
-        lines = [
-            f'{step_label} finished.',
-            'Rendered cached blank pixels in a spiral around Blackport.',
-            f'World: {render_result.world_path}',
-            f'Pixels checked: {cached_pixel_result.scanned_pixels}',
-            f'Blank pixels sampled: {cached_pixel_result.blank_pixels_selected}',
-            f'Pixels filled this step: {cached_pixel_result.colored_pixels_added}',
-            f'Image: {render_result.image_path}',
-            f'Uncolored block report: {render_result.uncolored_blocks_report_path}',
-            _world_map_completion_text_from_result(render_result),
-            f'Colored pixels: {render_result.colored_pixels}/{render_result.total_pixels}',
-            f'Unfinished points: {render_result.unfinished_point_count}',
-            f'Unfinished point groups: {render_result.unfinished_group_count}',
-            f'Unfinished point report: {render_result.unfinished_points_path}',
-            f'Uncolored block occurrences: {render_result.uncolored_block_occurrences}',
-            (
-                f'Chunk columns read: '
-                f'{render_result.chunk_columns_read}/{render_result.chunk_columns_requested}'
-            ),
-        ]
-        if render_result.colored_min_x is not None:
-            lines.append(
-                f'Visible render bounds: x {render_result.colored_min_x}..{render_result.colored_max_x}, '
-                f'z {render_result.colored_min_z}..{render_result.colored_max_z}'
-            )
-        if render_result.subchunk_decode_errors:
-            lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
-        lines.append('Auto Fill can continue with the next spiral batch.')
+        lines = _world_map_essential_render_lines(
+            render_result,
+            step_label=step_label,
+            pixels_filled=cached_pixel_result.colored_pixels_added,
+        )
+        lines.insert(1, 'Used recent cached chunks.')
         return '\n'.join(lines)
 
     if cached_pixel_result is not None and progress_callback is not None:
         progress_callback(
             (
-                f'{step_label} checked a spiral batch around Blackport.\n\n'
+                f'{step_label} checked a large cached-pixel batch around Blackport.\n\n'
                 f'Pixels checked: {cached_pixel_result.scanned_pixels}\n'
                 f'Blank pixels sampled: {cached_pixel_result.blank_pixels_selected}\n'
                 'No cached pixels could be filled from that batch, so Auto Fill is loading more terrain.'
@@ -2773,7 +3334,7 @@ def _world_map_auto_fill_step_text_for_generator(
 
     load_results = [
         generator.load_chunks_headless(
-            stop_after=True,
+            stop_after=False,
             restart_existing=False,
             active_target_callback=post_active_target_progress,
         )
@@ -2786,9 +3347,9 @@ def _world_map_auto_fill_step_text_for_generator(
             return
         progress_callback(
             (
-                f'{step_label} is painting newly loaded pixels.\n\n'
+                f'{step_label} is painting the loaded target.\n\n'
                 f'Pixels filled so far in this render: {new_pixels_added}\n'
-                'The map preview will update when this render pass finishes.'
+                'This pass is using the recent packet cache only for speed.'
             ),
             False,
         )
@@ -2821,58 +3382,26 @@ def _world_map_auto_fill_step_text_for_generator(
             render_target,
             pixels_added=colored_pixels_added,
         )
-    lines = [
-        f'{step_label} finished.',
-        f'World: {render_result.world_path}',
-        f'Load passes: {len(load_results)}',
-    ]
-    if render_target is not None:
-        lines.append(f'Rendered target square: {render_target[0]},{render_target[1]}')
+
     for index, load_result in enumerate(load_results, start=1):
-        lines.extend(
-            (
-                f'Pass {index}: {load_result.chunks_received} chunks, '
-                f'{load_result.unique_chunk_columns} chunk columns',
-                f'Pass {index} target pool: {load_result.teleport_target_count} blank-pixel targets',
-                f'Pass {index} targets: {", ".join(load_result.teleport_targets) or "none"}',
-            )
-        )
         if load_result.returncode != 0:
-            lines.append(f'Pass {index} loader exited with code {load_result.returncode}.')
+            lines = [f'{step_label} loader pass {index} exited with code {load_result.returncode}.']
             if load_result.output:
                 lines.append(load_result.output)
+            return '\n'.join(lines)
 
-    lines.extend(
-        (
-            'Rendered world map.',
-            f'Image: {render_result.image_path}',
-            f'Uncolored block report: {render_result.uncolored_blocks_report_path}',
-            _world_map_completion_text_from_result(render_result),
-            f'Pixels filled this step: {colored_pixels_added}',
-            f'Colored pixels: {render_result.colored_pixels}/{render_result.total_pixels}',
-            f'Unfinished points: {render_result.unfinished_point_count}',
-            f'Unfinished point groups: {render_result.unfinished_group_count}',
-            f'Unfinished point report: {render_result.unfinished_points_path}',
-            f'Uncolored block occurrences: {render_result.uncolored_block_occurrences}',
-            (
-                f'Chunk columns read: '
-                f'{render_result.chunk_columns_read}/{render_result.chunk_columns_requested}'
-            ),
-        )
+    lines = _world_map_essential_render_lines(
+        render_result,
+        step_label=step_label,
+        pixels_filled=colored_pixels_added,
+        render_target=render_target,
+        load_passes=len(load_results),
     )
-    if render_result.colored_min_x is not None:
-        lines.append(
-            f'Visible render bounds: x {render_result.colored_min_x}..{render_result.colored_max_x}, '
-            f'z {render_result.colored_min_z}..{render_result.colored_max_z}'
-        )
-    if render_result.subchunk_decode_errors:
-        lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
     if colored_pixels_added == 0 and any(load_result.chunks_received > 0 for load_result in load_results):
         lines.append(
             'Chunks loaded, but this target did not add newly colored pixels. '
-            'Auto Fill will mark this target as stalled and continue with the next blank target.'
+            'The next step will skip ahead.'
         )
-    lines.append('Auto Fill can continue with the next step.')
     return '\n'.join(lines)
 
 
@@ -2938,6 +3467,16 @@ def _world_map_auto_fill_until_stopped_text(
             last_step_message,
         )
     )
+
+
+def _stop_worldgen_after_auto_fill() -> None:
+    try:
+        from worldgen.config import load_config
+        from worldgen.generator import BedrockWorldGenerator
+
+        BedrockWorldGenerator(load_config()).stop()
+    except Exception:
+        return
 
 
 def _world_map_stop_world_text() -> str:
@@ -3830,15 +4369,11 @@ def _line_segment_plot_points(
 
 
 def _polyline_distance_float(points: Sequence[tuple[float, float]]) -> float:
-    return sum(dist(start_point, end_point) for start_point, end_point in zip(points, points[1:]))
+    return geometry.polyline_distance_float(points)
 
 
 def _line_cumulative_distances(line_name: str) -> tuple[float, ...]:
-    points = METRO_LINE_PLOT_PATHS[line_name]
-    cumulative_distances = [0.0]
-    for start_point, end_point in zip(points, points[1:]):
-        cumulative_distances.append(cumulative_distances[-1] + dist(start_point, end_point))
-    return tuple(cumulative_distances)
+    return geometry.cumulative_distances(METRO_LINE_PLOT_PATHS[line_name])
 
 
 def _line_anchor_distances(line_name: str) -> dict[str, float]:
@@ -3935,22 +4470,9 @@ def _normalize_chime_direction(value: object) -> ChimeDirection | None:
 
 
 def _normalized_chime_directions(values: object) -> tuple[ChimeDirection, ...]:
-    if not isinstance(values, list | tuple | set | frozenset):
-        return ()
-
-    seen_directions: set[ChimeDirection] = set()
-    directions: list[ChimeDirection] = []
-    for value in values:
-        direction = _normalize_chime_direction(value)
-        if direction is None or direction in seen_directions:
-            continue
-        seen_directions.add(direction)
-        directions.append(direction)
-
     return tuple(
-        direction
-        for direction in CHIME_DIRECTIONS
-        if direction in seen_directions
+        cast(ChimeDirection, direction)
+        for direction in network.normalized_ordered_values(values, CHIME_DIRECTIONS)
     )
 
 
@@ -4372,6 +4894,34 @@ def _line_leg_distance(line_name: str, start_var: str, end_var: str) -> int:
     return _polyline_distance(_line_segment_plot_points(line_name, start_var, end_var))
 
 
+def _railway_segment_construction_statuses(
+    line_name: str,
+) -> tuple[RailwaySegmentConstructionStatus, ...]:
+    stop_vars = LINE_STOP_VARS.get(line_name)
+    if not stop_vars:
+        return ()
+
+    statuses: list[RailwaySegmentConstructionStatus] = []
+    for start_var, end_var in zip(stop_vars, stop_vars[1:]):
+        start_stop = STOPS_BY_VAR[start_var]
+        end_stop = STOPS_BY_VAR[end_var]
+        statuses.append(
+            RailwaySegmentConstructionStatus(
+                line_name=line_name,
+                start_var=start_var,
+                end_var=end_var,
+                start_label=_display_label(start_stop.lbl),
+                end_label=_display_label(end_stop.lbl),
+                distance=_line_leg_distance(line_name, start_var, end_var),
+                routing_open=start_stop.is_connected and end_stop.is_connected,
+                station_checklist_complete=(
+                    start_stop.has_finished_railway and end_stop.has_finished_railway
+                ),
+            )
+        )
+    return tuple(statuses)
+
+
 def _line_summary_text(line_name: str) -> str:
     if line_name not in LINE_STOP_VARS:
         return 'Choose a line.'
@@ -4392,6 +4942,7 @@ def _line_summary_text(line_name: str) -> str:
         lines.append('No stations on this line.')
         return '\n'.join(lines)
 
+    segment_statuses = _railway_segment_construction_statuses(line_name)
     for index, stop_var in enumerate(stop_vars, start=1):
         stop = STOPS_BY_VAR[stop_var]
         entry_text = (
@@ -4404,36 +4955,21 @@ def _line_summary_text(line_name: str) -> str:
             f'coords ({stop.x}, {stop.y}); {entry_text}'
         )
         if index < len(stop_vars):
-            next_var = stop_vars[index]
-            leg_distance = _line_leg_distance(line_name, stop_var, next_var)
-            connected_marker = (
-                'connected'
-                if STOPS_BY_VAR[stop_var].is_connected and STOPS_BY_VAR[next_var].is_connected
-                else 'planned'
-            )
+            segment_status = segment_statuses[index - 1]
+            connected_marker = 'connected' if segment_status.routing_open else 'planned'
             lines.append(
-                f'   -> {_format_distance_and_time(leg_distance)} '
-                f'[{connected_marker}]'
+                f'   -> {_format_distance_and_time(segment_status.distance)} '
+                f'[{connected_marker}] {segment_status.construction_label}'
             )
     return '\n'.join(lines)
 
 
 def _normalize_line_color(color_text: str) -> str:
-    normalized = color_text.strip()
-    if not normalized.startswith('#'):
-        normalized = f'#{normalized}'
-    if re.fullmatch(r'#[0-9a-fA-F]{3}', normalized):
-        return '#' + ''.join(char * 2 for char in normalized[1:]).lower()
-    if re.fullmatch(r'#[0-9a-fA-F]{6}', normalized):
-        return normalized.lower()
-    raise ValueError('Line color must be a hex color like #2f80ed.')
+    return core_text.normalize_line_color(color_text)
 
 
 def _normalize_line_name(line_name: str) -> str:
-    normalized = line_name.strip().upper()
-    if not re.fullmatch(r'[A-Z]', normalized):
-        raise ValueError('Line names must be a single letter.')
-    return normalized
+    return core_text.normalize_line_name(line_name)
 
 
 def _auto_station_label_from_payload(
@@ -4513,24 +5049,29 @@ def _graph_nodes_for_endpoint(
         stop = STOPS_BY_VAR.get(stop_var)
         if stop is None:
             return []
-        city_nodes: list[RouteNode] = []
-        for node_key in stop.city_limit_node_keys:
-            city_nodes.extend(node for node in graph if node[0] == node_key)
-        return sorted(dict.fromkeys(city_nodes))
+        return routing.graph_nodes_for_endpoint(
+            graph,
+            endpoint_key,
+            expanded_endpoint_keys=stop.city_limit_node_keys,
+            excluded_contexts=(STATION_CITY_PATH_CONTEXT,),
+        )
     stop = STOPS_BY_VAR.get(endpoint_key)
-    if stop is not None and (stop.var, STATION_CITY_PATH_CONTEXT) in graph:
-        return [(stop.var, STATION_CITY_PATH_CONTEXT)]
-    return _standard_graph_nodes_for_endpoint(graph, endpoint_key)
+    return routing.graph_nodes_for_endpoint(
+        graph,
+        endpoint_key,
+        preferred_context=STATION_CITY_PATH_CONTEXT if stop is not None else None,
+        excluded_contexts=(STATION_CITY_PATH_CONTEXT,),
+    )
 
 
 def _standard_graph_nodes_for_endpoint(
     graph: dict[RouteNode, list[RouteEdge]],
     endpoint_key: str,
 ) -> list[RouteNode]:
-    return sorted(
-        node
-        for node in graph
-        if node[0] == endpoint_key and node[1] != STATION_CITY_PATH_CONTEXT
+    return routing.standard_graph_nodes_for_endpoint(
+        graph,
+        endpoint_key,
+        excluded_contexts=(STATION_CITY_PATH_CONTEXT,),
     )
 
 
@@ -4764,7 +5305,7 @@ def _append_graph_edge(
     graph: dict[RouteNode, list[RouteEdge]],
     edge: RouteEdge,
 ) -> None:
-    graph.setdefault(edge.start, []).append(edge)
+    routing.append_graph_edge(graph, edge)
 
 
 def _build_route_graph(
@@ -4773,40 +5314,16 @@ def _build_route_graph(
     allow_walk: bool = True,
     include_planned_metro: bool = False,
 ) -> dict[RouteNode, list[RouteEdge]]:
-    graph: dict[RouteNode, list[RouteEdge]] = {}
+    graph_stops = tuple(
+        routing.RouteGraphStop(
+            stop_key=stop.var,
+            line_names=tuple(STOP_LINE_NAMES[stop.var]),
+        )
+        for stop in METRO_STOPS
+        if include_planned_metro or stop.is_connected
+    )
 
-    for stop in METRO_STOPS:
-        if not include_planned_metro and not stop.is_connected:
-            continue
-
-        node_lines = tuple(STOP_LINE_NAMES[stop.var])
-        for line_name in node_lines:
-            graph.setdefault((stop.var, line_name), [])
-
-        for first_line, second_line in combinations(node_lines, 2):
-            first_node = (stop.var, first_line)
-            second_node = (stop.var, second_line)
-            graph[first_node].append(
-                RouteEdge(
-                    start=first_node,
-                    end=second_node,
-                    distance=0,
-                    transfer_count=1,
-                    kind='transfer',
-                    line_name=second_line,
-                )
-            )
-            graph[second_node].append(
-                RouteEdge(
-                    start=second_node,
-                    end=first_node,
-                    distance=0,
-                    transfer_count=1,
-                    kind='transfer',
-                    line_name=first_line,
-                )
-            )
-
+    line_segments: list[routing.RouteGraphLineSegment] = []
     for line_name, stop_vars in LINE_STOP_VARS.items():
         for start_var, end_var in zip(stop_vars, stop_vars[1:]):
             if (
@@ -4819,77 +5336,46 @@ def _build_route_graph(
                 continue
 
             forward_points = _line_segment_plot_points(line_name, start_var, end_var)
-            backward_points = tuple(reversed(forward_points))
             segment_distance = _polyline_distance(forward_points)
-            start_node = (start_var, line_name)
-            end_node = (end_var, line_name)
-            _append_graph_edge(
-                graph,
-                RouteEdge(
-                    start=start_node,
-                    end=end_node,
-                    distance=segment_distance,
-                    transfer_count=0,
-                    kind='ride',
+            line_segments.append(
+                routing.RouteGraphLineSegment(
                     line_name=line_name,
-                    path_points=forward_points,
-                ),
-            )
-            _append_graph_edge(
-                graph,
-                RouteEdge(
-                    start=end_node,
-                    end=start_node,
+                    start_key=start_var,
+                    end_key=end_var,
                     distance=segment_distance,
-                    transfer_count=0,
-                    kind='ride',
-                    line_name=line_name,
-                    path_points=backward_points,
-                ),
+                    forward_path_points=forward_points,
+                )
             )
 
+    endpoint_edges: list[routing.RouteGraphEndpointEdge] = []
     for extra_edge in EXTRA_EDGES:
         if extra_edge.kind == 'connector' and not allow_connector:
             continue
         if extra_edge.kind == 'walk' and not allow_walk:
             continue
-        if extra_edge.from_endpoint.kind == 'coord':
-            graph.setdefault((extra_edge.from_endpoint.key, COORDINATE_NODE_CONTEXT), [])
-        if extra_edge.to_endpoint.kind == 'coord':
-            graph.setdefault((extra_edge.to_endpoint.key, COORDINATE_NODE_CONTEXT), [])
 
-        start_nodes = _graph_nodes_for_endpoint(graph, extra_edge.from_endpoint.key)
-        end_nodes = _graph_nodes_for_endpoint(graph, extra_edge.to_endpoint.key)
-        if not start_nodes or not end_nodes:
-            continue
+        endpoint_edges.append(
+            routing.RouteGraphEndpointEdge(
+                from_endpoint_key=extra_edge.from_endpoint.key,
+                to_endpoint_key=extra_edge.to_endpoint.key,
+                from_is_coordinate=extra_edge.from_endpoint.kind == 'coord',
+                to_is_coordinate=extra_edge.to_endpoint.kind == 'coord',
+                distance=extra_edge.resolved_distance,
+                kind=extra_edge.kind,
+                label=extra_edge.display_label,
+                path_points=extra_edge.plot_points,
+                reverse_path_points=extra_edge.reverse_plot_points,
+                bidirectional=extra_edge.bidirectional,
+            )
+        )
 
-        for start_node in start_nodes:
-            for end_node in end_nodes:
-                _append_graph_edge(
-                    graph,
-                    RouteEdge(
-                        start=start_node,
-                        end=end_node,
-                        distance=extra_edge.resolved_distance,
-                        transfer_count=0,
-                        kind=extra_edge.kind,
-                        label=extra_edge.display_label,
-                        path_points=extra_edge.plot_points,
-                    ),
-                )
-                if extra_edge.bidirectional:
-                    _append_graph_edge(
-                        graph,
-                        RouteEdge(
-                            start=end_node,
-                            end=start_node,
-                            distance=extra_edge.resolved_distance,
-                            transfer_count=0,
-                            kind=extra_edge.kind,
-                            label=extra_edge.display_label,
-                            path_points=extra_edge.reverse_plot_points,
-                        ),
-                    )
+    graph = routing.build_route_graph(
+        stops=graph_stops,
+        line_segments=tuple(line_segments),
+        endpoint_edges=tuple(endpoint_edges),
+        coordinate_context=COORDINATE_NODE_CONTEXT,
+        endpoint_node_resolver=_graph_nodes_for_endpoint,
+    )
 
     if allow_walk:
         _append_station_city_path_anchors(graph)
@@ -4898,87 +5384,7 @@ def _build_route_graph(
 
 
 def _append_route_step(steps: list[RouteStep], edge: RouteEdge) -> None:
-    start_key = edge.start[0]
-    end_key = edge.end[0]
-
-    if edge.kind == 'transfer':
-        steps.append(
-            RouteStep(
-                kind='transfer',
-                start_key=start_key,
-                end_key=end_key,
-                distance=0,
-                line_name=edge.line_name,
-                label=edge.label,
-                stop_vars=(start_key,),
-                path_points=(),
-            )
-        )
-        return
-
-    if (
-        steps
-        and edge.kind == 'ride'
-        and steps[-1].kind == 'ride'
-        and steps[-1].line_name == edge.line_name
-    ):
-        previous_step = steps[-1]
-        combined_stop_vars = previous_step.stop_vars
-        if combined_stop_vars[-1] != end_key:
-            combined_stop_vars = combined_stop_vars + (end_key,)
-        combined_path_points = previous_step.path_points
-        if combined_path_points and edge.path_points and combined_path_points[-1] == edge.path_points[0]:
-            combined_path_points = combined_path_points + edge.path_points[1:]
-        else:
-            combined_path_points = combined_path_points + edge.path_points
-        steps[-1] = RouteStep(
-            kind='ride',
-            start_key=previous_step.start_key,
-            end_key=end_key,
-            distance=previous_step.distance + edge.distance,
-            line_name=previous_step.line_name,
-            label=previous_step.label,
-            stop_vars=combined_stop_vars,
-            path_points=combined_path_points,
-        )
-        return
-
-    if (
-        steps
-        and edge.kind == 'walk'
-        and steps[-1].kind == 'walk'
-        and (steps[-1].label or '') == (edge.label or '')
-    ):
-        previous_step = steps[-1]
-        combined_path_points = previous_step.path_points
-        if combined_path_points and edge.path_points and combined_path_points[-1] == edge.path_points[0]:
-            combined_path_points = combined_path_points + edge.path_points[1:]
-        else:
-            combined_path_points = combined_path_points + edge.path_points
-        steps[-1] = RouteStep(
-            kind='walk',
-            start_key=previous_step.start_key,
-            end_key=end_key,
-            distance=previous_step.distance + edge.distance,
-            line_name=previous_step.line_name,
-            label=previous_step.label,
-            stop_vars=previous_step.stop_vars + (end_key,),
-            path_points=combined_path_points,
-        )
-        return
-
-    steps.append(
-        RouteStep(
-            kind=edge.kind,
-            start_key=start_key,
-            end_key=end_key,
-            distance=edge.distance,
-            line_name=edge.line_name,
-            label=edge.label,
-            stop_vars=(start_key, end_key),
-            path_points=edge.path_points,
-        )
-    )
+    routing.append_route_step(steps, edge)
 
 
 def _find_route(
@@ -5002,58 +5408,19 @@ def _find_route(
     if not start_nodes or not end_nodes:
         route_result = None
     else:
-        best_costs: dict[RouteNode, tuple[int, int]] = {}
-        predecessors: dict[RouteNode, tuple[RouteNode | None, RouteEdge | None]] = {}
-        heap: list[tuple[int, int, RouteNode]] = []
-
-        for start_node in start_nodes:
-            best_costs[start_node] = (0, 0)
-            predecessors[start_node] = (None, None)
-            heapq.heappush(heap, (0, 0, start_node))
-
-        best_end_node: RouteNode | None = None
-        while heap:
-            track_distance, transfer_count, node = heapq.heappop(heap)
-            if (track_distance, transfer_count) != best_costs.get(node):
-                continue
-            if node in end_nodes:
-                best_end_node = node
-                break
-
-            for edge in graph.get(node, []):
-                next_node = edge.end
-                next_cost = (
-                    track_distance + edge.distance,
-                    transfer_count + edge.transfer_count,
-                )
-                if next_cost < best_costs.get(next_node, (10**12, 10**12)):
-                    best_costs[next_node] = next_cost
-                    predecessors[next_node] = (node, edge)
-                    heapq.heappush(heap, (next_cost[0], next_cost[1], next_node))
-
-        if best_end_node is None:
+        search_result = routing.shortest_route_edges(graph, start_nodes, end_nodes)
+        if search_result is None:
             route_result = None
         else:
-            route_edges: list[RouteEdge] = []
-            cursor = best_end_node
-            while True:
-                previous_node, edge = predecessors[cursor]
-                if edge is None or previous_node is None:
-                    break
-                route_edges.append(edge)
-                cursor = previous_node
-            route_edges.reverse()
-
             steps: list[RouteStep] = []
-            for edge in route_edges:
+            for edge in search_result.edges:
                 _append_route_step(steps, edge)
 
-            total_distance, total_interchanges = best_costs[best_end_node]
             route_result = RouteResult(
                 start_key=start_key,
                 end_key=end_key,
-                total_distance=total_distance,
-                total_interchanges=total_interchanges,
+                total_distance=search_result.total_distance,
+                total_interchanges=search_result.total_interchanges,
                 steps=tuple(steps),
             )
 
@@ -5085,26 +5452,7 @@ def _route_costs_from_endpoint_key(
     if not start_nodes:
         return {}
 
-    best_costs: dict[RouteNode, tuple[int, int]] = {}
-    heap: list[tuple[int, int, RouteNode]] = []
-    for start_node in start_nodes:
-        best_costs[start_node] = (0, 0)
-        heapq.heappush(heap, (0, 0, start_node))
-
-    while heap:
-        track_distance, transfer_count, node = heapq.heappop(heap)
-        if (track_distance, transfer_count) != best_costs.get(node):
-            continue
-
-        for edge in graph.get(node, []):
-            next_node = edge.end
-            next_cost = (
-                track_distance + edge.distance,
-                transfer_count + edge.transfer_count,
-            )
-            if next_cost < best_costs.get(next_node, (10**12, 10**12)):
-                best_costs[next_node] = next_cost
-                heapq.heappush(heap, (next_cost[0], next_cost[1], next_node))
+    best_costs = routing.route_costs_from_nodes(graph, start_nodes)
 
     stop_costs: dict[str, tuple[int, int]] = {}
     for (stop_var, _line_name), cost in best_costs.items():
@@ -5129,24 +5477,16 @@ def _route_costs_from(
 
 
 def _format_line_name_list(line_names: Sequence[str]) -> str:
-    if not line_names:
-        return ''
-    if len(line_names) == 1:
-        return line_names[0]
-    if len(line_names) == 2:
-        return f'{line_names[0]} and {line_names[1]}'
-    return f'{", ".join(line_names[:-1])}, and {line_names[-1]}'
+    return routing.format_line_name_list(line_names)
 
 
 def _unfinished_route_line_names(route: RouteResult) -> tuple[str, ...]:
-    line_names: set[str] = set()
-    for step in route.steps:
-        if step.kind != 'ride' or step.line_name is None or len(step.stop_vars) < 2:
-            continue
-        for start_var, end_var in zip(step.stop_vars, step.stop_vars[1:]):
-            if not STOPS_BY_VAR[start_var].is_connected or not STOPS_BY_VAR[end_var].is_connected:
-                line_names.add(step.line_name)
-    return tuple(sorted(line_names))
+    connected_stop_keys = frozenset(
+        stop_var
+        for stop_var, stop in STOPS_BY_VAR.items()
+        if stop.is_connected
+    )
+    return routing.unfinished_route_line_names(route, connected_stop_keys)
 
 
 def _direct_fly_route(start_key: str, end_key: str) -> RouteResult | None:
@@ -7210,6 +7550,7 @@ class MetroMapViewer:
         self.world_map_auto_fill_stop_requested = False
         self._set_world_map_auto_fill_button('idle')
         self.redraw()
+        threading.Thread(target=_stop_worldgen_after_auto_fill, daemon=True).start()
 
     def _stop_world_map_world(self) -> None:
         self._start_world_map_task('Stopping Bedrock worldgen container', _world_map_stop_world_text)
@@ -7662,77 +8003,14 @@ class MetroMapViewer:
         return 'break'
 
     def _route_instructions_text(self, route: RouteResult) -> str:
-        start_label = _display_label_for_endpoint_key(route.start_key)
-        end_label = _display_label_for_endpoint_key(route.end_key)
-        if not route.steps:
-            return (
-                f'You are already at {start_label}.\n'
-                f'Track distance: {_format_track_distance(0)}.'
-            )
-
-        rail_distance = sum(
-            step.distance
-            for step in route.steps
-            if step.kind in {'ride', 'connector'}
+        return routing.format_route_instructions(
+            route,
+            endpoint_labeler=_display_label_for_endpoint_key,
+            format_track_distance=_format_track_distance,
+            format_distance_and_time=_format_distance_and_time,
+            format_travel_time_for_distance=_format_travel_time_for_distance,
+            unfinished_line_names=_unfinished_route_line_names(route),
         )
-        lines = [
-            f'Track distance: {_format_track_distance(route.total_distance)}',
-            f'Rail time estimate: {_format_travel_time_for_distance(rail_distance)}',
-            f'Interchanges: {route.total_interchanges}',
-            '',
-        ]
-        step_number = 1
-        for step in route.steps:
-            start_step_label = _display_label_for_endpoint_key(step.start_key)
-            end_step_label = _display_label_for_endpoint_key(step.end_key)
-
-            if step.kind == 'ride':
-                stop_word = 'stop' if step.stop_count == 1 else 'stops'
-                lines.append(
-                    f'{step_number}. Take Line {step.line_name} from {start_step_label} '
-                    f'to {end_step_label} for {_format_distance_and_time(step.distance)} '
-                    f'({step.stop_count} {stop_word}).'
-                )
-            elif step.kind == 'transfer':
-                lines.append(
-                    f'{step_number}. Transfer at {start_step_label} to Line {step.line_name}.'
-                )
-            elif step.kind == 'connector':
-                lines.append(
-                    f'{step_number}. Take {step.display_name.lower()} from {start_step_label} '
-                    f'to {end_step_label} for {_format_distance_and_time(step.distance)}.'
-                )
-            elif step.kind == 'fly':
-                lines.append(
-                    f'{step_number}. Fly directly from {start_step_label} to {end_step_label} '
-                    f'for {_format_track_distance(step.distance)}.'
-                )
-            else:
-                if step.label and step.label != 'Walk':
-                    lines.append(
-                        f'{step_number}. Walk on {step.label} from {start_step_label} '
-                        f'to {end_step_label} for {_format_track_distance(step.distance)}.'
-                    )
-                else:
-                    lines.append(
-                        f'{step_number}. Walk from {start_step_label} to {end_step_label} '
-                        f'for {_format_track_distance(step.distance)}.'
-                    )
-            step_number += 1
-
-        lines.append('')
-        unfinished_line_names = _unfinished_route_line_names(route)
-        if unfinished_line_names:
-            line_word = 'line is' if len(unfinished_line_names) == 1 else 'lines are'
-            lines.append(
-                f'Warning: the {_format_line_name_list(unfinished_line_names)} {line_word} '
-                'not fully constructed for this route. Consider direct flying instead.'
-            )
-            lines.append('')
-        lines.append(
-            f'Route from {start_label} to {end_label}.'
-        )
-        return '\n'.join(lines)
 
     def _refresh_current_route(self) -> None:
         if self.route_request is None:
@@ -7907,11 +8185,48 @@ class MetroMapViewer:
     def _export_visible_block_png(self) -> None:
         from tkinter import messagebox
 
-        messagebox.showinfo(
-            'Export Block PNG',
-            'Block-level PNG export is not available until UI extensions are loaded.',
-            parent=self.root,
-        )
+        self.root.update_idletasks()
+        self.width = self.canvas.winfo_width()
+        self.height = self.canvas.winfo_height()
+
+        render_underlay = self._current_world_map_render_underlay()
+        if render_underlay is None:
+            messagebox.showerror(
+                'Export Failed',
+                'Render the world map first, then export the visible block-level PNG.',
+                parent=self.root,
+            )
+            return
+
+        payload, source_image = render_underlay
+        source_image = _world_map_full_resolution_render_source(self, payload, source_image)
+        draw_plan = _world_map_underlay_draw_plan(self, payload, source_image)
+        if draw_plan is None:
+            messagebox.showerror(
+                'Export Failed',
+                'No rendered world-map blocks are visible in the current view.',
+                parent=self.root,
+            )
+            return
+
+        _draw_left, _draw_top, _target_width, _target_height, source_box = draw_plan
+        try:
+            block_image = _world_map_alpha_limited_copy(source_image.crop(source_box))
+            EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+            export_path = EXPORTS_DIR / f"world-map-blocks-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
+            block_image.save(export_path, format='PNG')
+        except Exception as exc:
+            messagebox.showerror(
+                'Export Failed',
+                f'Could not write the block PNG export.\n\n{exc}',
+                parent=self.root,
+            )
+            return
+
+        messagebox.showinfo('Map Exported', f'Saved block-level PNG to:\n{export_path}', parent=self.root)
+
+    def _show_add_poi_dialog(self) -> None:
+        show_add_poi_dialog(self)
 
     def _add_path_node_from_sidebar(self) -> None:
         from tkinter import messagebox
@@ -10178,11 +10493,19 @@ class MetroMapViewer:
             dialog.destroy()
             self._export_current_map(self._current_svg_export_options())
 
+        def preview_export() -> None:
+            self._preview_current_map_export(self._current_svg_export_options())
+
         self._make_sidebar_button(
             button_row,
             text='Export',
             command=export_and_close,
         ).pack(side='right')
+        self._make_sidebar_button(
+            button_row,
+            text='Preview',
+            command=preview_export,
+        ).pack(side='right', padx=(0, 10))
         self._make_sidebar_button(
             button_row,
             text='Cancel',
@@ -10198,48 +10521,78 @@ class MetroMapViewer:
         dialog.grab_set()
         dialog.focus_set()
 
-    def _export_current_map(self, export_options: SvgExportOptions) -> None:
-        from tkinter import messagebox
-
+    def _build_current_map_svg_export_text(self, export_options: SvgExportOptions) -> str:
         self.root.update_idletasks()
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         if canvas_width < 2 or canvas_height < 2:
-            messagebox.showerror('Export Failed', 'The map canvas is not ready to export yet.', parent=self.root)
-            return
+            raise ValueError('The map canvas is not ready to export yet.')
 
         self.width = canvas_width
         self.height = canvas_height
-        EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        export_path = EXPORTS_DIR / f"metro-map-{datetime.now().strftime('%Y%m%d-%H%M%S')}.svg"
         world_map_image = (
             self._current_world_map_svg_image()
             if export_options.include_world_map
             else None
         )
         if export_options.include_world_map and world_map_image is None:
+            raise ValueError(
+                'The world map image is not ready to export yet. Render the world map first, or uncheck World map image.'
+            )
+
+        return _build_validated_map_svg(
+            width=self.width,
+            height=self.height,
+            padding=self.padding,
+            zoom=self.zoom,
+            pan_x=self.pan_x,
+            pan_y=self.pan_y,
+            visible_line_names=self._visible_line_names(),
+            export_options=export_options,
+            world_map_image=world_map_image,
+            current_route=self.current_route,
+        )
+
+    def _preview_current_map_export(self, export_options: SvgExportOptions) -> None:
+        from tkinter import messagebox
+
+        try:
+            svg_text = self._build_current_map_svg_export_text(export_options)
+        except Exception as exc:
             messagebox.showerror(
-                'Export Failed',
-                'The world map image is not ready to export yet. Render the world map first, or uncheck World map image.',
+                'Export Preview Failed',
+                str(exc),
                 parent=self.root,
             )
             return
+
+        byte_count = len(svg_text.encode('utf-8'))
+        messagebox.showinfo(
+            'Export Preview Ready',
+            (
+                'SVG export preview passed validation.\n\n'
+                f'Estimated size: {public_export.format_byte_size(byte_count)}.'
+            ),
+            parent=self.root,
+        )
+
+    def _export_current_map(self, export_options: SvgExportOptions) -> None:
+        from tkinter import messagebox
+
         try:
-            export_path.write_text(
-                _build_map_svg(
-                    width=self.width,
-                    height=self.height,
-                    padding=self.padding,
-                    zoom=self.zoom,
-                    pan_x=self.pan_x,
-                    pan_y=self.pan_y,
-                    visible_line_names=self._visible_line_names(),
-                    export_options=export_options,
-                    world_map_image=world_map_image,
-                    current_route=self.current_route,
-                ),
-                encoding='utf-8',
+            svg_text = self._build_current_map_svg_export_text(export_options)
+        except Exception as exc:
+            messagebox.showerror(
+                'Export Failed',
+                str(exc),
+                parent=self.root,
             )
+            return
+
+        EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        export_path = EXPORTS_DIR / f"metro-map-{datetime.now().strftime('%Y%m%d-%H%M%S')}.svg"
+        try:
+            export_path.write_text(svg_text, encoding='utf-8')
         except Exception as exc:
             messagebox.showerror(
                 'Export Failed',
@@ -10255,59 +10608,27 @@ class MetroMapViewer:
         if render_underlay is None:
             return None
         payload, source_image = render_underlay
-
-        try:
-            render_min_x = _render_cache_int(payload, 'min_x')
-            render_max_x = _render_cache_int(payload, 'max_x')
-            render_min_z = _render_cache_int(payload, 'min_z')
-            render_max_z = _render_cache_int(payload, 'max_z')
-        except (KeyError, TypeError, ValueError):
+        draw_plan = _world_map_underlay_draw_plan(self, payload, source_image)
+        if draw_plan is None:
             return None
 
-        top_left_x, top_left_y = self.world_to_canvas((render_min_x, -render_min_z))
-        bottom_right_x, bottom_right_y = self.world_to_canvas((render_max_x, -render_max_z))
-        left = min(top_left_x, bottom_right_x)
-        right = max(top_left_x, bottom_right_x)
-        top = min(top_left_y, bottom_right_y)
-        bottom = max(top_left_y, bottom_right_y)
-        if right <= left or bottom <= top:
+        source_image = _world_map_full_resolution_render_source(self, payload, source_image)
+        draw_plan = _world_map_underlay_draw_plan(self, payload, source_image)
+        if draw_plan is None:
             return None
 
-        visible_left = max(0.0, left)
-        visible_top = max(0.0, top)
-        visible_right = min(float(self.width), right)
-        visible_bottom = min(float(self.height), bottom)
-        if visible_right <= visible_left or visible_bottom <= visible_top:
-            return None
-
-        image_width, image_height = source_image.size
-        source_left = floor(max(0, min(image_width, ((visible_left - left) / (right - left)) * image_width)))
-        source_right = ceil(max(0, min(image_width, ((visible_right - left) / (right - left)) * image_width)))
-        source_top = floor(max(0, min(image_height, ((visible_top - top) / (bottom - top)) * image_height)))
-        source_bottom = ceil(max(0, min(image_height, ((visible_bottom - top) / (bottom - top)) * image_height)))
-        if source_right <= source_left or source_bottom <= source_top:
-            return None
-
-        visible_width = max(1, round(visible_right - visible_left))
-        visible_height = max(1, round(visible_bottom - visible_top))
-        try:
-            resampling_filter = Image.Resampling.BILINEAR
-        except AttributeError:
-            resampling_filter = cast(Any, Image).BILINEAR
-        underlay = source_image.crop((source_left, source_top, source_right, source_bottom))
-        underlay = underlay.resize((visible_width, visible_height), resampling_filter)
-        alpha = underlay.getchannel('A').point(_limit_world_map_alpha)
-        underlay.putalpha(alpha)
+        draw_left, draw_top, target_width, target_height, source_box = draw_plan
+        underlay = _world_map_alpha_limited_copy(source_image.crop(source_box))
 
         buffer = io.BytesIO()
         underlay.save(buffer, format='PNG')
         encoded_image = base64.b64encode(buffer.getvalue()).decode('ascii')
         return SvgRasterImage(
             data_uri=f'data:image/png;base64,{encoded_image}',
-            left=visible_left,
-            top=visible_top,
-            width=visible_width,
-            height=visible_height,
+            left=draw_left,
+            top=draw_top,
+            width=target_width,
+            height=target_height,
         )
 
     def redraw(self) -> None:
@@ -10776,58 +11097,41 @@ class MetroMapViewer:
             return
         payload, source_image = render_underlay
 
-        try:
-            render_min_x = _render_cache_int(payload, 'min_x')
-            render_max_x = _render_cache_int(payload, 'max_x')
-            render_min_z = _render_cache_int(payload, 'min_z')
-            render_max_z = _render_cache_int(payload, 'max_z')
-        except (KeyError, TypeError, ValueError):
+        if not fast_resample:
+            import world_map_analysis
+
+            world_map_analysis.update_background_analysis(self, payload, source_image)
+
+        draw_plan = _world_map_underlay_draw_plan(self, payload, source_image)
+        if draw_plan is None:
             return
 
-        top_left_x, top_left_y = self.world_to_canvas((render_min_x, -render_min_z))
-        bottom_right_x, bottom_right_y = self.world_to_canvas((render_max_x, -render_max_z))
-        left = min(top_left_x, bottom_right_x)
-        right = max(top_left_x, bottom_right_x)
-        top = min(top_left_y, bottom_right_y)
-        bottom = max(top_left_y, bottom_right_y)
-        if right <= left or bottom <= top:
-            return
+        draw_left, draw_top, target_width, target_height, source_box = draw_plan
+        if not fast_resample and _world_map_draw_plan_is_upscaled(target_width, target_height, source_box):
+            full_source_image = _world_map_full_resolution_render_source(self, payload, source_image)
+            if full_source_image is not source_image:
+                full_draw_plan = _world_map_underlay_draw_plan(self, payload, full_source_image)
+                if full_draw_plan is not None:
+                    source_image = full_source_image
+                    draw_left, draw_top, target_width, target_height, source_box = full_draw_plan
 
-        visible_left = max(0.0, left)
-        visible_top = max(0.0, top)
-        visible_right = min(float(self.width), right)
-        visible_bottom = min(float(self.height), bottom)
-        if visible_right <= visible_left or visible_bottom <= visible_top:
-            return
-
-        image_width, image_height = source_image.size
-        source_left = floor(max(0, min(image_width, ((visible_left - left) / (right - left)) * image_width)))
-        source_right = ceil(max(0, min(image_width, ((visible_right - left) / (right - left)) * image_width)))
-        source_top = floor(max(0, min(image_height, ((visible_top - top) / (bottom - top)) * image_height)))
-        source_bottom = ceil(max(0, min(image_height, ((visible_bottom - top) / (bottom - top)) * image_height)))
-        if source_right <= source_left or source_bottom <= source_top:
-            return
-
-        visible_width = max(1, round(visible_right - visible_left))
-        visible_height = max(1, round(visible_bottom - visible_top))
-        if fast_resample:
-            try:
-                resampling_filter = Image.Resampling.NEAREST
-            except AttributeError:
-                resampling_filter = cast(Any, Image).NEAREST
-        else:
-            try:
-                resampling_filter = Image.Resampling.BILINEAR
-            except AttributeError:
-                resampling_filter = cast(Any, Image).BILINEAR
-        underlay = source_image.crop((source_left, source_top, source_right, source_bottom))
-        underlay = underlay.resize((visible_width, visible_height), resampling_filter)
-        alpha = underlay.getchannel('A').point(_limit_world_map_alpha)
-        underlay.putalpha(alpha)
-        underlay_image = ImageTk.PhotoImage(underlay)
+        underlay_image = _world_map_cached_underlay_photo(
+            self,
+            source_image,
+            target_width,
+            target_height,
+            source_box,
+            fast_resample=fast_resample,
+        )
         self.overlay_image_refs.append(underlay_image)
-        image_id = self.canvas.create_image(visible_left, visible_top, anchor='nw', image=underlay_image)
+        image_id = self.canvas.create_image(draw_left, draw_top, anchor='nw', image=underlay_image)
         self.canvas.tag_lower(image_id)
+
+        if not fast_resample:
+            import world_map_analysis
+
+            world_map_analysis.draw_internal_voids(self, payload, source_image)
+            _draw_world_boundary_completion_edges(self, payload, source_image)
 
     def _draw_world_map_render_bounds(self, payload: dict[str, object]) -> None:
         bounds = _world_map_visible_render_bounds_from_payload(payload)
@@ -11229,6 +11533,20 @@ class MetroMapViewer:
     def _draw_path_nodes(self) -> None:
         label_font_size = max(10, _label_font_size(self.zoom) - 1)
         label_offset_x, label_offset_y = self._label_offset()
+        self.path_node_canvas_positions = {}
+        if not self.show_path_nodes_var.get():
+            should_keep_hit_targets = (
+                self.path_click_mode_var.get()
+                or self.city_limits_edit_stop_var is not None
+                or self.selected_path_node_key is not None
+            )
+            if not should_keep_hit_targets:
+                return
+            for path_node in _all_path_nodes():
+                canvas_x, canvas_y = self.world_to_canvas(path_node.plot_coordinates)
+                self.path_node_canvas_positions[path_node.key] = (canvas_x, canvas_y)
+            return
+
         for path_node in _all_path_nodes():
             canvas_x, canvas_y = self.world_to_canvas(path_node.plot_coordinates)
             self.path_node_canvas_positions[path_node.key] = (canvas_x, canvas_y)
@@ -11275,10 +11593,33 @@ class MetroMapViewer:
                     text=path_node.display_label,
                     fill=PATH_NODE_LABEL_COLOR,
                     font=('Helvetica', label_font_size),
-                )
+                    )
 
     def _draw_path_drag_preview(self) -> None:
         self._update_path_drag_preview()
+
+    def _draw_suggested_walking_paths(self) -> None:
+        if not self.show_suggested_walking_paths_var.get():
+            return
+
+        from walking_suggestions import build_suggested_segments
+
+        for segment in build_suggested_segments(sys.modules[__name__], self):
+            canvas_points: list[float] = []
+            for point_x, point_y in segment.path_coordinates:
+                canvas_x, canvas_y = self.world_to_canvas((point_x, -point_y))
+                canvas_points.extend((canvas_x, canvas_y))
+            if len(canvas_points) < 4:
+                continue
+            self.canvas.create_line(
+                *canvas_points,
+                fill=WALK_ROUTE_COLOR,
+                width=4,
+                dash=(8, 6),
+                capstyle='round',
+                joinstyle='round',
+                smooth=True,
+            )
 
     def _draw_extra_edges(self) -> None:
         for extra_edge in EXTRA_EDGES:
@@ -11320,6 +11661,7 @@ class MetroMapViewer:
                         outline=ROUTE_HIGHLIGHT_OUTLINE,
                         width=2,
                     )
+        MetroMapViewer._draw_suggested_walking_paths(self)
 
     def _draw_frontier_highlights(self, visible_line_names: set[str]) -> None:
         if not self.show_frontier_highlights_var.get():
@@ -11863,209 +12205,139 @@ _ALL_PATH_NODES_CACHE_KEY: tuple[int, int] | None = None
 _ALL_PATH_NODES_CACHE: tuple[PathNode, ...] = ()
 _ALL_PATH_NODES_BY_KEY_CACHE: dict[str, PathNode] = {}
 EXTRA_EDGES: tuple[ExtraEdgeDefinition, ...] = ()
+_EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY: int | None = None
+_EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE: dict[str, tuple[ExtraEdgeDefinition, ...]] = {}
 ALIGNMENT_REMINDERS: tuple[AlignmentReminder, ...] = ()
 
 
 def _line_letters(stop: MetroStop) -> tuple[str, ...]:
-    return tuple(char for char in stop.var.removeprefix('P_') if char.isalpha())
+    return network.line_letters(stop.var)
 
 
 def _validate_line_sequences() -> None:
-    expected_members: dict[str, set[str]] = {line_name: set() for line_name in LINE_STOP_VARS}
-
-    for stop in METRO_STOPS:
-        for line_name in _line_letters(stop):
-            expected_members.setdefault(line_name, set()).add(stop.var)
-
-    if set(expected_members) != set(LINE_STOP_VARS):
-        raise ValueError('LINE_STOP_VARS does not match the lines encoded in the stop variables.')
-
-    for line_name, stop_vars in LINE_STOP_VARS.items():
-        if len(stop_vars) != len(set(stop_vars)):
-            raise ValueError(f'Line {line_name} has duplicate stop entries.')
-        if set(stop_vars) != expected_members[line_name]:
-            raise ValueError(
-                f'Line {line_name} sequence does not match the stop variables. '
-                f'Expected {sorted(expected_members[line_name])}, got {sorted(stop_vars)}.'
-            )
+    network.validate_line_sequences(
+        tuple(stop.var for stop in METRO_STOPS),
+        LINE_STOP_VARS,
+    )
 
 
 def _validate_line_path_specs() -> None:
-    if set(LINE_PATH_SPECS) != set(LINE_STOP_VARS):
-        raise ValueError('LINE_PATH_SPECS does not match the defined metro lines.')
-
-    for line_name, point_specs in LINE_PATH_SPECS.items():
-        mentioned_vars = {spec.x_var for spec in point_specs} | {spec.y_var for spec in point_specs}
-        missing_stops = set(LINE_STOP_VARS[line_name]) - mentioned_vars
-        unknown_vars = mentioned_vars - set(STOPS_BY_VAR)
-
-        if unknown_vars:
-            raise ValueError(f'Line {line_name} path references unknown stops: {sorted(unknown_vars)}.')
-        if missing_stops:
-            raise ValueError(f'Line {line_name} path is missing stops: {sorted(missing_stops)}.')
-        if len(point_specs) < 2:
-            raise ValueError(f'Line {line_name} path needs at least two points.')
+    network.validate_line_path_specs(
+        {
+            line_name: tuple(
+                {
+                    'x_var': spec.x_var,
+                    'y_var': spec.y_var,
+                    'dx': spec.dx,
+                    'dy': spec.dy,
+                }
+                for spec in point_specs
+            )
+            for line_name, point_specs in LINE_PATH_SPECS.items()
+        },
+        LINE_STOP_VARS,
+        set(STOPS_BY_VAR),
+    )
 
 
 def _validate_line_colors() -> None:
-    if set(LINE_COLORS) != set(LINE_STOP_VARS):
-        raise ValueError('LINE_COLORS does not match the defined metro lines.')
+    network.validate_line_colors(LINE_COLORS, LINE_STOP_VARS)
 
 
 def _validate_path_nodes() -> None:
-    seen_ids: set[str] = set()
-    seen_coordinates: set[tuple[int, int]] = set()
-    stop_coordinates = {stop.coordinates for stop in METRO_STOPS}
-
-    for path_node in PATH_NODES:
-        if path_node.id in seen_ids:
-            raise ValueError(f'Duplicate path node id: {path_node.id}')
-        if path_node.coordinates in seen_coordinates:
-            raise ValueError(f'Duplicate path node coordinates: {path_node.coordinates}')
-        if path_node.coordinates in stop_coordinates:
-            raise ValueError(f'Path node {path_node.id} overlaps a station coordinate.')
-        seen_ids.add(path_node.id)
-        seen_coordinates.add(path_node.coordinates)
+    network.validate_path_nodes(
+        tuple(
+            {
+                'id': path_node.id,
+                'x': path_node.x,
+                'y': path_node.y,
+            }
+            for path_node in PATH_NODES
+        ),
+        {stop.coordinates for stop in METRO_STOPS},
+    )
 
 
 def _validate_extra_edges() -> None:
-    seen_ids: set[str] = set()
-    for extra_edge in EXTRA_EDGES:
-        if extra_edge.id in seen_ids:
-            raise ValueError(f'Duplicate extra edge id: {extra_edge.id}')
-        seen_ids.add(extra_edge.id)
-        if extra_edge.from_endpoint.kind == 'stop' and extra_edge.from_endpoint.key not in STOPS_BY_VAR:
-            raise ValueError(f'Extra edge {extra_edge.id} references unknown start stop.')
-        if extra_edge.to_endpoint.kind == 'stop' and extra_edge.to_endpoint.key not in STOPS_BY_VAR:
-            raise ValueError(f'Extra edge {extra_edge.id} references unknown end stop.')
-        if extra_edge.from_endpoint.key == extra_edge.to_endpoint.key:
-            raise ValueError(f'Extra edge {extra_edge.id} needs two different endpoints.')
-        if extra_edge.path_points:
-            if extra_edge.path_points[0] != extra_edge.from_endpoint.coordinates:
-                raise ValueError(f'Extra edge {extra_edge.id} path must start at its first endpoint.')
-            if extra_edge.path_points[-1] != extra_edge.to_endpoint.coordinates:
-                raise ValueError(f'Extra edge {extra_edge.id} path must end at its second endpoint.')
+    network.validate_extra_edges(
+        tuple(
+            {
+                'id': extra_edge.id,
+                'from_endpoint': {
+                    'kind': extra_edge.from_endpoint.kind,
+                    'key': extra_edge.from_endpoint.key,
+                    'coordinates': extra_edge.from_endpoint.coordinates,
+                },
+                'to_endpoint': {
+                    'kind': extra_edge.to_endpoint.kind,
+                    'key': extra_edge.to_endpoint.key,
+                    'coordinates': extra_edge.to_endpoint.coordinates,
+                },
+                'path_points': extra_edge.path_points,
+            }
+            for extra_edge in EXTRA_EDGES
+        ),
+        set(STOPS_BY_VAR),
+    )
 
 
 def _validate_stop_line_names() -> None:
-    for stop in METRO_STOPS:
-        if stop.var not in STOP_LINE_NAMES:
-            raise ValueError(f'Stop {stop.var} is missing line membership metadata.')
+    network.validate_stop_line_names(
+        tuple(stop.var for stop in METRO_STOPS),
+        STOP_LINE_NAMES,
+    )
 
 
 def _validate_stop_records(stops: tuple[MetroStop, ...]) -> None:
-    if len({stop.var for stop in stops}) != len(stops):
-        raise ValueError('Stop variables must be unique.')
-    unique_required_labels = [
-        stop.lbl
-        for stop in stops
-        if stop.lbl != UNASSOCIATED_STATION_LABEL
-    ]
-    if len(set(unique_required_labels)) != len(unique_required_labels):
-        raise ValueError('Stop labels must be unique.')
-    for stop in stops:
-        if not stop.lbl.strip():
-            raise ValueError(f'Stop {stop.var} must have a non-empty label.')
+    network.validate_stop_records(
+        tuple(
+            {
+                'var': stop.var,
+                'lbl': stop.lbl,
+            }
+            for stop in stops
+        ),
+        unassociated_station_label=UNASSOCIATED_STATION_LABEL,
+    )
 
 
 def _history_snapshot_paths() -> list[Path]:
-    if not METRO_NETWORK_HISTORY_DIR.exists():
-        return []
-    return sorted(METRO_NETWORK_HISTORY_DIR.glob('*.json'))
+    return network.history_snapshot_paths(METRO_NETWORK_HISTORY_DIR)
 
 
 def _record_history_snapshot(snapshot_text: str) -> None:
-    if not snapshot_text:
-        return
-
-    METRO_NETWORK_HISTORY_DIR.mkdir(parents=True, exist_ok=True)
-    latest_snapshot_paths = _history_snapshot_paths()
-    if latest_snapshot_paths:
-        latest_snapshot_text = latest_snapshot_paths[-1].read_text(encoding='utf-8')
-        if latest_snapshot_text == snapshot_text:
-            return
-
-    snapshot_name = f"{datetime.now().strftime('%Y%m%d-%H%M%S-%f')}.json"
-    snapshot_path = METRO_NETWORK_HISTORY_DIR / snapshot_name
-    snapshot_path.write_text(snapshot_text, encoding='utf-8')
-
-    history_paths = _history_snapshot_paths()
-    if len(history_paths) <= MAX_HISTORY_SNAPSHOTS:
-        return
-    for stale_path in history_paths[:-MAX_HISTORY_SNAPSHOTS]:
-        stale_path.unlink(missing_ok=True)
+    network.record_history_snapshot(
+        snapshot_text,
+        history_dir=METRO_NETWORK_HISTORY_DIR,
+        max_history_snapshots=MAX_HISTORY_SNAPSHOTS,
+    )
 
 
 def _write_network_payload(payload: MetroNetworkPayload) -> None:
-    serialized_payload = json.dumps(payload, indent=2) + '\n'
-    current_payload_text = ''
-    if METRO_NETWORK_PATH.exists():
-        current_payload_text = METRO_NETWORK_PATH.read_text(encoding='utf-8')
-
-    if current_payload_text and current_payload_text != serialized_payload:
-        _record_history_snapshot(current_payload_text)
-        METRO_NETWORK_BACKUP_PATH.write_text(current_payload_text, encoding='utf-8')
-
-    METRO_NETWORK_PATH.write_text(serialized_payload, encoding='utf-8')
+    network.write_network_payload(
+        payload,
+        network_path=METRO_NETWORK_PATH,
+        backup_path=METRO_NETWORK_BACKUP_PATH,
+        history_dir=METRO_NETWORK_HISTORY_DIR,
+        max_history_snapshots=MAX_HISTORY_SNAPSHOTS,
+    )
 
 
 def _restore_last_network_snapshot() -> None:
-    current_payload_text = METRO_NETWORK_PATH.read_text(encoding='utf-8')
-    history_paths = _history_snapshot_paths()
-    if history_paths:
-        restore_path = history_paths[-1]
-        restore_payload_text = restore_path.read_text(encoding='utf-8')
-        restore_path.unlink(missing_ok=True)
-        METRO_NETWORK_BACKUP_PATH.write_text(current_payload_text, encoding='utf-8')
-        METRO_NETWORK_PATH.write_text(restore_payload_text, encoding='utf-8')
-        _reload_network_data()
-        return
-
-    if not METRO_NETWORK_BACKUP_PATH.exists():
-        raise ValueError('No previous saved network state is available yet.')
-
-    backup_payload_text = METRO_NETWORK_BACKUP_PATH.read_text(encoding='utf-8')
-    METRO_NETWORK_PATH.write_text(backup_payload_text, encoding='utf-8')
-    METRO_NETWORK_BACKUP_PATH.write_text(current_payload_text, encoding='utf-8')
+    network.restore_last_network_snapshot(
+        network_path=METRO_NETWORK_PATH,
+        backup_path=METRO_NETWORK_BACKUP_PATH,
+        history_dir=METRO_NETWORK_HISTORY_DIR,
+    )
     _reload_network_data()
 
 
 def _resolve_stop_var_in_payload(payload: MetroNetworkPayload, identifier: str) -> str | None:
-    normalized_identifier = identifier.strip()
-    if not normalized_identifier:
-        return None
-
-    stop_vars = {
-        str(stop_record['var']): str(stop_record['var'])
-        for stop_record in payload['stops']
-    }
-    if normalized_identifier in stop_vars:
-        return stop_vars[normalized_identifier]
-
-    labels = {
-        str(stop_record['lbl']): str(stop_record['var'])
-        for stop_record in payload['stops']
-    }
-    return labels.get(normalized_identifier)
+    return network.resolve_stop_key(payload, identifier)
 
 
 def _resolve_path_node_in_payload(payload: MetroNetworkPayload, identifier: str) -> PathNodeRecord | None:
-    normalized_identifier = identifier.strip()
-    if not normalized_identifier:
-        return None
-
-    raw_path_nodes = payload.get('path_nodes', [])
-    if not isinstance(raw_path_nodes, list):
-        return None
-
-    for raw_path_node in raw_path_nodes:
-        if not isinstance(raw_path_node, dict):
-            continue
-        if str(raw_path_node.get('id', '')).strip() == normalized_identifier:
-            return cast(PathNodeRecord, raw_path_node)
-        if str(raw_path_node.get('label', '')).strip() == normalized_identifier:
-            return cast(PathNodeRecord, raw_path_node)
-    return None
+    return cast(PathNodeRecord | None, network.resolve_path_node(payload, identifier))
 
 
 def _normalize_path_endpoint_record(
@@ -12074,465 +12346,56 @@ def _normalize_path_endpoint_record(
     *,
     fallback_identifier: str | None = None,
 ) -> PathEndpointRecord | None:
-    if isinstance(raw_endpoint, dict):
-        raw_kind = str(raw_endpoint.get('kind', '')).strip().lower()
-        if raw_kind == 'stop':
-            stop_var = _resolve_stop_var_in_payload(payload, str(raw_endpoint.get('stop_var', '')))
-            if stop_var is not None:
-                return {'kind': 'stop', 'stop_var': stop_var}
-            return None
-        if raw_kind in {'coord', 'coordinate'}:
-            endpoint_x = _coerce_int(raw_endpoint.get('x'))
-            endpoint_y = _coerce_int(raw_endpoint.get('y'))
-            if endpoint_x is None or endpoint_y is None:
-                return None
-            return {
-                'kind': 'coord',
-                'x': endpoint_x,
-                'y': endpoint_y,
-            }
-
-    if fallback_identifier is None:
-        return None
-    return _path_endpoint_record_from_identifier(payload, fallback_identifier)
+    return cast(
+        PathEndpointRecord | None,
+        network.normalize_path_endpoint_record(
+            payload,
+            raw_endpoint,
+            fallback_identifier=fallback_identifier,
+        ),
+    )
 
 
 def _payload_endpoint_coordinates(
     payload: MetroNetworkPayload,
     endpoint_record: PathEndpointRecord,
 ) -> tuple[int, int]:
-    if endpoint_record['kind'] == 'stop':
-        stop_lookup = {
-            str(stop_record['var']): stop_record
-            for stop_record in payload['stops']
-        }
-        stop_record = stop_lookup[endpoint_record['stop_var']]
-        station_entry_x = _coerce_int(stop_record.get('station_entry_x'))
-        station_entry_y = _coerce_int(stop_record.get('station_entry_y'))
-        if station_entry_x is not None and station_entry_y is not None:
-            return (station_entry_x, station_entry_y)
-        return (int(stop_record['x']), int(stop_record['y']))
-
-    return (int(endpoint_record['x']), int(endpoint_record['y']))
+    return network.payload_endpoint_coordinates(payload, endpoint_record)
 
 
 def _normalize_path_nodes(payload: MetroNetworkPayload) -> bool:
-    payload_changed = False
-    raw_path_nodes = payload.get('path_nodes')
-    if not isinstance(raw_path_nodes, list):
-        payload['path_nodes'] = []
-        return True
-
-    stop_coordinates = {
-        (int(stop_record['x']), int(stop_record['y']))
-        for stop_record in payload['stops']
-    }
-    normalized_nodes: list[PathNodeRecord] = []
-    seen_ids: set[str] = set()
-    seen_coordinates: set[tuple[int, int]] = set()
-
-    for index, raw_node in enumerate(raw_path_nodes, start=1):
-        if not isinstance(raw_node, dict):
-            payload_changed = True
-            continue
-
-        node_x = _coerce_int(raw_node.get('x'))
-        node_y = _coerce_int(raw_node.get('y'))
-        if node_x is None or node_y is None:
-            payload_changed = True
-            continue
-
-        coordinates = (node_x, node_y)
-        if coordinates in stop_coordinates or coordinates in seen_coordinates:
-            payload_changed = True
-            continue
-
-        node_id = str(raw_node.get('id', '')).strip() or f'node_{index}'
-        if node_id in seen_ids:
-            node_id = f'{node_id}_{index}'
-            payload_changed = True
-
-        normalized_node: PathNodeRecord = {
-            'id': node_id,
-            'x': node_x,
-            'y': node_y,
-        }
-        label = str(raw_node.get('label', '')).strip()
-        if label:
-            normalized_node['label'] = label
-        poi_kind = str(raw_node.get('poi_kind', '')).strip().lower()
-        if poi_kind in {'monument', 'pillager_tower'}:
-            normalized_node['poi_kind'] = poi_kind
-            category = str(raw_node.get('category', '')).strip()
-            if category:
-                normalized_node['category'] = category
-
-        if raw_node != normalized_node:
-            payload_changed = True
-        normalized_nodes.append(normalized_node)
-        seen_ids.add(node_id)
-        seen_coordinates.add(coordinates)
-
-    if raw_path_nodes != normalized_nodes:
-        payload['path_nodes'] = normalized_nodes
-        payload_changed = True
-
-    return payload_changed
+    return network.normalize_path_nodes(payload)
 
 
 def _normalize_alignment_reminders(payload: MetroNetworkPayload) -> bool:
-    payload_changed = False
-    raw_alignment_reminders = payload.get('alignment_reminders')
-    if not isinstance(raw_alignment_reminders, list):
-        payload['alignment_reminders'] = []
-        return True
-
-    stop_lookup = {
-        str(stop_record['var']): stop_record
-        for stop_record in payload['stops']
-    }
-    normalized_reminders: list[AlignmentReminderRecord] = []
-    seen_pairs: set[tuple[str, str, AlignmentAxis]] = set()
-
-    for raw_reminder in raw_alignment_reminders:
-        if not isinstance(raw_reminder, dict):
-            payload_changed = True
-            continue
-
-        first_var = _resolve_stop_var_in_payload(payload, str(raw_reminder.get('first_var', '')))
-        second_var = _resolve_stop_var_in_payload(payload, str(raw_reminder.get('second_var', '')))
-        if first_var is None or second_var is None or first_var == second_var:
-            payload_changed = True
-            continue
-
-        first_record = stop_lookup[first_var]
-        second_record = stop_lookup[second_var]
-        raw_axis = str(raw_reminder.get('axis', 'auto')).strip().lower()
-        if raw_axis in ('x', 'y'):
-            axis = cast(AlignmentAxis, raw_axis)
-        else:
-            axis = _infer_alignment_axis_from_coordinates(
-                int(first_record['x']),
-                int(first_record['y']),
-                int(second_record['x']),
-                int(second_record['y']),
-            )
-            payload_changed = True
-
-        if axis == 'x':
-            is_aligned = int(first_record['x']) == int(second_record['x'])
-        else:
-            is_aligned = int(first_record['y']) == int(second_record['y'])
-        if is_aligned:
-            payload_changed = True
-            continue
-
-        ordered_first_var, ordered_second_var = sorted((first_var, second_var))
-        pair_key = (ordered_first_var, ordered_second_var, axis)
-        if pair_key in seen_pairs:
-            payload_changed = True
-            continue
-        seen_pairs.add(pair_key)
-
-        normalized_reminder: AlignmentReminderRecord = {
-            'first_var': ordered_first_var,
-            'second_var': ordered_second_var,
-            'axis': axis,
-        }
-        normalized_reminders.append(normalized_reminder)
-        if raw_reminder != normalized_reminder:
-            payload_changed = True
-
-    if raw_alignment_reminders != normalized_reminders:
-        payload['alignment_reminders'] = normalized_reminders
-        payload_changed = True
-
-    return payload_changed
+    return network.normalize_alignment_reminders(payload)
 
 
 def _normalize_extra_edges(payload: MetroNetworkPayload) -> bool:
-    payload_changed = False
-    raw_extra_edges = payload.get('extra_edges')
-    if not isinstance(raw_extra_edges, list):
-        payload['extra_edges'] = []
-        return True
-
-    normalized_edges: list[ExtraEdgeRecord] = []
-    seen_ids: set[str] = set()
-
-    for index, raw_edge in enumerate(raw_extra_edges, start=1):
-        if not isinstance(raw_edge, dict):
-            payload_changed = True
-            continue
-
-        edge_id = str(raw_edge.get('id', '')).strip() or f'edge_{index}'
-        if edge_id in seen_ids:
-            edge_id = f'{edge_id}_{index}'
-            payload_changed = True
-        seen_ids.add(edge_id)
-
-        kind_value = str(raw_edge.get('kind', 'connector')).strip().lower()
-        if kind_value not in {'connector', 'walk'}:
-            kind_value = 'connector'
-            payload_changed = True
-
-        from_endpoint = _normalize_path_endpoint_record(
-            payload,
-            raw_edge.get('from_endpoint'),
-            fallback_identifier=str(raw_edge.get('from_var', '')),
-        )
-        to_endpoint = _normalize_path_endpoint_record(
-            payload,
-            raw_edge.get('to_endpoint'),
-            fallback_identifier=str(raw_edge.get('to_var', '')),
-        )
-        if from_endpoint is None or to_endpoint is None:
-            payload_changed = True
-            continue
-        if from_endpoint == to_endpoint:
-            payload_changed = True
-            continue
-
-        bidirectional = bool(raw_edge.get('bidirectional', True))
-        normalized_path_points: list[PathPointRecord] = []
-        raw_path_points = raw_edge.get('path_points', [])
-        if not isinstance(raw_path_points, list):
-            raw_path_points = []
-            payload_changed = True
-
-        if raw_path_points:
-            for raw_point in raw_path_points:
-                if not isinstance(raw_point, dict):
-                    payload_changed = True
-                    continue
-                try:
-                    normalized_path_points.append(
-                        {
-                            'x': int(raw_point.get('x')),
-                            'y': int(raw_point.get('y')),
-                        }
-                    )
-                except (TypeError, ValueError):
-                    payload_changed = True
-        else:
-            raw_path_specs = raw_edge.get('path_specs', [])
-            if not isinstance(raw_path_specs, list):
-                raw_path_specs = []
-                payload_changed = True
-            for raw_spec in raw_path_specs:
-                if not isinstance(raw_spec, dict):
-                    payload_changed = True
-                    continue
-                x_var = _resolve_stop_var_in_payload(payload, str(raw_spec.get('x_var', '')))
-                y_var = _resolve_stop_var_in_payload(payload, str(raw_spec.get('y_var', '')))
-                if x_var is None or y_var is None:
-                    payload_changed = True
-                    continue
-                try:
-                    point_x = int(next(
-                        stop_record['x']
-                        for stop_record in payload['stops']
-                        if str(stop_record['var']) == x_var
-                    )) + int(raw_spec.get('dx', 0))
-                    point_y = int(next(
-                        stop_record['y']
-                        for stop_record in payload['stops']
-                        if str(stop_record['var']) == y_var
-                    )) - int(raw_spec.get('dy', 0))
-                except (StopIteration, TypeError, ValueError):
-                    payload_changed = True
-                    continue
-                normalized_path_points.append({'x': point_x, 'y': point_y})
-
-        if normalized_path_points:
-            start_coordinates = _payload_endpoint_coordinates(payload, from_endpoint)
-            end_coordinates = _payload_endpoint_coordinates(payload, to_endpoint)
-            if (normalized_path_points[0]['x'], normalized_path_points[0]['y']) != start_coordinates:
-                normalized_path_points.insert(
-                    0,
-                    {'x': start_coordinates[0], 'y': start_coordinates[1]},
-                )
-                payload_changed = True
-            if (normalized_path_points[-1]['x'], normalized_path_points[-1]['y']) != end_coordinates:
-                normalized_path_points.append(
-                    {'x': end_coordinates[0], 'y': end_coordinates[1]},
-                )
-                payload_changed = True
-            if len(normalized_path_points) == 2 and (
-                (normalized_path_points[0]['x'], normalized_path_points[0]['y']) == start_coordinates
-                and (normalized_path_points[1]['x'], normalized_path_points[1]['y']) == end_coordinates
-            ):
-                normalized_path_points = []
-                payload_changed = True
-
-        normalized_edge: ExtraEdgeRecord = {
-            'id': edge_id,
-            'kind': kind_value,
-            'from_endpoint': from_endpoint,
-            'to_endpoint': to_endpoint,
-            'bidirectional': bidirectional,
-            'path_points': normalized_path_points,
-        }
-
-        label = str(raw_edge.get('label', '')).strip()
-        if label:
-            normalized_edge['label'] = label
-
-        raw_distance = raw_edge.get('distance')
-        if raw_distance not in (None, ''):
-            normalized_edge['distance'] = int(raw_distance)
-
-        if raw_edge != normalized_edge:
-            payload_changed = True
-        normalized_edges.append(normalized_edge)
-
-    if raw_extra_edges != normalized_edges:
-        payload['extra_edges'] = normalized_edges
-        payload_changed = True
-
-    return payload_changed
+    return network.normalize_extra_edges(payload)
 
 
 def _path_node_keys_in_payload(payload: MetroNetworkPayload) -> set[str]:
-    node_keys: set[str] = set()
-    for raw_node in payload.get('path_nodes', []):
-        if not isinstance(raw_node, dict):
-            continue
-        node_x = _coerce_int(raw_node.get('x'))
-        node_y = _coerce_int(raw_node.get('y'))
-        if node_x is None or node_y is None:
-            continue
-        node_keys.add(_coordinate_endpoint_key(node_x, node_y))
-
-    for raw_edge in payload.get('extra_edges', []):
-        if not isinstance(raw_edge, dict):
-            continue
-        for field_name in ('from_endpoint', 'to_endpoint'):
-            raw_endpoint = raw_edge.get(field_name)
-            if not isinstance(raw_endpoint, dict):
-                continue
-            endpoint = _normalize_path_endpoint_record(payload, raw_endpoint)
-            if endpoint is None or endpoint['kind'] != 'coord':
-                continue
-            node_keys.add(_coordinate_endpoint_key(int(endpoint['x']), int(endpoint['y'])))
-    return node_keys
+    return network.path_node_keys(payload)
 
 
 def _normalize_city_limits(payload: MetroNetworkPayload) -> bool:
-    payload_changed = False
-    valid_node_keys = _path_node_keys_in_payload(payload)
-    for stop_record in payload['stops']:
-        raw_node_keys = stop_record.get('city_limit_node_keys')
-        if raw_node_keys is None:
-            continue
-        if not isinstance(raw_node_keys, list):
-            stop_record.pop('city_limit_node_keys', None)
-            payload_changed = True
-            continue
-
-        normalized_node_keys: list[str] = []
-        seen_node_keys: set[str] = set()
-        for raw_node_key in raw_node_keys:
-            node_key = str(raw_node_key).strip()
-            if node_key not in valid_node_keys:
-                coordinates = _parse_coordinate_text(node_key)
-                if coordinates is not None:
-                    node_key = _coordinate_endpoint_key(coordinates[0], coordinates[1])
-            if node_key not in valid_node_keys or node_key in seen_node_keys:
-                payload_changed = True
-                continue
-            normalized_node_keys.append(node_key)
-            seen_node_keys.add(node_key)
-
-        if normalized_node_keys:
-            if raw_node_keys != normalized_node_keys:
-                stop_record['city_limit_node_keys'] = normalized_node_keys
-                payload_changed = True
-        else:
-            stop_record.pop('city_limit_node_keys', None)
-            payload_changed = True
-
-    return payload_changed
+    return network.normalize_city_limits(payload)
 
 
 def _normalize_railway_finish_progress(payload: MetroNetworkPayload) -> bool:
-    payload_changed = False
-    had_progress_key = 'railway_finish_progress' in payload
-    raw_progress = payload.get('railway_finish_progress')
-    if not isinstance(raw_progress, dict):
-        payload['railway_finish_progress'] = {}
-        return had_progress_key
-
-    normalized_progress: dict[str, PathPointRecord] = {}
-    valid_line_names = {str(line_name) for line_name in payload['line_stop_vars']}
-    for raw_line_name, raw_point in raw_progress.items():
-        line_name = str(raw_line_name)
-        if line_name not in valid_line_names or not isinstance(raw_point, dict):
-            payload_changed = True
-            continue
-
-        point_x = _coerce_int(raw_point.get('x'))
-        point_y = _coerce_int(raw_point.get('y'))
-        if point_x is None or point_y is None:
-            payload_changed = True
-            continue
-        normalized_progress[line_name] = {'x': point_x, 'y': point_y}
-
-    if raw_progress != normalized_progress:
-        payload['railway_finish_progress'] = normalized_progress
-        payload_changed = True
-
-    return payload_changed
+    return network.normalize_railway_finish_progress(payload)
 
 
 def _payload_line_finish_origin_options(
     payload: MetroNetworkPayload,
     line_name: str,
 ) -> tuple[str, ...]:
-    connected_stop_vars = tuple(
-        str(stop_record['var'])
-        for stop_record in payload['stops']
-        if bool(stop_record.get('is_connected', False))
-    )
-    connected_stop_var_set = set(connected_stop_vars)
-    line_connected_stop_vars = tuple(
-        str(stop_var)
-        for stop_var in payload['line_stop_vars'][line_name]
-        if str(stop_var) in connected_stop_var_set
-    )
-    if not line_connected_stop_vars:
-        return ()
-    if len(line_connected_stop_vars) == 1:
-        return (line_connected_stop_vars[0],)
-    return (line_connected_stop_vars[0], line_connected_stop_vars[-1])
+    return network.line_finish_origin_options(payload, line_name)
 
 
 def _normalize_railway_finish_origins(payload: MetroNetworkPayload) -> bool:
-    payload_changed = False
-    had_origins_key = 'railway_finish_origins' in payload
-    raw_origins = payload.get('railway_finish_origins')
-    if not isinstance(raw_origins, dict):
-        payload['railway_finish_origins'] = {}
-        return had_origins_key
-
-    normalized_origins: dict[str, str] = {}
-    valid_line_names = {str(line_name) for line_name in payload['line_stop_vars']}
-    for raw_line_name, raw_stop_var in raw_origins.items():
-        line_name = str(raw_line_name)
-        stop_var = str(raw_stop_var)
-        if line_name not in valid_line_names:
-            payload_changed = True
-            continue
-        if stop_var not in _payload_line_finish_origin_options(payload, line_name):
-            payload_changed = True
-            continue
-        normalized_origins[line_name] = stop_var
-
-    if raw_origins != normalized_origins:
-        payload['railway_finish_origins'] = normalized_origins
-        payload_changed = True
-
-    return payload_changed
+    return network.normalize_railway_finish_origins(payload)
 
 
 def _load_network_payload() -> MetroNetworkPayload:
@@ -12542,36 +12405,12 @@ def _load_network_payload() -> MetroNetworkPayload:
     payload = cast(MetroNetworkPayload, json.loads(METRO_NETWORK_PATH.read_text(encoding='utf-8')))
     payload_changed = False
 
-    for stop_record in payload['stops']:
-        for field_name in CHECKPOINT_FIELDS:
-            raw_checkpoint_value = stop_record.get(field_name, False)
-            normalized_value = bool(raw_checkpoint_value)
-            if raw_checkpoint_value != normalized_value or field_name not in stop_record:
-                stop_record[field_name] = normalized_value
-                payload_changed = True
-
-        station_entry_x = _coerce_int(stop_record.get('station_entry_x'))
-        station_entry_y = _coerce_int(stop_record.get('station_entry_y'))
-        if station_entry_x is None or station_entry_y is None:
-            if 'station_entry_x' in stop_record or 'station_entry_y' in stop_record:
-                stop_record.pop('station_entry_x', None)
-                stop_record.pop('station_entry_y', None)
-                payload_changed = True
-        else:
-            if stop_record.get('station_entry_x') != station_entry_x:
-                stop_record['station_entry_x'] = station_entry_x
-                payload_changed = True
-            if stop_record.get('station_entry_y') != station_entry_y:
-                stop_record['station_entry_y'] = station_entry_y
-                payload_changed = True
-
-        normalized_chime_directions = list(
-            _normalized_chime_directions(stop_record.get('chime_directions', []))
-        )
-        if stop_record.get('chime_directions') != normalized_chime_directions:
-            stop_record['chime_directions'] = normalized_chime_directions
-            payload_changed = True
-
+    if network.normalize_stop_metadata(
+        payload,
+        checkpoint_fields=CHECKPOINT_FIELDS,
+        chime_directions=CHIME_DIRECTIONS,
+    ):
+        payload_changed = True
     if _normalize_path_nodes(payload):
         payload_changed = True
     if _normalize_alignment_reminders(payload):
@@ -12612,6 +12451,8 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
     global _ALL_PATH_NODES_CACHE
     global _ALL_PATH_NODES_BY_KEY_CACHE
     global EXTRA_EDGES
+    global _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY
+    global _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE
     global ALIGNMENT_REMINDERS
 
     stops = tuple(
@@ -12638,32 +12479,20 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
     METRO_STOPS = stops
     STOPS_BY_VAR = {stop.var: stop for stop in METRO_STOPS}
     STOPS_BY_LBL = {stop.lbl: stop for stop in METRO_STOPS}
-    LINE_COLORS = {
-        str(line_name): str(color)
-        for line_name, color in payload['line_colors'].items()
-    }
-    WOOL_COLORS = {
-        str(line_name): str(color_name)
-        for line_name, color_name in payload.get('wool_colors', {}).items()
-    }
-    LINE_STOP_VARS = {
-        str(line_name): tuple(str(var) for var in stop_vars)
-        for line_name, stop_vars in payload['line_stop_vars'].items()
-    }
-    STOP_LINE_NAMES = {
-        stop.var: tuple(
-            line_name
-            for line_name, stop_vars in LINE_STOP_VARS.items()
-            if stop.var in stop_vars
-        )
-        for stop in METRO_STOPS
-    }
+    LINE_COLORS = network.line_colors_from_payload(payload)
+    WOOL_COLORS = network.wool_colors_from_payload(payload)
+    LINE_STOP_VARS = network.line_stop_vars_from_payload(payload)
+    STOP_LINE_NAMES = network.stop_line_names(
+        tuple(stop.var for stop in METRO_STOPS),
+        LINE_STOP_VARS,
+    )
     METRO_LINES = {
         line_name: tuple(STOPS_BY_VAR[var] for var in stop_vars)
         for line_name, stop_vars in LINE_STOP_VARS.items()
     }
+    line_path_spec_records = network.line_path_spec_records_from_payload(payload)
     LINE_PATH_SPECS = {
-        str(line_name): tuple(
+        line_name: tuple(
             LinePathPointSpec(
                 x_var=str(spec['x_var']),
                 y_var=str(spec['y_var']),
@@ -12672,30 +12501,19 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
             )
             for spec in specs
         )
-        for line_name, specs in payload['line_path_specs'].items()
+        for line_name, specs in line_path_spec_records.items()
     }
-    METRO_LINE_PATHS = {
-        line_name: tuple(spec.coordinates for spec in point_specs)
-        for line_name, point_specs in LINE_PATH_SPECS.items()
-    }
-    METRO_LINE_PLOT_PATHS = {
-        line_name: tuple(spec.plot_coordinates for spec in point_specs)
-        for line_name, point_specs in LINE_PATH_SPECS.items()
-    }
-    RAILWAY_FINISH_PROGRESS = {
-        str(line_name): {
-            'x': int(point['x']),
-            'y': int(point['y']),
-        }
-        for line_name, point in payload.get('railway_finish_progress', {}).items()
-        if str(line_name) in LINE_STOP_VARS
-    }
-    RAILWAY_FINISH_ORIGINS = {
-        str(line_name): str(stop_var)
-        for line_name, stop_var in payload.get('railway_finish_origins', {}).items()
-        if str(line_name) in LINE_STOP_VARS
-        and str(stop_var) in LINE_STOP_VARS[str(line_name)]
-    }
+    stop_coordinates = {stop.var: stop.coordinates for stop in METRO_STOPS}
+    METRO_LINE_PLOT_PATHS = network.line_path_plot_paths_from_specs(
+        line_path_spec_records,
+        stop_coordinates,
+    )
+    METRO_LINE_PATHS = network.line_path_coordinate_paths_from_plot_paths(METRO_LINE_PLOT_PATHS)
+    RAILWAY_FINISH_PROGRESS = cast(
+        dict[str, PathPointRecord],
+        network.railway_finish_progress_from_payload(payload, LINE_STOP_VARS),
+    )
+    RAILWAY_FINISH_ORIGINS = network.railway_finish_origins_from_payload(payload, LINE_STOP_VARS)
     PATH_NODES = tuple(
         PathNode(
             id=str(path_node_record['id']),
@@ -12718,7 +12536,7 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
                 else None
             ),
         )
-        for path_node_record in payload.get('path_nodes', [])
+        for path_node_record in network.path_node_records_from_payload(payload)
     )
     PATH_NODES_BY_KEY = {path_node.key: path_node for path_node in PATH_NODES}
     PATH_NODES_BY_ID = {path_node.id: path_node for path_node in PATH_NODES}
@@ -12748,18 +12566,20 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
                 for point in extra_edge_record.get('path_points', [])
             ),
         )
-        for extra_edge_record in payload.get('extra_edges', [])
+        for extra_edge_record in network.extra_edge_records_from_payload(payload)
     )
     _ALL_PATH_NODES_CACHE_KEY = None
     _ALL_PATH_NODES_CACHE = ()
     _ALL_PATH_NODES_BY_KEY_CACHE = {}
+    _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE_KEY = None
+    _EXTRA_EDGES_BY_ENDPOINT_KEY_CACHE = {}
     ALIGNMENT_REMINDERS = tuple(
         AlignmentReminder(
             first_var=str(reminder_record['first_var']),
             second_var=str(reminder_record['second_var']),
             axis=cast(AlignmentAxis, str(reminder_record['axis'])),
         )
-        for reminder_record in payload.get('alignment_reminders', [])
+        for reminder_record in network.alignment_reminder_records_from_payload(payload)
     )
 
     _validate_line_sequences()
