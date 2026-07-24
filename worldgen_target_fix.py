@@ -24,6 +24,7 @@ class _BlankChunkComponent:
     centroid_chunk_x: float
     centroid_chunk_z: float
     is_internal: bool
+    mapped_distance_chunks: float
 
 
 _COMPONENT_CACHE: dict[tuple[object, ...], tuple[_BlankChunkComponent, ...]] = {}
@@ -117,6 +118,35 @@ def _component_is_internal(
     return top_ok and bottom_ok and left_ok and right_ok
 
 
+def _component_distance_to_colored_bounds(
+    component_chunk_counts: dict[tuple[int, int], int],
+    metadata: dict[str, object],
+) -> float:
+    colored_bounds = _colored_chunk_bounds(metadata)
+    if colored_bounds is None:
+        return 0.0
+
+    colored_min_x, colored_max_x, colored_min_z, colored_max_z = colored_bounds
+    min_chunk_x = min(chunk_x for chunk_x, _chunk_z in component_chunk_counts)
+    max_chunk_x = max(chunk_x for chunk_x, _chunk_z in component_chunk_counts)
+    min_chunk_z = min(chunk_z for _chunk_x, chunk_z in component_chunk_counts)
+    max_chunk_z = max(chunk_z for _chunk_x, chunk_z in component_chunk_counts)
+
+    gap_x = 0
+    if max_chunk_x < colored_min_x:
+        gap_x = colored_min_x - max_chunk_x
+    elif min_chunk_x > colored_max_x:
+        gap_x = min_chunk_x - colored_max_x
+
+    gap_z = 0
+    if max_chunk_z < colored_min_z:
+        gap_z = colored_min_z - max_chunk_z
+    elif min_chunk_z > colored_max_z:
+        gap_z = min_chunk_z - colored_max_z
+
+    return (gap_x * gap_x + gap_z * gap_z) ** 0.5
+
+
 def _blank_chunk_components(config, blank_coverage) -> tuple[_BlankChunkComponent, ...]:
     if blank_coverage is None or not blank_coverage.blank_pixels_by_chunk:
         return ()
@@ -177,12 +207,17 @@ def _blank_chunk_components(config, blank_coverage) -> tuple[_BlankChunkComponen
                     config=config,
                     metadata=metadata,
                 ),
+                mapped_distance_chunks=_component_distance_to_colored_bounds(
+                    component_chunk_counts,
+                    metadata,
+                ),
             )
         )
 
     components.sort(
         key=lambda component: (
-            0 if component.is_internal else 1,
+            1 if component.is_internal else 0,
+            -component.mapped_distance_chunks,
             -component.total_blank_pixels,
             component.min_chunk_z,
             component.min_chunk_x,
@@ -231,6 +266,35 @@ def _coast_candidate_centers(config, component: _BlankChunkComponent) -> list[tu
 def _component_target(config, component: _BlankChunkComponent) -> tuple[int, int]:
     coast_candidates = _coast_candidate_centers(config, component)
     if coast_candidates:
+        metadata = _load_render_metadata(config)
+        colored_bounds = _colored_chunk_bounds(metadata)
+        if colored_bounds is not None:
+            colored_min_x, colored_max_x, colored_min_z, colored_max_z = colored_bounds
+
+            def distance_to_colored_bounds(candidate: tuple[int, int]) -> float:
+                chunk_x, chunk_z = candidate
+                gap_x = 0
+                if chunk_x < colored_min_x:
+                    gap_x = colored_min_x - chunk_x
+                elif chunk_x > colored_max_x:
+                    gap_x = chunk_x - colored_max_x
+                gap_z = 0
+                if chunk_z < colored_min_z:
+                    gap_z = colored_min_z - chunk_z
+                elif chunk_z > colored_max_z:
+                    gap_z = chunk_z - colored_max_z
+                return (gap_x * gap_x + gap_z * gap_z) ** 0.5
+
+            return max(
+                coast_candidates,
+                key=lambda candidate: (
+                    distance_to_colored_bounds(candidate),
+                    component.chunk_counts.get(candidate, 0),
+                    -abs(candidate[0] - component.centroid_chunk_x),
+                    -abs(candidate[1] - component.centroid_chunk_z),
+                ),
+            )
+
         seed_value = hash((
             config.render.min_x,
             config.render.max_x,

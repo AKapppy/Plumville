@@ -15,6 +15,57 @@ _ORIGINAL_AUTO_FILL_STEP_TEXT = None
 _ORIGINAL_FINISH_AUTO_FILL_WORLD_MAP = None
 
 
+def _blank_target_pixel_keys(config: Any, image_path: Any, target: tuple[int, int]) -> set[tuple[int, int]]:
+    import worldgen.generator as generator
+
+    pixel_keys = generator._teleport_target_pixel_keys(config, target)
+    if not pixel_keys:
+        return set()
+
+    try:
+        from PIL import Image
+
+        with Image.open(image_path) as source_image:
+            alpha = source_image.convert('RGBA').getchannel('A')
+            alpha_pixels = alpha.load()
+            if alpha_pixels is None:
+                return pixel_keys
+            return {
+                (pixel_x, pixel_z)
+                for pixel_x, pixel_z in pixel_keys
+                if alpha_pixels[pixel_x, pixel_z] == 0
+            }
+    except Exception:
+        return pixel_keys
+
+
+def _essential_render_lines(
+    render_result: Any,
+    *,
+    step_label: str,
+    pixels_filled: int,
+    render_target: tuple[int, int] | None = None,
+    load_passes: int | None = None,
+) -> list[str]:
+    lines = [
+        f'{step_label} finished.',
+        base._world_map_completion_text_from_result(render_result),
+        f'Pixels filled: {pixels_filled}',
+    ]
+    if render_target is not None:
+        lines.append(f'Target: {render_target[0]},{render_target[1]}')
+    if load_passes is not None:
+        lines.append(f'Load passes: {load_passes}')
+    if render_result.unfinished_group_count:
+        lines.append(f'Unfinished groups: {render_result.unfinished_group_count}')
+    if render_result.uncolored_block_occurrences:
+        lines.append(f'Uncolored blocks: {render_result.uncolored_block_occurrences}')
+    if render_result.subchunk_decode_errors:
+        lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
+    lines.append('Ready for the next step.')
+    return lines
+
+
 def _patched_render_map(
     self,
     *,
@@ -75,7 +126,9 @@ def _patched_render_loaded_target_map(
 ):
     import worldgen.generator as generator
 
-    pixel_keys = generator._teleport_target_pixel_keys(self.config, target)
+    pixel_keys = _blank_target_pixel_keys(self.config, self.paths.render_image_path, target)
+    if not pixel_keys:
+        pixel_keys = generator._teleport_target_pixel_keys(self.config, target)
     if not pixel_keys:
         return _patched_render_map(
             self,
@@ -137,34 +190,12 @@ def _patched_auto_fill_step_text_for_generator(
     cached_pixel_result = generator.render_cached_blank_pixel_batch()
     if cached_pixel_result is not None and cached_pixel_result.colored_pixels_added > 0:
         render_result = cached_pixel_result.render_result
-        lines = [
-            f'{step_label} finished.',
-            'Fast cached blank-pixel pass from recent chunk packets.',
-            f'World: {render_result.world_path}',
-            f'Pixels checked: {cached_pixel_result.scanned_pixels}',
-            f'Blank pixels sampled: {cached_pixel_result.blank_pixels_selected}',
-            f'Pixels filled this step: {cached_pixel_result.colored_pixels_added}',
-            f'Image: {render_result.image_path}',
-            f'Uncolored block report: {render_result.uncolored_blocks_report_path}',
-            base._world_map_completion_text_from_result(render_result),
-            f'Colored pixels: {render_result.colored_pixels}/{render_result.total_pixels}',
-            f'Unfinished points: {render_result.unfinished_point_count}',
-            f'Unfinished point groups: {render_result.unfinished_group_count}',
-            f'Unfinished point report: {render_result.unfinished_points_path}',
-            f'Uncolored block occurrences: {render_result.uncolored_block_occurrences}',
-            (
-                f'Chunk columns read: '
-                f'{render_result.chunk_columns_read}/{render_result.chunk_columns_requested}'
-            ),
-        ]
-        if render_result.colored_min_x is not None:
-            lines.append(
-                f'Visible render bounds: x {render_result.colored_min_x}..{render_result.colored_max_x}, '
-                f'z {render_result.colored_min_z}..{render_result.colored_max_z}'
-            )
-        if render_result.subchunk_decode_errors:
-            lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
-        lines.append('Auto Fill can continue with the next step.')
+        lines = _essential_render_lines(
+            render_result,
+            step_label=step_label,
+            pixels_filled=cached_pixel_result.colored_pixels_added,
+        )
+        lines.insert(1, 'Used recent cached chunks.')
         return '\n'.join(lines)
 
     if cached_pixel_result is not None and progress_callback is not None:
@@ -183,8 +214,20 @@ def _patched_auto_fill_step_text_for_generator(
         if hasattr(generator, 'cached_colored_pixel_count')
         else 0
     )
+
+    def post_active_target_progress(target: tuple[int, int]) -> None:
+        base._post_world_map_active_target_progress(
+            progress_callback,
+            f'{step_label} is loading a target square',
+            target,
+        )
+
     load_results = [
-        generator.load_chunks_headless(stop_after=False, restart_existing=False)
+        generator.load_chunks_headless(
+            stop_after=False,
+            restart_existing=False,
+            active_target_callback=post_active_target_progress,
+        )
         for _index in range(base.WORLD_MAP_AUTO_LOAD_PASSES)
     ]
     render_target: tuple[int, int] | None = None
@@ -231,59 +274,25 @@ def _patched_auto_fill_step_text_for_generator(
             pixels_added=colored_pixels_added,
         )
 
-    lines = [
-        f'{step_label} finished.',
-        f'World: {render_result.world_path}',
-        f'Load passes: {len(load_results)}',
-    ]
-    if render_target is not None:
-        lines.append(f'Rendered target square: {render_target[0]},{render_target[1]}')
     for index, load_result in enumerate(load_results, start=1):
-        lines.extend(
-            (
-                f'Pass {index}: {load_result.chunks_received} chunks, '
-                f'{load_result.unique_chunk_columns} chunk columns',
-                f'Pass {index} target pool: {load_result.teleport_target_count} blank-pixel targets',
-                f'Pass {index} targets: {", ".join(load_result.teleport_targets) or "none"}',
-            )
-        )
         if load_result.returncode != 0:
-            lines.append(f'Pass {index} loader exited with code {load_result.returncode}.')
+            lines = [f'{step_label} loader pass {index} exited with code {load_result.returncode}.']
             if load_result.output:
                 lines.append(load_result.output)
+            return '\n'.join(lines)
 
-    lines.extend(
-        (
-            'Rendered world map.',
-            'Render mode: fast target / packet cache only.',
-            f'Image: {render_result.image_path}',
-            f'Uncolored block report: {render_result.uncolored_blocks_report_path}',
-            base._world_map_completion_text_from_result(render_result),
-            f'Pixels filled this step: {colored_pixels_added}',
-            f'Colored pixels: {render_result.colored_pixels}/{render_result.total_pixels}',
-            f'Unfinished points: {render_result.unfinished_point_count}',
-            f'Unfinished point groups: {render_result.unfinished_group_count}',
-            f'Unfinished point report: {render_result.unfinished_points_path}',
-            f'Uncolored block occurrences: {render_result.uncolored_block_occurrences}',
-            (
-                f'Chunk columns read: '
-                f'{render_result.chunk_columns_read}/{render_result.chunk_columns_requested}'
-            ),
-        )
+    lines = _essential_render_lines(
+        render_result,
+        step_label=step_label,
+        pixels_filled=colored_pixels_added,
+        render_target=render_target,
+        load_passes=len(load_results),
     )
-    if render_result.colored_min_x is not None:
-        lines.append(
-            f'Visible render bounds: x {render_result.colored_min_x}..{render_result.colored_max_x}, '
-            f'z {render_result.colored_min_z}..{render_result.colored_max_z}'
-        )
-    if render_result.subchunk_decode_errors:
-        lines.append(f'Subchunk decode errors: {render_result.subchunk_decode_errors}')
     if colored_pixels_added == 0 and any(load_result.chunks_received > 0 for load_result in load_results):
         lines.append(
             'Chunks loaded, but this target did not add newly colored pixels. '
-            'Auto Fill will mark this target as stalled and continue with the next blank target.'
+            'The next step will skip ahead.'
         )
-    lines.append('Auto Fill can continue with the next step.')
     return '\n'.join(lines)
 
 

@@ -45,11 +45,14 @@ The Bedrock server is pinned to the matching headless-loader protocol. If the Do
 
 The Bedrock Docker `/data` folder defaults to `~/Library/Application Support/Plumville/worldgen/bedrock-data` instead of this repo. The repo lives in iCloud Drive, and Docker can hit filesystem read/write errors when Bedrock's live server files are bind-mounted from a cloud-synced folder.
 
-The default starter render area is centered on Blackport:
+The default render area is a Blackport-centered board:
 
 - `center_x = 294`
 - `center_z = 390`
-- `radius = 2000`
+- `min_x = -8000`
+- `max_x = 9000`
+- `min_z = -5000`
+- `max_z = 7000`
 
 ## Files
 
@@ -117,7 +120,7 @@ Render already-generated Bedrock chunks into a first-pass top-down PNG:
 python3 -m worldgen render
 ```
 
-Each successful render writes `worldgen_output/blackport_topdown.png` and refreshes the web viewer copy at `docs/assets/blackport_topdown.png`.
+Each successful render writes the worldgen output image under `~/Library/Application Support/Plumville/worldgen/output/` and refreshes the web viewer copy at `docs/assets/blackport_topdown.png` with matching `docs/assets/blackport_topdown.render.json` metadata.
 
 If rendering reports a LevelDB read/corruption error after chunk loading, build a backed-up repaired copy for inspection:
 

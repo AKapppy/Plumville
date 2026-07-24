@@ -41,6 +41,9 @@ BACKGROUND_COLOR: Final[str] = '#050505'
 TEXT_COLOR: Final[str] = '#f7f7f7'
 GRID_COLOR: Final[str] = '#4b4b4b'
 INTERSECTION_COLOR: Final[str] = '#ffffff'
+UNASSOCIATED_STATION_LABEL: Final[str] = 'Unassociated station'
+UNASSOCIATED_STATION_FILL: Final[str] = '#050505'
+UNASSOCIATED_STATION_OUTLINE: Final[str] = '#ffffff'
 DEFAULT_ZOOM: Final[float] = 1.0
 MAX_VISIBLE_BLOCKS_AT_MAX_ZOOM: Final[float] = 10.0
 ZOOM_STEP: Final[float] = 1.7
@@ -123,6 +126,10 @@ WORLD_MAP_RENDER_BOUNDS_COLOR: Final[str] = '#f3d66b'
 WORLD_MAP_RENDER_BOUNDS_WIDTH: Final[int] = 2
 WORLD_MAP_RENDER_BOUNDS_DASH: Final[tuple[int, int]] = (6, 4)
 WORLD_MAP_RENDER_BOUNDS_MIN_CANVAS_SIZE: Final[int] = 24
+WORLD_MAP_ACTIVE_TARGET_COLOR: Final[str] = '#8ad4ff'
+WORLD_MAP_ACTIVE_TARGET_WIDTH: Final[int] = 2
+WORLD_MAP_ACTIVE_TARGET_DASH: Final[tuple[int, int]] = (10, 5)
+WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE: Final[int] = 24
 WORLD_MAP_AUTO_LOAD_PASSES: Final[int] = 1
 WORLD_MAP_RENDER_PROGRESS_PIXEL_INTERVAL: Final[int] = 5_000
 WORLD_MAP_PREVIEW_MAX_DIMENSION: Final[int] = 4096
@@ -136,8 +143,10 @@ WORLD_MAP_SPIRAL_BLANK_MIN_CANVAS_SIZE: Final[int] = 18
 SIDEBAR_SCROLL_PIXELS: Final[int] = 36
 SIDEBAR_SCROLL_FRAMES: Final[int] = 3
 SIDEBAR_SCROLL_FRAME_DELAY_MS: Final[int] = 8
+MINECART_SPEED_MPS: Final[float] = 8.0
 VIEWPORT_REDRAW_BATCH_DELAY_MS: Final[int] = 16
-VIEWPORT_INTERACTION_FULL_REDRAW_DELAY_MS: Final[int] = 120
+VIEWPORT_INTERACTION_FULL_REDRAW_DELAY_MS: Final[int] = 240
+TARGET_MAP_VIEW_MARGIN_PIXELS: Final[int] = 24
 SIDEBAR_WIDTH: Final[int] = 340
 SIDEBAR_TITLE_FONT_SIZE: Final[int] = 20
 SIDEBAR_TEXT_FONT_SIZE: Final[int] = 12
@@ -274,6 +283,8 @@ class PathNodeRecord(TypedDict):
     x: int
     y: int
     label: NotRequired[str]
+    poi_kind: NotRequired[str]
+    category: NotRequired[str]
 
 
 class AlignmentReminderRecord(TypedDict):
@@ -482,6 +493,8 @@ class PathNode:
     y: int
     label: str | None = None
     is_explicit: bool = True
+    poi_kind: str | None = None
+    category: str | None = None
 
     @property
     def key(self) -> str:
@@ -499,6 +512,10 @@ class PathNode:
     def input_text(self) -> str:
         if self.label:
             return self.label
+        if self.poi_kind == 'pillager_tower':
+            return 'Pillager Tower'
+        if self.poi_kind == 'monument' and self.category:
+            return f'Unnamed {self.category}'
         if self.is_explicit:
             return self.id
         return f'{self.x}, {self.y}'
@@ -507,6 +524,10 @@ class PathNode:
     def display_label(self) -> str:
         if self.label:
             return self.label
+        if self.poi_kind == 'pillager_tower':
+            return 'Pillager Tower'
+        if self.poi_kind == 'monument' and self.category:
+            return f'Unnamed {self.category}'
         if self.is_explicit:
             return f'Node {self.id}'
         return f'Node ({self.x}, {self.y})'
@@ -540,6 +561,14 @@ class RouteStep:
         if len(self.stop_vars) < 2:
             return 0
         return max(0, len(self.stop_vars) - 1)
+
+
+def _path_node_type_label(path_node: PathNode) -> str:
+    if path_node.poi_kind == 'monument':
+        return f'monument ({path_node.category})' if path_node.category else 'monument'
+    if path_node.poi_kind == 'pillager_tower':
+        return 'pillager tower'
+    return 'saved' if path_node.is_explicit else 'derived from paths'
 
 
 @dataclass(frozen=True, slots=True)
@@ -846,6 +875,8 @@ def _all_path_nodes() -> tuple[PathNode, ...]:
                     y=endpoint.y,
                     label=None,
                     is_explicit=False,
+                    poi_kind=None,
+                    category=None,
                 ),
             )
     all_nodes = tuple(
@@ -1520,12 +1551,16 @@ def _visible_stop_line_names(stop: MetroStop, visible_line_names: set[str]) -> t
 
 
 def _fill_for_visible_line_names(visible_line_names: tuple[str, ...]) -> str:
+    if not visible_line_names:
+        return UNASSOCIATED_STATION_FILL
     if len(visible_line_names) != 1:
         return INTERSECTION_COLOR
     return LINE_COLORS[visible_line_names[0]]
 
 
 def _label_fill_for_visible_line_names(visible_line_names: tuple[str, ...]) -> str:
+    if not visible_line_names:
+        return UNASSOCIATED_STATION_OUTLINE
     if len(visible_line_names) != 1:
         return JUNCTION_LABEL_COLOR
     return LINE_COLORS[visible_line_names[0]]
@@ -1533,6 +1568,8 @@ def _label_fill_for_visible_line_names(visible_line_names: tuple[str, ...]) -> s
 
 def _station_fill(stop: MetroStop) -> str:
     line_names = STOP_LINE_NAMES[stop.var]
+    if not line_names:
+        return UNASSOCIATED_STATION_FILL
     if len(line_names) != 1:
         return INTERSECTION_COLOR
     return LINE_COLORS[line_names[0]]
@@ -2134,6 +2171,37 @@ def _format_track_distance(distance_meters: int) -> str:
     return f'{formatted_km} km'
 
 
+def _travel_time_seconds(distance_meters: int | float) -> int:
+    return max(0, round(float(distance_meters) / MINECART_SPEED_MPS))
+
+
+def _format_travel_time(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    if seconds < 60:
+        return f'{seconds}s'
+    minutes, remaining_seconds = divmod(seconds, 60)
+    if minutes < 60:
+        if remaining_seconds == 0:
+            return f'{minutes}m'
+        return f'{minutes}m {remaining_seconds}s'
+    hours, remaining_minutes = divmod(minutes, 60)
+    if remaining_minutes == 0:
+        return f'{hours}h'
+    return f'{hours}h {remaining_minutes}m'
+
+
+def _format_travel_time_for_distance(distance_meters: int | float) -> str:
+    return _format_travel_time(_travel_time_seconds(distance_meters))
+
+
+def _format_distance_and_time(distance_meters: int | float) -> str:
+    rounded_distance = round(float(distance_meters))
+    return (
+        f'{_format_track_distance(rounded_distance)} / '
+        f'{_format_travel_time_for_distance(rounded_distance)}'
+    )
+
+
 def _planning_radius_distance() -> float:
     blackport = _blackport_stop()
     return max(
@@ -2426,6 +2494,34 @@ def _world_map_preview_bounds(
     return (min_x, max_x, min_z, max_z)
 
 
+def _world_map_active_target_from_text(message: str) -> tuple[int, int] | None:
+    match = re.search(
+        r'\b(?:active|current|loaded|rendered)?\s*target(?:\s+square)?\s*:\s*(-?\d+)\s*,\s*(-?\d+)',
+        message,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+    return (int(match.group(1)), int(match.group(2)))
+
+
+def _post_world_map_active_target_progress(
+    progress_callback: Callable[[str, bool], None] | None,
+    status_label: str,
+    target: tuple[int, int],
+) -> None:
+    if progress_callback is None:
+        return
+    progress_callback(
+        (
+            f'{status_label}.\n\n'
+            f'Active target: {target[0]},{target[1]}\n'
+            'The outlined box on the map is the target square being fetched.'
+        ),
+        False,
+    )
+
+
 def _world_map_completion_text_from_result(result: Any) -> str:
     payload = {
         'colored_pixels': result.colored_pixels,
@@ -2471,6 +2567,13 @@ def _world_map_generate_world_text() -> str:
 
 
 def _world_map_load_chunks_text(mode_key: str | None = None) -> str:
+    return _world_map_load_chunks_text_with_progress(mode_key)
+
+
+def _world_map_load_chunks_text_with_progress(
+    mode_key: str | None = None,
+    progress_callback: Callable[[str, bool], None] | None = None,
+) -> str:
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
     from worldgen.modes import worldgen_mode
@@ -2481,7 +2584,17 @@ def _world_map_load_chunks_text(mode_key: str | None = None) -> str:
     result = (
         generator.load_lan_chunks_headless(mode.key)
         if mode.is_lan
-        else generator.load_chunks_headless()
+        else generator.load_chunks_headless(
+            active_target_callback=(
+                lambda target: _post_world_map_active_target_progress(
+                    progress_callback,
+                    f'Loading {mode.label} chunks',
+                    target,
+                )
+                if progress_callback is not None
+                else None
+            )
+        )
     )
     return _world_map_load_chunks_result_text(mode, result)
 
@@ -2555,7 +2668,10 @@ def _world_map_render_text(mode_key: str | None = None) -> str:
     return '\n'.join(lines)
 
 
-def _world_map_load_and_render_text(mode_key: str) -> str:
+def _world_map_load_and_render_text(
+    mode_key: str,
+    progress_callback: Callable[[str, bool], None] | None = None,
+) -> str:
     from worldgen.config import load_config
     from worldgen.generator import BedrockWorldGenerator
     from worldgen.modes import worldgen_mode
@@ -2566,7 +2682,17 @@ def _world_map_load_and_render_text(mode_key: str) -> str:
     result = (
         generator.load_lan_chunks_headless(mode.key)
         if mode.is_lan
-        else generator.load_chunks_headless()
+        else generator.load_chunks_headless(
+            active_target_callback=(
+                lambda target: _post_world_map_active_target_progress(
+                    progress_callback,
+                    f'Loading {mode.label} chunks',
+                    target,
+                )
+                if progress_callback is not None
+                else None
+            )
+        )
     )
     load_message = _world_map_load_chunks_result_text(mode, result)
     if result.returncode != 0 or result.unique_chunk_columns == 0:
@@ -2637,8 +2763,20 @@ def _world_map_auto_fill_step_text_for_generator(
         if hasattr(generator, 'cached_colored_pixel_count')
         else 0
     )
+
+    def post_active_target_progress(target: tuple[int, int]) -> None:
+        _post_world_map_active_target_progress(
+            progress_callback,
+            f'{step_label} is loading a target square',
+            target,
+        )
+
     load_results = [
-        generator.load_chunks_headless(stop_after=True, restart_existing=False)
+        generator.load_chunks_headless(
+            stop_after=True,
+            restart_existing=False,
+            active_target_callback=post_active_target_progress,
+        )
         for _index in range(WORLD_MAP_AUTO_LOAD_PASSES)
     ]
     render_target: tuple[int, int] | None = None
@@ -4222,6 +4360,108 @@ def _railway_finish_progress_summary_text() -> str:
     )
 
 
+def _line_total_distance(line_name: str) -> int:
+    return _polyline_distance(METRO_LINE_PLOT_PATHS[line_name])
+
+
+def _line_connected_distance(line_name: str) -> int:
+    return round(_line_connected_length(line_name))
+
+
+def _line_leg_distance(line_name: str, start_var: str, end_var: str) -> int:
+    return _polyline_distance(_line_segment_plot_points(line_name, start_var, end_var))
+
+
+def _line_summary_text(line_name: str) -> str:
+    if line_name not in LINE_STOP_VARS:
+        return 'Choose a line.'
+
+    color = LINE_COLORS.get(line_name, '#ffffff')
+    total_distance = _line_total_distance(line_name)
+    connected_distance = _line_connected_distance(line_name)
+    stop_vars = LINE_STOP_VARS[line_name]
+    lines = [
+        f'Line {line_name}',
+        f'Color: {color}',
+        f'Total: {_format_distance_and_time(total_distance)}',
+        f'Connected: {_format_distance_and_time(connected_distance)}',
+        '',
+        'Stations',
+    ]
+    if not stop_vars:
+        lines.append('No stations on this line.')
+        return '\n'.join(lines)
+
+    for index, stop_var in enumerate(stop_vars, start=1):
+        stop = STOPS_BY_VAR[stop_var]
+        entry_text = (
+            f'entry ({stop.station_entry_coordinates[0]}, {stop.station_entry_coordinates[1]})'
+            if stop.station_entry_coordinates is not None
+            else 'entry not set'
+        )
+        lines.append(
+            f'{index}. {_display_label(stop.lbl)}  '
+            f'coords ({stop.x}, {stop.y}); {entry_text}'
+        )
+        if index < len(stop_vars):
+            next_var = stop_vars[index]
+            leg_distance = _line_leg_distance(line_name, stop_var, next_var)
+            connected_marker = (
+                'connected'
+                if STOPS_BY_VAR[stop_var].is_connected and STOPS_BY_VAR[next_var].is_connected
+                else 'planned'
+            )
+            lines.append(
+                f'   -> {_format_distance_and_time(leg_distance)} '
+                f'[{connected_marker}]'
+            )
+    return '\n'.join(lines)
+
+
+def _normalize_line_color(color_text: str) -> str:
+    normalized = color_text.strip()
+    if not normalized.startswith('#'):
+        normalized = f'#{normalized}'
+    if re.fullmatch(r'#[0-9a-fA-F]{3}', normalized):
+        return '#' + ''.join(char * 2 for char in normalized[1:]).lower()
+    if re.fullmatch(r'#[0-9a-fA-F]{6}', normalized):
+        return normalized.lower()
+    raise ValueError('Line color must be a hex color like #2f80ed.')
+
+
+def _normalize_line_name(line_name: str) -> str:
+    normalized = line_name.strip().upper()
+    if not re.fullmatch(r'[A-Z]', normalized):
+        raise ValueError('Line names must be a single letter.')
+    return normalized
+
+
+def _auto_station_label_from_payload(
+    payload: MetroNetworkPayload,
+    stop_var: str,
+) -> str:
+    membership = _station_line_membership_from_payload(payload, stop_var)
+    if not membership:
+        return UNASSOCIATED_STATION_LABEL
+    if len(membership) > 1:
+        line_key = ''.join(membership)
+        matching_stop_vars = [
+            str(stop_record['var'])
+            for stop_record in payload['stops']
+            if _station_line_membership_from_payload(payload, str(stop_record['var'])) == membership
+        ]
+        if len(matching_stop_vars) <= 1:
+            return line_key
+        suffix = _station_var_suffix(stop_var)
+        return f'{line_key}_{suffix}' if suffix else f'{line_key}_{sorted(matching_stop_vars).index(stop_var) + 1}'
+    line_name = membership[0]
+    try:
+        stop_index = [str(var) for var in payload['line_stop_vars'][line_name]].index(stop_var) + 1
+    except (KeyError, ValueError):
+        stop_index = 1
+    return f'{line_name}_{stop_index}'
+
+
 def _railway_finish_line_status_text(line_name: str) -> str:
     if line_name not in LINE_STOP_VARS:
         return 'Choose an unfinished connected line.'
@@ -5331,6 +5571,8 @@ class MetroMapViewer:
         self.selected_stop_var: str | None = None
         self.selected_path_node_key: str | None = None
         self.selected_metro_segment_key: tuple[str, str, str] | None = None
+        self.selected_metro_segment_keys: tuple[tuple[str, str, str], ...] = ()
+        self.metro_segment_selection_anchor_key: tuple[str, str, str] | None = None
         self.city_limits_edit_stop_var: str | None = None
         self.active_path_edge_id: str | None = None
         self.path_drag_start_endpoint_key: str | None = None
@@ -5376,11 +5618,14 @@ class MetroMapViewer:
         self.world_map_auto_fill_stop_event: threading.Event | None = None
         self.world_map_auto_fill_running = False
         self.world_map_auto_fill_stop_requested = False
+        self.world_map_active_target_bounds: tuple[int, int, int, int] | None = None
         self.world_map_render_cache_stat: FileStatKey | None = None
         self.world_map_render_image_stat: FileStatKey | None = None
         self.world_map_render_image_path: Path | None = None
         self.world_map_render_payload: dict[str, object] | None = None
         self.world_map_render_source_image: Image.Image | None = None
+        self.target_map_bounds_cache_stat: FileStatKey | None = None
+        self.target_map_plot_bounds_cache: tuple[float, float, float, float] | None = None
         self._world_map_full_render_image_path: Path | None = None
         self._world_map_full_render_image_stat: FileStatKey | None = None
         self._world_map_full_render_source_image: Image.Image | None = None
@@ -5550,7 +5795,7 @@ class MetroMapViewer:
         self.root.mainloop()
 
     def _finish_startup(self) -> None:
-        self.redraw()
+        self.show_connected_area_view()
         self._bring_to_front()
 
     def _bring_to_front(self) -> None:
@@ -5699,7 +5944,7 @@ class MetroMapViewer:
         )
         self.priority_list_frame.pack(fill='x', padx=12, pady=12)
 
-        railway_section = tk.Frame(self.sidebar, bg=BACKGROUND_COLOR)
+        railway_section = self._make_collapsible_sidebar_section('Railways', expanded=True)
         self._make_sidebar_hint(
             'Enter the farthest finished coordinate on the selected line. The app tracks finished rail from that line origin to the coordinate.',
             parent=railway_section,
@@ -5758,6 +6003,14 @@ class MetroMapViewer:
             text='Switch Origin',
             command=self._switch_railway_finish_origin,
         ).pack(side='left', padx=(10, 0))
+
+        railway_summary_row = tk.Frame(railway_section, bg=BACKGROUND_COLOR)
+        railway_summary_row.pack(fill='x', padx=16, pady=(0, 8))
+        self._make_sidebar_button(
+            railway_summary_row,
+            text='Line Summaries...',
+            command=self._show_line_summary_dialog,
+        ).pack(side='left')
 
         tk.Label(
             railway_section,
@@ -6426,8 +6679,7 @@ class MetroMapViewer:
     def _begin_viewport_interaction(self) -> None:
         self.defer_expensive_viewport_layers = True
         if not self.fast_viewport_transform_active:
-            if self.is_dragging:
-                self._clear_info_popup()
+            self._clear_info_popup()
             self.fast_viewport_transform_active = True
         self._schedule_full_redraw()
 
@@ -6498,13 +6750,7 @@ class MetroMapViewer:
         self._draw_world_map_render_underlay(fast_resample=True)
 
     def _move_viewport_canvas_items(self, delta_x: float, delta_y: float) -> None:
-        transform_tag = self._prepare_viewport_transform_tag(include_images=True)
-        if transform_tag is None:
-            self._schedule_redraw()
-            return
-
-        self.canvas.move(transform_tag, delta_x, delta_y)
-        self.canvas.dtag('all', transform_tag)
+        self.canvas.move('all', delta_x, delta_y)
         self._transform_cached_canvas_positions(
             lambda position: (
                 position[0] + delta_x,
@@ -6548,6 +6794,193 @@ class MetroMapViewer:
         else:
             self.route_steps_text.pack_forget()
 
+    def _center_toplevel(self, window: tk.Toplevel, *, width: int, height: int) -> None:
+        self.root.update_idletasks()
+        screen_width = max(1, self.root.winfo_screenwidth())
+        screen_height = max(1, self.root.winfo_screenheight())
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+        window.geometry(f'{width}x{height}+{x}+{y}')
+
+    def _show_line_summary_dialog(self) -> None:
+        from tkinter import messagebox
+
+        if not LINE_STOP_VARS:
+            messagebox.showinfo('Line Summaries', 'No metro lines are defined yet.', parent=self.root)
+            return
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title('Line Summaries')
+        dialog.configure(bg=BACKGROUND_COLOR)
+        dialog.transient(self.root)
+        self._center_toplevel(dialog, width=760, height=720)
+
+        selected_line_var = tk.StringVar(master=dialog, value=sorted(LINE_STOP_VARS)[0])
+        line_name_var = tk.StringVar(master=dialog, value=selected_line_var.get())
+        line_color_var = tk.StringVar(master=dialog, value=LINE_COLORS.get(selected_line_var.get(), '#ffffff'))
+
+        container = tk.Frame(dialog, bg=BACKGROUND_COLOR)
+        container.pack(fill='both', expand=True, padx=16, pady=16)
+
+        header_row = tk.Frame(container, bg=BACKGROUND_COLOR)
+        header_row.pack(fill='x', pady=(0, 10))
+        tk.Label(
+            header_row,
+            text='Line',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE, 'bold'),
+            width=8,
+            anchor='w',
+        ).pack(side='left')
+        line_menu = tk.OptionMenu(header_row, selected_line_var, *sorted(LINE_STOP_VARS))
+        line_menu.configure(
+            bg=INFO_BUTTON_BACKGROUND,
+            fg=TEXT_COLOR,
+            activebackground=INFO_BUTTON_ACTIVE_BACKGROUND,
+            activeforeground=TEXT_COLOR,
+            highlightthickness=0,
+            relief='flat',
+        )
+        cast(tk.Menu, line_menu['menu']).configure(
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            activebackground=INFO_BUTTON_ACTIVE_BACKGROUND,
+            activeforeground=TEXT_COLOR,
+        )
+        line_menu.pack(side='left')
+
+        edit_row = tk.Frame(container, bg=BACKGROUND_COLOR)
+        edit_row.pack(fill='x', pady=(0, 10))
+        tk.Label(
+            edit_row,
+            text='Name',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            width=8,
+            anchor='w',
+        ).pack(side='left')
+        self._make_sidebar_entry(edit_row, line_name_var).pack(side='left', fill='x', expand=True)
+        tk.Label(
+            edit_row,
+            text='Color',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            width=7,
+            anchor='e',
+        ).pack(side='left', padx=(10, 4))
+        self._make_sidebar_entry(edit_row, line_color_var).pack(side='left', fill='x', expand=True)
+        swatch = tk.Frame(
+            edit_row,
+            bg=line_color_var.get(),
+            width=24,
+            height=24,
+            highlightthickness=1,
+            highlightbackground=INFO_BOX_BORDER,
+        )
+        swatch.pack(side='left', padx=(8, 0))
+        swatch.pack_propagate(False)
+
+        action_row = tk.Frame(container, bg=BACKGROUND_COLOR)
+        action_row.pack(anchor='w', fill='x', pady=(0, 10))
+
+        text_row = tk.Frame(container, bg=BACKGROUND_COLOR)
+        text_row.pack(fill='both', expand=True)
+        summary_text = tk.Text(
+            text_row,
+            bg=INFO_BOX_BACKGROUND,
+            fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR,
+            wrap='word',
+            relief='flat',
+            bd=0,
+            highlightthickness=1,
+            highlightbackground=INFO_BOX_BORDER,
+            font=('Menlo', 12),
+        )
+        summary_scrollbar = tk.Scrollbar(text_row, orient='vertical', command=summary_text.yview)
+        summary_text.configure(yscrollcommand=summary_scrollbar.set)
+        summary_text.pack(side='left', fill='both', expand=True)
+        summary_scrollbar.pack(side='right', fill='y')
+
+        def set_summary_text(text: str) -> None:
+            summary_text.configure(state='normal')
+            summary_text.delete('1.0', 'end')
+            summary_text.insert('1.0', text)
+            summary_text.configure(state='disabled')
+
+        def refresh_fields() -> None:
+            line_name = selected_line_var.get()
+            line_name_var.set(line_name)
+            line_color_var.set(LINE_COLORS.get(line_name, '#ffffff'))
+            try:
+                swatch.configure(bg=_normalize_line_color(line_color_var.get()))
+            except ValueError:
+                swatch.configure(bg=INFO_BOX_BACKGROUND)
+            set_summary_text(_line_summary_text(line_name))
+
+        def refresh_line_menu() -> None:
+            menu = cast(tk.Menu, line_menu['menu'])
+            menu.delete(0, 'end')
+            for line_name in sorted(LINE_STOP_VARS):
+                menu.add_command(label=line_name, command=lambda value=line_name: selected_line_var.set(value))
+
+        def apply_color() -> None:
+            try:
+                normalized_color = set_metro_line_color(selected_line_var.get(), line_color_var.get())
+            except ValueError as exc:
+                messagebox.showerror('Could Not Save Line Color', str(exc), parent=dialog)
+                return
+            line_color_var.set(normalized_color)
+            refresh_fields()
+            self.redraw()
+
+        def apply_name() -> None:
+            try:
+                new_line_name = rename_metro_line(selected_line_var.get(), line_name_var.get())
+            except ValueError as exc:
+                messagebox.showerror('Could Not Rename Line', str(exc), parent=dialog)
+                return
+            selected_line_var.set(new_line_name)
+            refresh_line_menu()
+            refresh_fields()
+            self.route_controls_dirty = True
+            self.route_dirty = True
+            self.priority_dirty = True
+            self.stats_dirty = True
+            self.railway_finish_dirty = True
+            self.redraw()
+
+        def reorder_stations() -> None:
+            reorder_dialog = getattr(self, '_show_reorder_metro_line_dialog', None)
+            if not callable(reorder_dialog):
+                messagebox.showerror(
+                    'Reorder Stations Unavailable',
+                    'Metro station editing tools are not loaded.',
+                    parent=dialog,
+                )
+                return
+
+            def after_reorder(saved_line_name: str) -> None:
+                selected_line_var.set(saved_line_name)
+                refresh_fields()
+
+            reorder_dialog(selected_line_var.get(), on_saved=after_reorder)
+
+        self._make_sidebar_button(action_row, text='Save Name', command=apply_name).pack(side='left')
+        self._make_sidebar_button(action_row, text='Save Color', command=apply_color).pack(side='left', padx=(10, 0))
+        self._make_sidebar_button(
+            action_row,
+            text='Reorder Stations',
+            command=reorder_stations,
+        ).pack(side='left', padx=(10, 0))
+        self._make_sidebar_button(action_row, text='Close', command=dialog.destroy).pack(side='right')
+
+        selected_line_var.trace_add('write', lambda *_args: refresh_fields())
+        refresh_fields()
+
     def _post_world_map_task_progress(
         self,
         message: str,
@@ -6555,6 +6988,38 @@ class MetroMapViewer:
     ) -> None:
         message_kind: Literal['progress', 'rendered'] = 'rendered' if rendered_map else 'progress'
         self.world_map_task_queue.put((message_kind, True, message))
+
+    def _world_map_active_target_bounds_for_center(
+        self,
+        target: tuple[int, int],
+    ) -> tuple[int, int, int, int] | None:
+        try:
+            from worldgen.config import load_config
+            from worldgen.generator import _teleport_target_world_bounds
+
+            return _teleport_target_world_bounds(load_config(), target)
+        except Exception:
+            return None
+
+    def _set_world_map_active_target(
+        self,
+        target: tuple[int, int] | None,
+    ) -> bool:
+        next_bounds = (
+            self._world_map_active_target_bounds_for_center(target)
+            if target is not None
+            else None
+        )
+        if next_bounds == self.world_map_active_target_bounds:
+            return False
+        self.world_map_active_target_bounds = next_bounds
+        return True
+
+    def _update_world_map_active_target_from_message(self, message: str) -> bool:
+        target = _world_map_active_target_from_text(message)
+        if target is None:
+            return False
+        return self._set_world_map_active_target(target)
 
     def _selected_world_map_mode_key(self) -> str:
         return _world_map_mode_key_for_label(self.world_map_mode_var.get())
@@ -6579,6 +7044,7 @@ class MetroMapViewer:
             return
 
         self.world_map_task_running = True
+        self._set_world_map_active_target(None)
         self.world_map_task_completion_callback = on_finished
         self._set_world_map_status_text(f'{task_label}...')
 
@@ -6602,6 +7068,7 @@ class MetroMapViewer:
             return
 
         if message_kind in ('progress', 'rendered'):
+            target_changed = self._update_world_map_active_target_from_message(message)
             if self.world_map_auto_fill_stop_requested:
                 message = (
                     f'{message.rstrip()}\n\n'
@@ -6612,11 +7079,14 @@ class MetroMapViewer:
                 self._invalidate_world_map_render_cache()
                 self.stats_dirty = True
                 self.redraw()
+            elif target_changed:
+                self.redraw()
             if self.world_map_task_running:
                 self.root.after(200, self._poll_world_map_task)
             return
 
         self.world_map_task_running = False
+        target_changed = self._set_world_map_active_target(None)
         completion_callback = self.world_map_task_completion_callback
         self.world_map_task_completion_callback = None
         self._set_world_map_status_text(message)
@@ -6627,6 +7097,8 @@ class MetroMapViewer:
                 f'{message}\n\n'
                 f'{_world_map_cached_status_text(self._selected_world_map_mode_key())}'
             )
+            self.redraw()
+        elif target_changed:
             self.redraw()
         if completion_callback is not None:
             completion_callback(succeeded, message)
@@ -6645,7 +7117,10 @@ class MetroMapViewer:
         mode_key = self._selected_world_map_mode_key()
         self._start_world_map_task(
             f'Loading {_world_map_mode_label(mode_key)} chunks',
-            lambda: _world_map_load_chunks_text(mode_key),
+            lambda: _world_map_load_chunks_text_with_progress(
+                mode_key,
+                progress_callback=self._post_world_map_task_progress,
+            ),
         )
 
     def _render_world_map(self) -> None:
@@ -6692,7 +7167,10 @@ class MetroMapViewer:
         if mode_key != 'local_seed_surface':
             self._start_world_map_task(
                 f'Loading and rendering {_world_map_mode_label(mode_key)}',
-                lambda: _world_map_load_and_render_text(mode_key),
+                lambda: _world_map_load_and_render_text(
+                    mode_key,
+                    progress_callback=self._post_world_map_task_progress,
+                ),
             )
             return
 
@@ -7082,7 +7560,7 @@ class MetroMapViewer:
         stop = STOPS_BY_VAR[stop_var]
         self.selected_stop_var = stop.var
         self.selected_path_node_key = None
-        self.selected_metro_segment_key = None
+        self._clear_metro_segment_selection()
         self._center_on_world_point(stop.plot_coordinates)
         self.redraw()
 
@@ -7192,8 +7670,14 @@ class MetroMapViewer:
                 f'Track distance: {_format_track_distance(0)}.'
             )
 
+        rail_distance = sum(
+            step.distance
+            for step in route.steps
+            if step.kind in {'ride', 'connector'}
+        )
         lines = [
             f'Track distance: {_format_track_distance(route.total_distance)}',
+            f'Rail time estimate: {_format_travel_time_for_distance(rail_distance)}',
             f'Interchanges: {route.total_interchanges}',
             '',
         ]
@@ -7206,7 +7690,7 @@ class MetroMapViewer:
                 stop_word = 'stop' if step.stop_count == 1 else 'stops'
                 lines.append(
                     f'{step_number}. Take Line {step.line_name} from {start_step_label} '
-                    f'to {end_step_label} for {_format_track_distance(step.distance)} '
+                    f'to {end_step_label} for {_format_distance_and_time(step.distance)} '
                     f'({step.stop_count} {stop_word}).'
                 )
             elif step.kind == 'transfer':
@@ -7216,7 +7700,7 @@ class MetroMapViewer:
             elif step.kind == 'connector':
                 lines.append(
                     f'{step_number}. Take {step.display_name.lower()} from {start_step_label} '
-                    f'to {end_step_label} for {_format_track_distance(step.distance)}.'
+                    f'to {end_step_label} for {_format_distance_and_time(step.distance)}.'
                 )
             elif step.kind == 'fly':
                 lines.append(
@@ -7388,7 +7872,7 @@ class MetroMapViewer:
         self._set_active_path_edge(extra_edge)
         self.selected_stop_var = None
         self.selected_path_node_key = None
-        self.selected_metro_segment_key = None
+        self._clear_metro_segment_selection()
         self.hover_canvas_point = None
         self.cursor_readout_coordinates = None
         self.show_cursor_guides = False
@@ -7558,7 +8042,7 @@ class MetroMapViewer:
 
         self.selected_stop_var = None
         self.selected_path_node_key = _coordinate_endpoint_key(parsed_coordinates[0], parsed_coordinates[1])
-        self.selected_metro_segment_key = None
+        self._clear_metro_segment_selection()
         self.cursor_readout_coordinates = parsed_coordinates
         self.show_cursor_guides = False
         self.route_controls_dirty = True
@@ -7602,6 +8086,57 @@ class MetroMapViewer:
         visible_width = max(self.width - (self.padding * 2), 1) / scale
         visible_height = max(self.height - (self.padding * 2), 1) / scale
         return max(DEFAULT_ZOOM, max(visible_width, visible_height) / MAX_VISIBLE_BLOCKS_AT_MAX_ZOOM)
+
+    def _target_map_plot_bounds(self) -> tuple[float, float, float, float] | None:
+        try:
+            from worldgen.config import default_config_path, load_config
+
+            config_path = default_config_path()
+            config_stat = _file_stat_key(config_path)
+            if (
+                config_stat is not None
+                and config_stat == self.target_map_bounds_cache_stat
+                and self.target_map_plot_bounds_cache is not None
+            ):
+                return self.target_map_plot_bounds_cache
+
+            render = load_config(config_path).render
+            bounds = (
+                float(render.min_x),
+                float(render.max_x),
+                float(-render.max_z),
+                float(-render.min_z),
+            )
+            self.target_map_bounds_cache_stat = config_stat
+            self.target_map_plot_bounds_cache = bounds
+            return bounds
+        except Exception:
+            self.target_map_bounds_cache_stat = None
+            self.target_map_plot_bounds_cache = None
+            pass
+
+        render_underlay = self._current_world_map_render_underlay()
+        if render_underlay is not None:
+            payload, _source_image = render_underlay
+            try:
+                min_x = _render_cache_int(payload, 'min_x')
+                max_x = _render_cache_int(payload, 'max_x')
+                min_z = _render_cache_int(payload, 'min_z')
+                max_z = _render_cache_int(payload, 'max_z')
+            except (KeyError, TypeError, ValueError):
+                return None
+            return (float(min_x), float(max_x), float(-max_z), float(-min_z))
+        return None
+
+    def _minimum_zoom(self) -> float:
+        bounds = self._target_map_plot_bounds()
+        if bounds is None:
+            return DEFAULT_ZOOM
+        return self._target_zoom_for_plot_bounds(
+            *bounds,
+            margin_ratio=0.0,
+            margin_pixels=TARGET_MAP_VIEW_MARGIN_PIXELS,
+        )
 
     def _world_to_base_canvas(self, point: tuple[float, float]) -> tuple[float, float]:
         min_x, _, min_y, _, scale = self._plot_transform()
@@ -7907,6 +8442,106 @@ class MetroMapViewer:
             return None
         return _metro_segment_from_key(self.selected_metro_segment_key)
 
+    def _selected_metro_segments(self) -> tuple[MetroLineSegment, ...]:
+        return tuple(
+            segment
+            for segment_key in self.selected_metro_segment_keys
+            for segment in (_metro_segment_from_key(segment_key),)
+            if segment is not None
+        )
+
+    def _set_metro_segment_selection(
+        self,
+        segment_keys: Sequence[tuple[str, str, str]],
+        *,
+        primary_key: tuple[str, str, str] | None = None,
+        anchor_key: tuple[str, str, str] | None = None,
+    ) -> None:
+        valid_keys: list[tuple[str, str, str]] = []
+        seen_keys: set[tuple[str, str, str]] = set()
+        for segment_key in segment_keys:
+            if segment_key in seen_keys or _metro_segment_from_key(segment_key) is None:
+                continue
+            valid_keys.append(segment_key)
+            seen_keys.add(segment_key)
+
+        self.selected_metro_segment_keys = tuple(valid_keys)
+        if primary_key is not None and primary_key in seen_keys:
+            self.selected_metro_segment_key = primary_key
+        else:
+            self.selected_metro_segment_key = valid_keys[-1] if valid_keys else None
+        if anchor_key is not None and anchor_key in seen_keys:
+            self.metro_segment_selection_anchor_key = anchor_key
+        elif self.selected_metro_segment_key is not None:
+            self.metro_segment_selection_anchor_key = self.selected_metro_segment_key
+        else:
+            self.metro_segment_selection_anchor_key = None
+
+    def _clear_metro_segment_selection(self) -> None:
+        self._set_metro_segment_selection(())
+
+    def _metro_segment_range_keys(
+        self,
+        anchor_key: tuple[str, str, str],
+        target_key: tuple[str, str, str],
+    ) -> tuple[tuple[str, str, str], ...]:
+        anchor_line, _anchor_start, _anchor_end = anchor_key
+        target_line, _target_start, _target_end = target_key
+        if anchor_line != target_line:
+            return (target_key,)
+        line_segment_keys = tuple(
+            _metro_segment_key(segment)
+            for segment in _all_metro_segments()
+            if segment.line_name == target_line
+        )
+        if anchor_key not in line_segment_keys or target_key not in line_segment_keys:
+            return (target_key,)
+        anchor_index = line_segment_keys.index(anchor_key)
+        target_index = line_segment_keys.index(target_key)
+        start_index, end_index = sorted((anchor_index, target_index))
+        return line_segment_keys[start_index:end_index + 1]
+
+    def _event_has_modifier(self, event: object, masks: Sequence[int]) -> bool:
+        event_state = int(getattr(event, 'state', 0))
+        return any(event_state & mask for mask in masks)
+
+    def _event_is_toggle_selection(self, event: object) -> bool:
+        return self._event_has_modifier(event, (0x0004, 0x0008, 0x0010, 0x0080))
+
+    def _event_is_range_selection(self, event: object) -> bool:
+        return self._event_has_modifier(event, (0x0001,))
+
+    def _select_metro_segment_from_event(self, segment: MetroLineSegment, event: object) -> None:
+        segment_key = _metro_segment_key(segment)
+        current_keys = list(self.selected_metro_segment_keys)
+
+        if self._event_is_range_selection(event) and self.metro_segment_selection_anchor_key is not None:
+            self._set_metro_segment_selection(
+                self._metro_segment_range_keys(self.metro_segment_selection_anchor_key, segment_key),
+                primary_key=segment_key,
+                anchor_key=self.metro_segment_selection_anchor_key,
+            )
+            return
+
+        if self._event_is_toggle_selection(event):
+            if segment_key in current_keys:
+                current_keys.remove(segment_key)
+                self._set_metro_segment_selection(
+                    current_keys,
+                    primary_key=current_keys[-1] if current_keys else None,
+                    anchor_key=self.metro_segment_selection_anchor_key,
+                )
+            else:
+                current_keys.append(segment_key)
+                self._set_metro_segment_selection(
+                    current_keys,
+                    primary_key=segment_key,
+                    anchor_key=segment_key,
+                )
+            return
+
+        self._set_metro_segment_selection((segment_key,), primary_key=segment_key, anchor_key=segment_key)
+
     def _metro_segment_hit_test(self, canvas_x: int, canvas_y: int) -> MetroLineSegment | None:
         best_segment: MetroLineSegment | None = None
         best_distance_sq: float | None = None
@@ -7928,31 +8563,32 @@ class MetroMapViewer:
         return best_segment
 
     def _draw_selected_metro_segment_highlight(self) -> None:
-        segment = self._selected_metro_segment()
-        if segment is None:
+        segments = self._selected_metro_segments()
+        if not segments:
             return
 
-        canvas_points: list[float] = []
-        for point in segment.plot_points:
-            canvas_x, canvas_y = self.world_to_canvas(point)
-            canvas_points.extend((canvas_x, canvas_y))
-        if len(canvas_points) < 4:
-            return
+        for segment in segments:
+            canvas_points: list[float] = []
+            for point in segment.plot_points:
+                canvas_x, canvas_y = self.world_to_canvas(point)
+                canvas_points.extend((canvas_x, canvas_y))
+            if len(canvas_points) < 4:
+                continue
 
-        self.canvas.create_line(
-            *canvas_points,
-            fill=ROUTE_HIGHLIGHT_OUTLINE,
-            width=SELECTED_SEGMENT_OUTLINE_WIDTH,
-            capstyle='round',
-            joinstyle='round',
-        )
-        self.canvas.create_line(
-            *canvas_points,
-            fill=LINE_COLORS[segment.line_name],
-            width=SELECTED_SEGMENT_WIDTH,
-            capstyle='round',
-            joinstyle='round',
-        )
+            self.canvas.create_line(
+                *canvas_points,
+                fill=ROUTE_HIGHLIGHT_OUTLINE,
+                width=SELECTED_SEGMENT_OUTLINE_WIDTH,
+                capstyle='round',
+                joinstyle='round',
+            )
+            self.canvas.create_line(
+                *canvas_points,
+                fill=LINE_COLORS[segment.line_name],
+                width=SELECTED_SEGMENT_WIDTH,
+                capstyle='round',
+                joinstyle='round',
+            )
 
     def _draw_selected_metro_segment_info(self) -> None:
         segment = self._selected_metro_segment()
@@ -7982,7 +8618,7 @@ class MetroMapViewer:
             text=(
                 f'{_display_label(segment.start_stop.lbl)} to {_display_label(segment.end_stop.lbl)}\n'
                 f'Shape: {segment.shape_label}\n'
-                f'Distance: {_format_track_distance(_polyline_distance(segment.plot_points))}'
+                f'Distance: {_format_distance_and_time(_polyline_distance(segment.plot_points))}'
             ),
             bg=INFO_BOX_BACKGROUND,
             fg=TEXT_COLOR,
@@ -7990,6 +8626,22 @@ class MetroMapViewer:
             anchor='w',
             justify='left',
         ).pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_SECTION_GAP))
+
+        selected_segments = self._selected_metro_segments()
+        if len(selected_segments) > 1:
+            selected_distance = sum(_polyline_distance(active_segment.plot_points) for active_segment in selected_segments)
+            tk.Label(
+                frame,
+                text=(
+                    f'Selected legs: {len(selected_segments)}\n'
+                    f'Selected total: {_format_distance_and_time(selected_distance)}'
+                ),
+                bg=INFO_BOX_BACKGROUND,
+                fg=TEXT_COLOR,
+                font=('Helvetica', INFO_TEXT_FONT_SIZE),
+                anchor='w',
+                justify='left',
+            ).pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_SECTION_GAP))
 
         actions_row = tk.Frame(frame, bg=INFO_BOX_BACKGROUND)
         actions_row.pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_PAD_Y))
@@ -8060,7 +8712,7 @@ class MetroMapViewer:
             frame,
             text=(
                 f'Coords: ({path_node.x}, {path_node.y})\n'
-                f'Node Type: {"saved" if path_node.is_explicit else "derived from paths"}\n'
+                f'Node Type: {_path_node_type_label(path_node)}\n'
                 f'Path Edges: {len(extra_edges)}'
             ),
             bg=INFO_BOX_BACKGROUND,
@@ -8405,7 +9057,7 @@ class MetroMapViewer:
             return
 
         stop = STOPS_BY_VAR[self.selected_stop_var]
-        lines = ', '.join(STOP_LINE_NAMES[stop.var])
+        lines = ', '.join(STOP_LINE_NAMES[stop.var]) or 'none'
         reminders = _alignment_reminders_for_stop(stop.var)
         alignment_summary = 'none' if not reminders else f'{len(reminders)} active'
         chime_outlet_directions = _station_chime_outlet_directions(stop.var)
@@ -8572,6 +9224,15 @@ class MetroMapViewer:
                 text='Clear City Limits',
                 command=self._clear_selected_city_limits,
             ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
+        if STOP_LINE_NAMES[stop.var]:
+            line_button_row = tk.Frame(frame, bg=INFO_BOX_BACKGROUND)
+            line_button_row.pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_SECTION_GAP))
+            for line_name in STOP_LINE_NAMES[stop.var]:
+                self._make_info_button(
+                    line_button_row,
+                    text=f'Remove from Line {line_name}',
+                    command=lambda active_line=line_name: self._remove_selected_station_from_line(active_line),
+                ).pack(side='left', padx=(0, INFO_BOX_SECTION_GAP))
 
         if reminders:
             reminders_label = tk.Label(
@@ -8642,7 +9303,7 @@ class MetroMapViewer:
     def _dismiss_info_selection(self) -> None:
         self.selected_stop_var = None
         self.selected_path_node_key = None
-        self.selected_metro_segment_key = None
+        self._clear_metro_segment_selection()
         self.redraw()
 
     def _attach_info_popup_close_button(self, frame: tk.Misc) -> None:
@@ -8909,6 +9570,30 @@ class MetroMapViewer:
         self.priority_dirty = True
         self.redraw()
 
+    def _remove_selected_station_from_line(self, line_name: str) -> None:
+        if self.selected_stop_var is None:
+            return
+
+        from tkinter import messagebox
+
+        old_stop_var = self.selected_stop_var
+        try:
+            new_stop_var = remove_station_from_line(old_stop_var, line_name)
+        except ValueError as exc:
+            messagebox.showerror('Could Not Remove Station From Line', str(exc), parent=self.root)
+            return
+
+        self.selected_stop_var = new_stop_var
+        self.selected_path_node_key = None
+        self._clear_metro_segment_selection()
+        self.route_controls_dirty = True
+        self.route_dirty = True
+        self.priority_dirty = True
+        self.stats_dirty = True
+        self.railway_finish_dirty = True
+        self.path_edge_list_dirty = True
+        self.redraw()
+
     def _toggle_selected_city_limits_edit(self) -> None:
         if self.selected_stop_var is None:
             return
@@ -8971,7 +9656,7 @@ class MetroMapViewer:
         refreshed_stop = STOPS_BY_VAR[stop.var]
         self.selected_stop_var = stop.var
         self.selected_path_node_key = None
-        self.selected_metro_segment_key = None
+        self._clear_metro_segment_selection()
         self.route_controls_dirty = True
         self.route_dirty = True
         self.priority_dirty = True
@@ -9225,7 +9910,7 @@ class MetroMapViewer:
 
         self.selected_stop_var = None
         self.selected_path_node_key = _coordinate_endpoint_key(coordinates[0], coordinates[1])
-        self.selected_metro_segment_key = None
+        self._clear_metro_segment_selection()
         self.hover_canvas_point = None
         self.cursor_readout_coordinates = coordinates
         self.show_cursor_guides = False
@@ -9268,7 +9953,7 @@ class MetroMapViewer:
 
         self.selected_stop_var = target_endpoint.key if target_endpoint.kind == 'stop' else None
         self.selected_path_node_key = target_endpoint.key if target_endpoint.kind == 'coord' else None
-        self.selected_metro_segment_key = None
+        self._clear_metro_segment_selection()
         self.hover_canvas_point = None
         self.cursor_readout_coordinates = target_endpoint.coordinates
         self.show_cursor_guides = False
@@ -9407,7 +10092,7 @@ class MetroMapViewer:
         if self.selected_path_node_key is not None and self._selected_path_node() is None:
             self.selected_path_node_key = None
         if self.selected_metro_segment_key is not None and self._selected_metro_segment() is None:
-            self.selected_metro_segment_key = None
+            self._clear_metro_segment_selection()
         self.route_controls_dirty = True
         self.route_dirty = True
         self.priority_dirty = True
@@ -9649,7 +10334,13 @@ class MetroMapViewer:
         if self.selected_path_node_key is not None and self._selected_path_node() is None:
             self.selected_path_node_key = None
         if self.selected_metro_segment_key is not None and self._selected_metro_segment() is None:
-            self.selected_metro_segment_key = None
+            self._clear_metro_segment_selection()
+        if self.selected_metro_segment_keys:
+            self._set_metro_segment_selection(
+                self.selected_metro_segment_keys,
+                primary_key=self.selected_metro_segment_key,
+                anchor_key=self.metro_segment_selection_anchor_key,
+            )
         if self.active_path_edge_id is not None and self._active_path_edge() is None:
             self._set_active_path_edge(None)
         if self.path_edge_list_dirty:
@@ -9699,6 +10390,7 @@ class MetroMapViewer:
                 dash=(4, 4),
             )
 
+        self._draw_world_map_active_target_bounds()
         if not defer_expensive_layers:
             self._draw_planning_circle()
             self._draw_connected_area()
@@ -9718,7 +10410,7 @@ class MetroMapViewer:
 
         for stop in METRO_STOPS:
             stop_visible_line_names = self._stop_visible_line_names(stop, visible_line_names)
-            if not stop_visible_line_names:
+            if not stop_visible_line_names and STOP_LINE_NAMES[stop.var]:
                 continue
             canvas_x, canvas_y = self.world_to_canvas(stop.plot_coordinates)
             self.station_canvas_positions[stop.var] = (canvas_x, canvas_y)
@@ -9750,7 +10442,8 @@ class MetroMapViewer:
                 canvas_x + STATION_RADIUS,
                 canvas_y + STATION_RADIUS,
                 fill=stop_fill,
-                outline='',
+                outline=UNASSOCIATED_STATION_OUTLINE if not stop_visible_line_names else '',
+                width=2 if not stop_visible_line_names else 1,
             )
             if self.show_labels_var.get():
                 active_label_font_size = label_font_size + (
@@ -10171,6 +10864,44 @@ class MetroMapViewer:
             dash=WORLD_MAP_RENDER_BOUNDS_DASH,
         )
 
+    def _draw_world_map_active_target_bounds(self) -> None:
+        if not self.world_map_task_running:
+            return
+
+        bounds = self.world_map_active_target_bounds
+        if bounds is None:
+            return
+
+        min_x, max_x, min_z, max_z = bounds
+        if min_x > max_x or min_z > max_z:
+            return
+
+        top_left_x, top_left_y = self.world_to_canvas((min_x, -min_z))
+        bottom_right_x, bottom_right_y = self.world_to_canvas((max_x, -max_z))
+        left = min(top_left_x, bottom_right_x)
+        right = max(top_left_x, bottom_right_x)
+        top = min(top_left_y, bottom_right_y)
+        bottom = max(top_left_y, bottom_right_y)
+
+        center_x = (left + right) / 2
+        center_y = (top + bottom) / 2
+        if right - left < WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE:
+            left = center_x - (WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE / 2)
+            right = center_x + (WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE / 2)
+        if bottom - top < WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE:
+            top = center_y - (WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE / 2)
+            bottom = center_y + (WORLD_MAP_ACTIVE_TARGET_MIN_CANVAS_SIZE / 2)
+
+        self.canvas.create_rectangle(
+            left,
+            top,
+            right,
+            bottom,
+            outline=WORLD_MAP_ACTIVE_TARGET_COLOR,
+            width=WORLD_MAP_ACTIVE_TARGET_WIDTH,
+            dash=WORLD_MAP_ACTIVE_TARGET_DASH,
+        )
+
     def _draw_world_map_spiral_check_preview(self) -> None:
         payload = self._current_world_map_spiral_check_preview()
         if payload is None:
@@ -10503,22 +11234,45 @@ class MetroMapViewer:
             self.path_node_canvas_positions[path_node.key] = (canvas_x, canvas_y)
             radius = SELECTED_PATH_NODE_RADIUS if path_node.key == self.selected_path_node_key else PATH_NODE_RADIUS
             outline_width = 2 if path_node.key == self.selected_path_node_key else 1
-            self.canvas.create_rectangle(
-                canvas_x - radius,
-                canvas_y - radius,
-                canvas_x + radius,
-                canvas_y + radius,
-                fill=PATH_NODE_FILL,
-                outline=PATH_NODE_OUTLINE,
-                width=outline_width,
-            )
-            if self.show_labels_var.get() and path_node.label:
+            if path_node.poi_kind == 'monument':
+                self.canvas.create_polygon(
+                    canvas_x,
+                    canvas_y - radius,
+                    canvas_x - radius,
+                    canvas_y + radius,
+                    canvas_x + radius,
+                    canvas_y + radius,
+                    fill=PATH_NODE_FILL,
+                    outline=PATH_NODE_OUTLINE,
+                    width=outline_width,
+                )
+            elif path_node.poi_kind == 'pillager_tower':
+                self.canvas.create_rectangle(
+                    canvas_x - max(3, radius // 2),
+                    canvas_y - radius,
+                    canvas_x + max(3, radius // 2),
+                    canvas_y + radius,
+                    fill=PATH_NODE_FILL,
+                    outline=PATH_NODE_OUTLINE,
+                    width=outline_width,
+                )
+            else:
+                self.canvas.create_rectangle(
+                    canvas_x - radius,
+                    canvas_y - radius,
+                    canvas_x + radius,
+                    canvas_y + radius,
+                    fill=PATH_NODE_FILL,
+                    outline=PATH_NODE_OUTLINE,
+                    width=outline_width,
+                )
+            if self.show_labels_var.get() and (path_node.label or path_node.poi_kind is not None):
                 self.canvas.create_text(
                     canvas_x + label_offset_x,
                     canvas_y - label_offset_y,
                     anchor='sw',
                     angle=LABEL_ANGLE,
-                    text=path_node.label,
+                    text=path_node.display_label,
                     fill=PATH_NODE_LABEL_COLOR,
                     font=('Helvetica', label_font_size),
                 )
@@ -10600,7 +11354,7 @@ class MetroMapViewer:
             )
 
     def zoom_at(self, anchor_x: float, anchor_y: float, factor: float) -> None:
-        new_zoom = min(max(self.zoom * factor, DEFAULT_ZOOM), self._max_zoom())
+        new_zoom = min(max(self.zoom * factor, self._minimum_zoom()), self._max_zoom())
         if new_zoom == self.zoom:
             return
 
@@ -10619,17 +11373,28 @@ class MetroMapViewer:
         max_x: float,
         min_y: float,
         max_y: float,
+        *,
+        min_zoom: float = DEFAULT_ZOOM,
+        margin_ratio: float = 0.0,
+        margin_pixels: float | None = None,
     ) -> None:
-        all_min_x, _all_max_x, all_min_y, _all_max_y, scale = self._plot_transform()
-        span_x = max(max_x - min_x, 1.0)
-        span_y = max(max_y - min_y, 1.0)
-        available_width = max(self.width - (self.padding * 2), 1)
-        available_height = max(self.height - (self.padding * 2), 1)
-        target_zoom = min(
-            available_width / (span_x * scale),
-            available_height / (span_y * scale),
+        min_x, max_x, min_y, max_y = self._plot_bounds_with_margin(
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            margin_ratio=margin_ratio,
         )
-        self.zoom = min(max(target_zoom, DEFAULT_ZOOM), self._max_zoom())
+        all_min_x, _all_max_x, all_min_y, _all_max_y, scale = self._plot_transform()
+        target_zoom = self._target_zoom_for_plot_bounds(
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            margin_ratio=0.0,
+            margin_pixels=margin_pixels,
+        )
+        self.zoom = min(max(target_zoom, min_zoom), self._max_zoom())
 
         bounds_center = ((min_x + max_x) / 2, (min_y + max_y) / 2)
         base_center_x, base_center_y = self._world_to_base_canvas(bounds_center)
@@ -10638,6 +11403,56 @@ class MetroMapViewer:
         self.pan_x = (canvas_center_x - base_center_x) * self.zoom
         self.pan_y = (canvas_center_y - base_center_y) * self.zoom
         self.redraw()
+
+    def _plot_bounds_with_margin(
+        self,
+        min_x: float,
+        max_x: float,
+        min_y: float,
+        max_y: float,
+        *,
+        margin_ratio: float,
+    ) -> tuple[float, float, float, float]:
+        if margin_ratio <= 0:
+            return (min_x, max_x, min_y, max_y)
+        span_x = max(max_x - min_x, 1.0)
+        span_y = max(max_y - min_y, 1.0)
+        margin_x = span_x * margin_ratio
+        margin_y = span_y * margin_ratio
+        return (
+            min_x - margin_x,
+            max_x + margin_x,
+            min_y - margin_y,
+            max_y + margin_y,
+        )
+
+    def _target_zoom_for_plot_bounds(
+        self,
+        min_x: float,
+        max_x: float,
+        min_y: float,
+        max_y: float,
+        *,
+        margin_ratio: float,
+        margin_pixels: float | None = None,
+    ) -> float:
+        min_x, max_x, min_y, max_y = self._plot_bounds_with_margin(
+            min_x,
+            max_x,
+            min_y,
+            max_y,
+            margin_ratio=margin_ratio,
+        )
+        _all_min_x, _all_max_x, _all_min_y, _all_max_y, scale = self._plot_transform()
+        span_x = max(max_x - min_x, 1.0)
+        span_y = max(max_y - min_y, 1.0)
+        fit_margin = self.padding if margin_pixels is None else max(0.0, float(margin_pixels))
+        available_width = max(self.width - (fit_margin * 2), 1)
+        available_height = max(self.height - (fit_margin * 2), 1)
+        return min(
+            available_width / (span_x * scale),
+            available_height / (span_y * scale),
+        )
 
     def show_whole_map_view(self) -> None:
         bounds = _plot_bounds(_all_plot_points())
@@ -10670,6 +11485,17 @@ class MetroMapViewer:
             return
         self._set_view_to_plot_bounds(*bounds)
 
+    def show_target_map_bounds_view(self) -> None:
+        bounds = self._target_map_plot_bounds()
+        if bounds is None:
+            self.show_connected_area_view()
+            return
+        self._set_view_to_plot_bounds(
+            *bounds,
+            min_zoom=self._minimum_zoom(),
+            margin_pixels=TARGET_MAP_VIEW_MARGIN_PIXELS,
+        )
+
     def show_railway_finish_unfinished_view(self) -> None:
         bounds = _plot_bounds(_railway_finish_unfinished_plot_points())
         if bounds is None:
@@ -10688,7 +11514,7 @@ class MetroMapViewer:
         )
 
     def reset_view(self) -> None:
-        self.show_whole_map_view()
+        self.show_target_map_bounds_view()
 
     def _on_configure(self, event: object) -> None:
         width = int(getattr(event, 'width', self.width))
@@ -10899,7 +11725,7 @@ class MetroMapViewer:
             if selected_stop is not None:
                 self.selected_stop_var = selected_stop.var
                 self.selected_path_node_key = None
-                self.selected_metro_segment_key = None
+                self._clear_metro_segment_selection()
                 self.hover_canvas_point = None
                 self.cursor_readout_coordinates = selected_stop.coordinates
                 self.show_cursor_guides = False
@@ -10911,7 +11737,7 @@ class MetroMapViewer:
                 self.selected_stop_var = None
                 if selected_path_node is not None:
                     self.selected_path_node_key = selected_path_node.key
-                    self.selected_metro_segment_key = None
+                    self._clear_metro_segment_selection()
                     self.hover_canvas_point = None
                     self.cursor_readout_coordinates = selected_path_node.coordinates
                     self.show_cursor_guides = False
@@ -10922,12 +11748,12 @@ class MetroMapViewer:
                     )
                     self.selected_path_node_key = None
                     if selected_segment is not None:
-                        self.selected_metro_segment_key = _metro_segment_key(selected_segment)
+                        self._select_metro_segment_from_event(selected_segment, event)
                         self.hover_canvas_point = None
                         self.cursor_readout_coordinates = self.canvas_to_world((float(release_x), float(release_y)))
                         self.show_cursor_guides = False
                     else:
-                        self.selected_metro_segment_key = None
+                        self._clear_metro_segment_selection()
                         if (
                             self.show_cursor_guides
                             and self.hover_canvas_point is not None
@@ -11123,14 +11949,19 @@ def _validate_extra_edges() -> None:
 
 def _validate_stop_line_names() -> None:
     for stop in METRO_STOPS:
-        if not STOP_LINE_NAMES[stop.var]:
-            raise ValueError(f'Stop {stop.var} is not assigned to any line.')
+        if stop.var not in STOP_LINE_NAMES:
+            raise ValueError(f'Stop {stop.var} is missing line membership metadata.')
 
 
 def _validate_stop_records(stops: tuple[MetroStop, ...]) -> None:
     if len({stop.var for stop in stops}) != len(stops):
         raise ValueError('Stop variables must be unique.')
-    if len({stop.lbl for stop in stops}) != len(stops):
+    unique_required_labels = [
+        stop.lbl
+        for stop in stops
+        if stop.lbl != UNASSOCIATED_STATION_LABEL
+    ]
+    if len(set(unique_required_labels)) != len(unique_required_labels):
         raise ValueError('Stop labels must be unique.')
     for stop in stops:
         if not stop.lbl.strip():
@@ -11329,6 +12160,12 @@ def _normalize_path_nodes(payload: MetroNetworkPayload) -> bool:
         label = str(raw_node.get('label', '')).strip()
         if label:
             normalized_node['label'] = label
+        poi_kind = str(raw_node.get('poi_kind', '')).strip().lower()
+        if poi_kind in {'monument', 'pillager_tower'}:
+            normalized_node['poi_kind'] = poi_kind
+            category = str(raw_node.get('category', '')).strip()
+            if category:
+                normalized_node['category'] = category
 
         if raw_node != normalized_node:
             payload_changed = True
@@ -11870,6 +12707,16 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
                 else None
             ),
             is_explicit=True,
+            poi_kind=(
+                str(path_node_record['poi_kind'])
+                if str(path_node_record.get('poi_kind', '')).strip().lower() in {'monument', 'pillager_tower'}
+                else None
+            ),
+            category=(
+                str(path_node_record['category'])
+                if 'category' in path_node_record and str(path_node_record['category']).strip()
+                else None
+            ),
         )
         for path_node_record in payload.get('path_nodes', [])
     )
@@ -11980,6 +12827,284 @@ def _update_stop_record(
         return
 
     raise ValueError(f'Unknown stop: {stop_var}')
+
+
+def _line_anchor_spec(stop_var: str) -> LinePathSpecRecord:
+    return {'x_var': stop_var, 'y_var': stop_var, 'dx': 0, 'dy': 0}
+
+
+def _station_line_membership_from_payload(
+    payload: MetroNetworkPayload,
+    stop_var: str,
+) -> tuple[str, ...]:
+    return tuple(
+        str(line_name)
+        for line_name, stop_vars in payload['line_stop_vars'].items()
+        if stop_var in {str(candidate_var) for candidate_var in stop_vars}
+    )
+
+
+def _station_var_suffix(stop_var: str) -> str:
+    return ''.join(char for char in stop_var.removeprefix('P_') if not char.isalpha())
+
+
+def _unique_station_var_for_membership(
+    payload: MetroNetworkPayload,
+    line_names: Sequence[str],
+    *,
+    old_var: str,
+) -> str:
+    existing_vars = {
+        str(stop_record['var'])
+        for stop_record in payload['stops']
+        if str(stop_record['var']) != old_var
+    }
+    suffix = _station_var_suffix(old_var)
+    if line_names:
+        base_candidate = f"P_{''.join(sorted(line_names))}{suffix}"
+        candidate = base_candidate
+    else:
+        numeric_suffix = ''.join(char for char in suffix if char.isdigit()) or '0'
+        base_candidate = f'P_{numeric_suffix}'
+        candidate = base_candidate
+
+    if candidate not in existing_vars:
+        return candidate
+
+    index = 2
+    while f'{base_candidate}{index}' in existing_vars:
+        index += 1
+    return f'{base_candidate}{index}'
+
+
+def _rename_stop_var_in_payload(
+    payload: MetroNetworkPayload,
+    old_var: str,
+    new_var: str,
+) -> str:
+    if old_var == new_var:
+        return old_var
+
+    if any(str(stop_record['var']) == new_var for stop_record in payload['stops']):
+        raise ValueError(f'Stop variable already exists: {new_var}')
+
+    found_stop = False
+    for stop_record in payload['stops']:
+        if str(stop_record['var']) == old_var:
+            stop_record['var'] = new_var
+            found_stop = True
+            break
+    if not found_stop:
+        raise ValueError(f'Unknown stop: {old_var}')
+
+    for line_name, stop_vars in payload['line_stop_vars'].items():
+        payload['line_stop_vars'][line_name] = [
+            new_var if str(stop_var) == old_var else str(stop_var)
+            for stop_var in stop_vars
+        ]
+
+    for specs in payload['line_path_specs'].values():
+        for spec in specs:
+            if str(spec['x_var']) == old_var:
+                spec['x_var'] = new_var
+            if str(spec['y_var']) == old_var:
+                spec['y_var'] = new_var
+
+    for extra_edge in payload.get('extra_edges', []):
+        if not isinstance(extra_edge, dict):
+            continue
+        for endpoint_field in ('from_endpoint', 'to_endpoint'):
+            endpoint = extra_edge.get(endpoint_field)
+            if isinstance(endpoint, dict) and endpoint.get('kind') == 'stop' and endpoint.get('stop_var') == old_var:
+                endpoint['stop_var'] = new_var
+        if extra_edge.get('from_var') == old_var:
+            extra_edge['from_var'] = new_var
+        if extra_edge.get('to_var') == old_var:
+            extra_edge['to_var'] = new_var
+
+    for reminder in payload.get('alignment_reminders', []):
+        if str(reminder.get('first_var')) == old_var:
+            reminder['first_var'] = new_var
+        if str(reminder.get('second_var')) == old_var:
+            reminder['second_var'] = new_var
+
+    railway_finish_origins = payload.get('railway_finish_origins')
+    if isinstance(railway_finish_origins, dict):
+        for line_name, origin_var in list(railway_finish_origins.items()):
+            if str(origin_var) == old_var:
+                railway_finish_origins[line_name] = new_var
+
+    return new_var
+
+
+def _remove_station_from_line_specs(
+    payload: MetroNetworkPayload,
+    line_name: str,
+    station_var: str,
+) -> None:
+    stop_vars = [str(stop_var) for stop_var in payload['line_stop_vars'][line_name]]
+    if station_var not in stop_vars:
+        raise ValueError(f'{station_var} is not on Line {line_name}.')
+
+    remaining_stop_vars = [stop_var for stop_var in stop_vars if stop_var != station_var]
+    anchors = _payload_line_anchor_index_map(payload, line_name)
+    if not remaining_stop_vars:
+        del payload['line_stop_vars'][line_name]
+        payload['line_path_specs'].pop(line_name, None)
+        payload['line_colors'].pop(line_name, None)
+        payload.get('wool_colors', {}).pop(line_name, None)
+        payload.get('railway_finish_progress', {}).pop(line_name, None)
+        payload.get('railway_finish_origins', {}).pop(line_name, None)
+        return
+
+    payload['line_stop_vars'][line_name] = remaining_stop_vars
+
+    if len(remaining_stop_vars) == 1:
+        payload['line_path_specs'][line_name] = [
+            _line_anchor_spec(remaining_stop_vars[0]),
+            _line_anchor_spec(remaining_stop_vars[0]),
+        ]
+        return
+
+    specs = list(payload['line_path_specs'].get(line_name, []))
+    old_index = stop_vars.index(station_var)
+    station_anchor = anchors.get(station_var)
+    if station_anchor is None:
+        payload['line_path_specs'][line_name] = [
+            _line_anchor_spec(stop_var)
+            for stop_var in remaining_stop_vars
+        ]
+        return
+
+    if old_index == 0:
+        next_anchor = anchors.get(stop_vars[1])
+        if next_anchor is None:
+            payload['line_path_specs'][line_name] = [_line_anchor_spec(stop_var) for stop_var in remaining_stop_vars]
+            return
+        del specs[station_anchor:next_anchor]
+    elif old_index == len(stop_vars) - 1:
+        previous_anchor = anchors.get(stop_vars[old_index - 1])
+        if previous_anchor is None:
+            payload['line_path_specs'][line_name] = [_line_anchor_spec(stop_var) for stop_var in remaining_stop_vars]
+            return
+        del specs[previous_anchor + 1:station_anchor + 1]
+    else:
+        previous_anchor = anchors.get(stop_vars[old_index - 1])
+        next_anchor = anchors.get(stop_vars[old_index + 1])
+        if previous_anchor is None or next_anchor is None:
+            payload['line_path_specs'][line_name] = [_line_anchor_spec(stop_var) for stop_var in remaining_stop_vars]
+            return
+        del specs[previous_anchor + 1:next_anchor]
+
+    payload['line_path_specs'][line_name] = specs
+
+
+def _make_station_unassociated(stop_record: StopRecord) -> None:
+    stop_record['lbl'] = UNASSOCIATED_STATION_LABEL
+    stop_record['has_connector'] = False
+    stop_record['has_full_station'] = False
+    stop_record['has_walking_paths'] = False
+    stop_record['is_connected'] = False
+    stop_record['has_finished_railway'] = False
+    stop_record['has_signs'] = False
+    stop_record['chime_directions'] = []
+
+
+def remove_station_from_line(stop_var: str, line_name: str) -> str:
+    payload = _load_network_payload()
+    if line_name not in payload['line_stop_vars']:
+        raise ValueError(f'Unknown line: {line_name}')
+    stop_lookup = {
+        str(stop_record['var']): stop_record
+        for stop_record in payload['stops']
+    }
+    if stop_var not in stop_lookup:
+        raise ValueError(f'Unknown stop: {stop_var}')
+    if stop_var not in {str(candidate_var) for candidate_var in payload['line_stop_vars'][line_name]}:
+        raise ValueError(f'{stop_lookup[stop_var]["lbl"]} is not on Line {line_name}.')
+
+    _remove_station_from_line_specs(payload, line_name, stop_var)
+    remaining_line_names = _station_line_membership_from_payload(payload, stop_var)
+    new_stop_var = _unique_station_var_for_membership(payload, remaining_line_names, old_var=stop_var)
+    if not remaining_line_names:
+        _make_station_unassociated(stop_lookup[stop_var])
+    new_stop_var = _rename_stop_var_in_payload(payload, stop_var, new_stop_var)
+    if remaining_line_names and _is_placeholder_station_label(str(stop_lookup[stop_var].get('lbl', ''))):
+        stop_lookup[stop_var]['lbl'] = _auto_station_label_from_payload(payload, new_stop_var)
+
+    _normalize_alignment_reminders(payload)
+    _normalize_extra_edges(payload)
+    _normalize_railway_finish_progress(payload)
+    _normalize_railway_finish_origins(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+    return new_stop_var
+
+
+def set_metro_line_color(line_name: str, color_text: str) -> str:
+    normalized_line_name = _normalize_line_name(line_name)
+    if normalized_line_name not in LINE_STOP_VARS:
+        raise ValueError(f'Unknown line: {line_name}')
+    normalized_color = _normalize_line_color(color_text)
+    payload = _load_network_payload()
+    payload['line_colors'][normalized_line_name] = normalized_color
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+    return normalized_color
+
+
+def rename_metro_line(old_line_name: str, new_line_name: str) -> str:
+    old_name = _normalize_line_name(old_line_name)
+    new_name = _normalize_line_name(new_line_name)
+    if old_name not in LINE_STOP_VARS:
+        raise ValueError(f'Unknown line: {old_line_name}')
+    if old_name == new_name:
+        return old_name
+    if new_name in LINE_STOP_VARS:
+        raise ValueError(f'Line {new_name} already exists.')
+
+    payload = _load_network_payload()
+    if old_name not in payload['line_stop_vars']:
+        raise ValueError(f'Unknown line: {old_line_name}')
+
+    affected_stop_vars = tuple(str(stop_var) for stop_var in payload['line_stop_vars'][old_name])
+    for field_name in ('line_stop_vars', 'line_path_specs', 'line_colors', 'wool_colors'):
+        raw_mapping = payload.get(field_name)
+        if not isinstance(raw_mapping, dict) or old_name not in raw_mapping:
+            continue
+        payload[field_name] = {
+            (new_name if str(line_name) == old_name else str(line_name)): value
+            for line_name, value in raw_mapping.items()
+        }
+    for field_name in ('railway_finish_progress', 'railway_finish_origins'):
+        raw_mapping = payload.get(field_name)
+        if not isinstance(raw_mapping, dict) or old_name not in raw_mapping:
+            continue
+        payload[field_name] = {
+            (new_name if str(line_name) == old_name else str(line_name)): value
+            for line_name, value in raw_mapping.items()
+        }
+
+    for old_stop_var in affected_stop_vars:
+        if not any(str(stop_record['var']) == old_stop_var for stop_record in payload['stops']):
+            continue
+        membership = _station_line_membership_from_payload(payload, old_stop_var)
+        new_stop_var = _unique_station_var_for_membership(payload, membership, old_var=old_stop_var)
+        renamed_stop_var = _rename_stop_var_in_payload(payload, old_stop_var, new_stop_var)
+        for stop_record in payload['stops']:
+            if str(stop_record['var']) != renamed_stop_var:
+                continue
+            if _is_placeholder_station_label(str(stop_record.get('lbl', ''))):
+                stop_record['lbl'] = _auto_station_label_from_payload(payload, renamed_stop_var)
+            break
+
+    _normalize_alignment_reminders(payload)
+    _normalize_extra_edges(payload)
+    _normalize_railway_finish_progress(payload)
+    _normalize_railway_finish_origins(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+    return new_name
 
 
 def set_stop_city_limit_node_keys(stop_var: str, node_keys: Sequence[str]) -> None:

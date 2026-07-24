@@ -43,12 +43,19 @@ def main() -> int:
             "+ Show/Hide",
             "- Priority List",
             "- Directions",
-            "- Pathing",
+            "+ Pathing",
             "- World Map",
         }
         missing_headers = sorted(expected_headers - labels)
         if missing_headers:
             raise AssertionError(f"Missing sidebar section headers: {', '.join(missing_headers)}")
+        expected_extension_controls = {
+            "Metro Stations",
+            "Add Metro Station",
+        }
+        missing_extension_controls = sorted(expected_extension_controls - labels)
+        if missing_extension_controls:
+            raise AssertionError(f"Missing extension controls: {', '.join(missing_extension_controls)}")
 
         defaults = {
             "show_world_map_render_var": True,

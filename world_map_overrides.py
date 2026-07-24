@@ -240,6 +240,19 @@ def _alpha_limited_copy(image: Image.Image) -> Image.Image:
     return underlay
 
 
+def _alpha_limited_source(viewer: "base.MetroMapViewer", source_image: Image.Image) -> Image.Image:
+    cache_key = id(source_image)
+    cached = getattr(viewer, "_world_map_alpha_limited_source_cache", None)
+    if isinstance(cached, tuple) and len(cached) == 2 and cached[0] == cache_key:
+        cached_image = cached[1]
+        if isinstance(cached_image, Image.Image):
+            return cached_image
+
+    alpha_limited = _alpha_limited_copy(source_image)
+    viewer._world_map_alpha_limited_source_cache = (cache_key, alpha_limited)
+    return alpha_limited
+
+
 def _underlay_cache_key(
     source_image: Image.Image,
     target_width: int,
@@ -266,7 +279,7 @@ def _cached_underlay_photo(
         if isinstance(cached_photo, ImageTk.PhotoImage):
             return cached_photo
 
-    underlay = source_image.crop(source_box)
+    underlay = _alpha_limited_source(viewer, source_image).crop(source_box)
     if fast_resample:
         try:
             resampling_filter = Image.Resampling.NEAREST
@@ -275,7 +288,6 @@ def _cached_underlay_photo(
     else:
         resampling_filter = _underlay_resampling_filter(target_width, target_height, source_box)
     underlay = underlay.resize((target_width, target_height), resampling_filter)
-    underlay = _alpha_limited_copy(underlay)
     underlay_image = ImageTk.PhotoImage(underlay)
     viewer._world_map_underlay_photo_cache = (cache_key, underlay_image)
     return underlay_image
@@ -403,14 +415,15 @@ def _patched_draw_world_map_render_underlay(
         return
     payload, source_image = render_underlay
 
-    world_map_analysis.update_background_analysis(self, payload, source_image)
+    if not fast_resample:
+        world_map_analysis.update_background_analysis(self, payload, source_image)
 
     draw_plan = _compute_underlay_draw_plan(self, payload, source_image)
     if draw_plan is None:
         return
 
     draw_left, draw_top, target_width, target_height, source_box = draw_plan
-    if _draw_plan_is_upscaled(target_width, target_height, source_box):
+    if not fast_resample and _draw_plan_is_upscaled(target_width, target_height, source_box):
         full_source_image = _full_resolution_render_source(self, payload, source_image)
         if full_source_image is not source_image:
             full_draw_plan = _compute_underlay_draw_plan(self, payload, full_source_image)
@@ -430,8 +443,9 @@ def _patched_draw_world_map_render_underlay(
     image_id = self.canvas.create_image(draw_left, draw_top, anchor="nw", image=underlay_image)
     self.canvas.tag_lower(image_id)
 
-    world_map_analysis.draw_internal_voids(self, payload, source_image)
-    _draw_world_boundary_completion_edges(self, payload, source_image)
+    if not fast_resample:
+        world_map_analysis.draw_internal_voids(self, payload, source_image)
+        _draw_world_boundary_completion_edges(self, payload, source_image)
 
 
 def _patched_current_world_map_svg_image(self: "base.MetroMapViewer") -> base.SvgRasterImage | None:

@@ -3,8 +3,10 @@ from __future__ import annotations
 import tkinter as tk
 
 import legacy_core as base
+import metro_station_extensions
 import path_detection
 import path_rendering
+import poi_extensions
 import world_map_overrides
 import worldgen_speedups
 import worldgen_target_fix
@@ -14,6 +16,28 @@ _ORIGINAL_BUILD_ROUTE_PANEL = base.MetroMapViewer._build_route_panel
 
 
 def _append_pathing_extensions(self: "base.MetroMapViewer", parent: tk.Misc) -> None:
+    self._make_sidebar_caption('Metro Stations', parent=parent).pack(anchor='w', padx=16)
+    self._make_sidebar_hint(
+        'Extend an existing line from a chosen station, or create a new line with a chosen color.',
+        parent=parent,
+    ).pack(anchor='w', padx=16, pady=(4, 6))
+    self._make_sidebar_button(
+        parent,
+        text='Add Metro Station',
+        command=self._show_add_metro_station_dialog,
+    ).pack(anchor='w', padx=16, pady=(0, 12))
+
+    self._make_sidebar_caption('Points of Interest', parent=parent).pack(anchor='w', padx=16)
+    self._make_sidebar_hint(
+        'Add monuments and pillager towers by typed Minecraft coordinates.',
+        parent=parent,
+    ).pack(anchor='w', padx=16, pady=(4, 6))
+    self._make_sidebar_button(
+        parent,
+        text='Add PoI',
+        command=self._show_add_poi_dialog,
+    ).pack(anchor='w', padx=16, pady=(0, 12))
+
     self._make_sidebar_caption('Suggested Walking Paths', parent=parent).pack(anchor='w', padx=16)
     self._make_sidebar_hint(
         'Temporary dotted links that connect village anchors using the current walk network. '
@@ -66,7 +90,7 @@ def _patched_build_route_panel(self: "base.MetroMapViewer") -> None:
     original_make_section = self._make_collapsible_sidebar_section
 
     def capture_section(title: str, *, expanded: bool) -> tk.Frame:
-        section_body = original_make_section(title, expanded=expanded)
+        section_body = original_make_section(title, expanded=True if title == 'Pathing' else expanded)
         captured_sections[title] = section_body
         return section_body
 
@@ -88,6 +112,8 @@ def _patched_build_route_panel(self: "base.MetroMapViewer") -> None:
 def apply() -> None:
     worldgen_target_fix.apply()
     worldgen_speedups.apply()
+    metro_station_extensions.apply()
+    poi_extensions.apply()
     base.MetroMapViewer._build_route_panel = _patched_build_route_panel
     path_rendering.apply()
     path_detection.apply()

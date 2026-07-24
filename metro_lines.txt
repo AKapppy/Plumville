@@ -6,7 +6,7 @@ A LINE
     New Eden
     Holihill
     Cherry Hole (F)
-    Glacier Cherry
+    Glacier Cherry (O)
     Isle of Whales
 
 B LINE
@@ -14,20 +14,18 @@ B LINE
     Dicton
     Hidden Valley Ranch
     Pinkerton
-    B_5
-    BK (K)
-    BH (H)
-    B_8
-    BJ (J)
-    B_{10}
-    B_{11}
+    Caverndeau
+    Clifton (K)
+    T-t-t-town (H)
+    Slimin
+    Toot'n'Cummin (JZ)
 
 C LINE
     Blackport (ABDE)
     Ridgewater
     Triarchidia
     Everly (N)
-    Amortay
+    Amortay (U)
     Neamegapolis
     Pinto Peak
     Prumpvatn
@@ -55,7 +53,7 @@ E LINE
     Kelp City (PRV)
     Castle Crossing
     Stilton (T)
-    West Stilton
+    West Stilton (Q)
 
 F LINE
     FH (H)
@@ -74,48 +72,68 @@ G LINE
     G_4
     G_5
     G_6
-    GH (H)
+    GHI (HI)
     G_8
+    G_9
+    G_10
     GJ (J)
-    G_{10}
 
 H LINE
-    GH (G)
+    GHI (GI)
     H_2
     H_3
     FH (F)
     H_5
-    BH (B)
-    H_7
+    T-t-t-town (B)
+    Langland
     H_8
     HL (L)
-    H_{10}
+    H_10
     HKM (KM)
+
+I LINE
+    I_1
+    I_2
+    IO (O)
+    I_4
+    GHI (GH)
+    I_6
+    I_7
+    I_8
+    I_9
+    I_10
+    I_11
+    IJ (J)
 
 J LINE
     GJ (G)
     J_2
     J_3
     J_4
-    BJ (B)
-    J_6
+    Toot'n'Cummin (BZ)
+    Volbura
+    Cameltoe
+    Østligste
+    IJ (I)
 
 K LINE
-    BK (B)
+    Clifton (B)
     KL (L)
     K_3
     HKM (HM)
     K_5
     Aesopia (N)
-    K_7
+    KX (X)
     K_8
     K_9
+    KU (U)
 
 L LINE
     KL (K)
     HL (H)
+    L_3
     LM (M)
-    L_4
+    L_5
 
 M LINE
     Mycopolis (N)
@@ -125,6 +143,9 @@ M LINE
     M_5
     M_6
     M_7
+    MZ (Z)
+    M_9
+    MY (Y)
 
 N LINE
     Alexandropol (E)
@@ -134,8 +155,18 @@ N LINE
     Everly (C)
     Rack City
     Aesopia (K)
-    Michael
+    Michael (X)
     Mycopolis (M)
+
+O LINE
+    O_1
+    O_2
+    IO (I)
+    O_4
+    O_5
+    O_6
+    O_7
+    Glacier Cherry (A)
 
 P LINE
     Arrow Falls (A)
@@ -148,33 +179,100 @@ P LINE
     P_8
     PT (T)
 
+Q LINE
+    QR (R)
+    Q_2
+    West Stilton (E)
+    Q_4
+    Q_5
+
 R LINE
     Kelp City (EPV)
     R_2
     RS (S)
     R_4
-    R_5
+    QR (Q)
     R_6
+    R_7
 
 S LINE
     RS (R)
     S_2
     S_3
     S_4
+    S_5
+    S_6
+    S_7
 
 T LINE
     Stilton (E)
     PT (P)
     TV (V)
-    T_2
+    T_4
     Aldinhöfn (C)
+
+U LINE
+    U_1
+    UV (V)
+    UW (W)
+    U_4
+    U_5
+    U_6
+    U_7
+    U_8
+    KU (K)
+    Amortay (C)
 
 V LINE
     Kelp City (EPR)
     Krimnos
     V_3
     TV (T)
-    V_5
+    VW_5 (W)
+    V_6
+    V_7
+    V_8
+    V_9
+    UV (U)
+    VW_11 (W)
+
+W LINE
+    W_1
+    VW_5 (V)
+    W_3
+    W_4
+    W_5
+    UW (U)
+    VW_11 (V)
+    W_8
+    W_9
+
+X LINE
+    KX (K)
+    Michael (N)
+    X_3
+    X_4
+    X_5
+    X_6
+    XY (Y)
+
+Y LINE
+    XY (X)
+    Y_2
+    YZ (Z)
+    MY (M)
+
+Z LINE
+    Toot'n'Cummin (BJ)
+    Z_2
+    MZ (M)
+    YZ (Y)
+    Z_5
+    Z_6
+    Z_7
+    Z_8
+    Z_9
+    Z_10
 
 -----------------
 SIGN EXAMPLE FOR TRIARCHIDIA

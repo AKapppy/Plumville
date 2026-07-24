@@ -46,9 +46,9 @@ CHUNK_TOUCH_MAX_BLOCKS = 30_000
 INCREMENTAL_RENDER_BATCH_PIXELS = 25_000
 INCREMENTAL_RENDER_MAX_SCAN_PIXELS = 5_000_000
 TARGET_LOAD_MIN_X = -8000
-TARGET_LOAD_MAX_X = 8000
-TARGET_LOAD_MIN_Z = -6000
-TARGET_LOAD_MAX_Z = 6000
+TARGET_LOAD_MAX_X = 9000
+TARGET_LOAD_MIN_Z = -5000
+TARGET_LOAD_MAX_Z = 7000
 BEDROCK_NATIVE_CRASH_MARKERS = (
     'free(): invalid next size',
 )
@@ -410,6 +410,7 @@ class BedrockWorldGenerator:
         wait_seconds: int | None = None,
         stop_after: bool = True,
         restart_existing: bool = True,
+        active_target_callback: Callable[[tuple[int, int]], None] | None = None,
     ) -> HeadlessChunkLoadResult:
         loader_config = self.config.headless_loader
         effective_wait_seconds = wait_seconds or loader_config.wait_seconds
@@ -490,6 +491,7 @@ class BedrockWorldGenerator:
                 teleport_start_index=current_teleport_index,
                 blank_coverage=blank_coverage,
                 loader_username=_headless_loader_username(attempt_number),
+                active_target_callback=active_target_callback,
             )
             attempts.append(attempt)
 
@@ -648,6 +650,7 @@ class BedrockWorldGenerator:
         teleport_start_index: int,
         blank_coverage: _BlankRenderCoverage | None,
         loader_username: str,
+        active_target_callback: Callable[[tuple[int, int]], None] | None = None,
     ) -> _HeadlessChunkLoadAttempt:
         attempt_started_at = utc_now_iso()
         world_path, _render_plan_path = self.prepare(
@@ -764,6 +767,8 @@ class BedrockWorldGenerator:
                     ]
                     target_squares_started += 1
                     teleport_targets.append(active_target)
+                    if active_target_callback is not None:
+                        active_target_callback(active_target)
                     active_loader_points = list(_target_square_loader_points(self.config, active_target))
                 target_x, target_z = active_loader_points.pop(0)
                 teleport_command = (
@@ -975,6 +980,12 @@ class BedrockWorldGenerator:
         colored_pixels_added = max(0, result.colored_pixels - before_colored_pixels)
         if colored_pixels_added == 0 and previous_metadata_text is not None:
             _write_text_atomically_with_retry(self.paths.render_cache_path, previous_metadata_text)
+        else:
+            _copy_file_best_effort(self.paths.render_image_path, self.paths.docs_render_image_path)
+            _copy_file_best_effort(
+                self.paths.render_cache_path,
+                _docs_render_metadata_path(self.paths.docs_render_image_path),
+            )
         return CachedPixelRenderResult(
             render_result=result,
             scanned_pixels=spiral_batch.scanned_pixels,

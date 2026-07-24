@@ -1,1 +1,66 @@
-|- i want to add another 1000m in each direction on the boarders, so instead of going to +/- 8000, +/- 4000, go to +/- 9000, +/- 5000. This will mean we need to reactivate the docker implementation to get the map again
+Water body and coastline detection plan
+
+Yes, this is possible. The app already has enough world-map/render infrastructure to start from a water mask, then classify connected water regions as lakes, seas/ocean, and rivers. The best result should come from block/render data, not screenshot color matching alone.
+
+1. Persist a water mask during world-map rendering.
+   - While `worldgen.render.render_topdown_map` classifies surface blocks, also write a compact per-pixel classification layer for at least: water, land, unknown/unrendered.
+   - Use the existing waterlike logic and block categories (`water`, `minecraft:water`, `kelp`, `seagrass`, `bubble_column`, waterlogged blocks where appropriate).
+   - Store the mask beside the render cache, for example `water_mask.npz` or a small PNG plus metadata with `min_x`, `min_z`, `sample_step`, width, and height.
+
+2. Clean the raw water mask.
+   - Remove isolated one-pixel noise.
+   - Fill tiny holes inside water regions where render gaps or unknown blocks create speckles.
+   - Keep unknown/unrendered pixels separate so we do not accidentally mark map gaps as coastline.
+
+3. Split water into connected components.
+   - Run connected-component labeling on the cleaned water mask.
+   - Record each component's area, bounding box, perimeter, compactness, major/minor axis, endpoint count, and whether it touches target-map boundaries.
+   - Save these features into a water-analysis JSON cache.
+
+4. Classify large boundary-connected water as sea/ocean.
+   - Components touching the target boundary and exceeding an area threshold should be classified as sea/ocean.
+   - Components connected to boundary water through a narrow neck should probably remain sea/ocean unless the neck is below a tunable channel width.
+   - Use this as the first-pass classifier because it is the most reliable rule.
+
+5. Classify enclosed broad water as lakes.
+   - Components that do not touch the target boundary and have a large area with relatively compact shape should be lakes.
+   - Use area, width, and compactness thresholds so ponds can either be ignored or classified separately later.
+   - Optionally merge lake components separated by tiny land bridges if the map render has obvious sampling artifacts.
+
+6. Classify long narrow water as rivers.
+   - Skeletonize each water component and measure length-to-width ratio.
+   - Rivers should generally have high elongation, narrow median width, and two or more meaningful endpoints.
+   - River components may connect lakes to seas; if so, classify the narrow branches as river while keeping the broad connected areas lake/sea.
+   - This likely needs a graph pass: broad blobs become lake/sea nodes, narrow corridors become river edges.
+
+7. Separate river mouths, straits, and narrow sea channels carefully.
+   - If a narrow water corridor connects two sea/ocean regions, label it as a strait/channel rather than river.
+   - If a narrow corridor connects inland water to sea/ocean, label the corridor as river and the boundary contact as river mouth.
+   - If a corridor starts and ends inside the same lake/sea component, treat it as bay/channel unless terrain context suggests otherwise.
+
+8. Extract coastlines.
+   - Coastline is the land/water boundary around sea/ocean components.
+   - Lake shorelines are similar geometry but should be stored separately as lake shorelines.
+   - River banks should be stored separately because they are long paired boundaries rather than coast.
+   - Generate simplified polylines from mask boundaries using contour tracing and Douglas-Peucker simplification.
+
+9. Add desktop overlays.
+   - Add toggles for Water Bodies, Coastlines, Lake Shores, and Rivers.
+   - Draw seas/ocean, lakes, rivers, and coastlines with distinct colors and line styles.
+   - Add hover/click inspection showing water-body type, area, approximate width/length, and coordinates.
+
+10. Add exports and cache invalidation.
+   - Save water-body analysis outputs into `worldgen/cache` or beside the render cache.
+   - Invalidate/rebuild when the render image/cache, render bounds, sample step, or selected world-map mode changes.
+   - Include water overlays in SVG/PNG export options.
+
+11. Validate with known map areas.
+   - Start with manually known examples: obvious ocean/coast, enclosed lakes, and several rivers.
+   - Add a debug view that colors raw mask components by ID.
+   - Tune thresholds against false positives: thin beaches, swamps, ponds, river deltas, and incomplete/unrendered map edges.
+
+12. Expected limitations.
+   - Rivers versus narrow sea channels may need heuristic tuning.
+   - Incomplete rendered areas can create false coastlines unless unknown pixels are handled explicitly.
+   - Very small ponds should probably be ignored or classified as ponds instead of lakes.
+   - Biome data would improve ocean/river naming, but block-shape analysis should be enough for useful first-pass detection.
