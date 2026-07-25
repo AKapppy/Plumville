@@ -45,6 +45,8 @@ assert(indexHtml.includes('id="routeButton"'), 'Directions route button is missi
 assert(indexHtml.includes('<details class="collapsible-section" open>'), 'Directions should start expanded in the public viewer.');
 assert(indexHtml.includes('id="stationSuggestions"'), 'Directions station suggestions are missing from index.html.');
 assert(indexHtml.includes('Station label or code'), 'Directions should clarify station-only route inputs.');
+assert(stylesCss.includes('max-height: none;'), 'Directions text panel should not trap route text in a nested scroll area.');
+assert(stylesCss.includes('#routeSteps') && stylesCss.includes('white-space: pre-wrap'), 'Directions steps should wrap and expand with their text.');
 assert(indexHtml.includes('id="showSuggestedWalkingPathsInput"'), 'Suggested walking path view toggle is missing from index.html.');
 assert(indexHtml.includes('id="lineLegend"'), 'Line visibility legend is missing from index.html.');
 assert(indexHtml.includes('id="searchInput"'), 'Station search input is missing from index.html.');

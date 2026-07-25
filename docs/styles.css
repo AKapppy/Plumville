@@ -308,9 +308,13 @@ button:focus-visible {
 }
 
 .text-panel {
+  height: auto;
+  min-height: 0;
+  max-height: none;
   padding: 10px 12px;
   border: 1px solid var(--border);
   background: var(--panel-2);
+  overflow: visible;
 }
 
 #routeSummary {
@@ -319,6 +323,9 @@ button:focus-visible {
 }
 
 #routeSteps {
+  height: auto;
+  min-height: 0;
+  max-height: none;
   overflow: visible;
   white-space: pre-wrap;
   color: var(--ink);

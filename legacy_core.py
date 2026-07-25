@@ -160,6 +160,8 @@ SIDEBAR_TEXT_FONT_SIZE: Final[int] = 12
 SIDEBAR_INPUT_BACKGROUND: Final[str] = '#050505'
 SIDEBAR_INPUT_ACTIVE_BACKGROUND: Final[str] = '#111111'
 SIDEBAR_INPUT_BORDER: Final[str] = '#202020'
+ROUTE_STEPS_MIN_DISPLAY_LINES: Final[int] = 2
+ROUTE_STEPS_WRAP_COLUMNS: Final[int] = 38
 ROUTE_HIGHLIGHT_OUTLINE: Final[str] = '#ffffff'
 ROUTE_HIGHLIGHT_OUTLINE_WIDTH: Final[int] = 10
 ROUTE_HIGHLIGHT_WIDTH: Final[int] = 6
@@ -6453,7 +6455,8 @@ class MetroMapViewer:
             pady=12,
             spacing1=2,
             spacing3=4,
-            height=12,
+            height=ROUTE_STEPS_MIN_DISPLAY_LINES,
+            width=ROUTE_STEPS_WRAP_COLUMNS,
         )
         self.route_steps_text.pack(fill='x', padx=16, pady=(0, 12))
         self._set_route_steps_text('Enter or select a start and destination, then press Route.')
@@ -7115,6 +7118,41 @@ class MetroMapViewer:
 
     def _set_route_steps_text(self, text: str) -> None:
         self._set_sidebar_text(self.route_steps_text, text)
+        self._autosize_route_steps_text(text)
+
+    def _autosize_route_steps_text(self, text: str | None = None) -> None:
+        if text is None:
+            text = self.route_steps_text.get('1.0', 'end-1c')
+
+        display_lines = self._route_steps_display_line_count(text)
+        self.route_steps_text.configure(
+            height=max(ROUTE_STEPS_MIN_DISPLAY_LINES, display_lines)
+        )
+        self.sidebar_canvas.configure(scrollregion=self.sidebar_canvas.bbox('all'))
+
+    def _route_steps_display_line_count(self, text: str) -> int:
+        try:
+            self.route_steps_text.update_idletasks()
+            count_result = self.route_steps_text.count(
+                '1.0',
+                'end',
+                'update',
+                'displaylines',
+                return_ints=True,
+            )
+        except tk.TclError:
+            count_result = None
+
+        if isinstance(count_result, int):
+            return max(1, count_result)
+        if isinstance(count_result, tuple) and count_result:
+            return max(1, int(count_result[-1]))
+
+        visible_columns = max(20, int(self.route_steps_text.cget('width') or ROUTE_STEPS_WRAP_COLUMNS))
+        return sum(
+            max(1, ceil(len(line) / visible_columns))
+            for line in (text.splitlines() or [''])
+        )
 
     def _set_world_map_status_text(self, text: str) -> None:
         self.world_map_status_var.set(text)
@@ -7131,6 +7169,7 @@ class MetroMapViewer:
                 padx=16,
                 pady=(0, 12),
             )
+            self._autosize_route_steps_text()
         else:
             self.route_steps_text.pack_forget()
 

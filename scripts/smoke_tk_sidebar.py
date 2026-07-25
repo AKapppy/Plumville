@@ -98,6 +98,19 @@ def main() -> int:
         if viewer.route_end_var.get() != "Dicton":
             raise AssertionError("Route To field could not be edited after selecting From.")
 
+        viewer._set_route_steps_visible(True)
+        viewer._set_route_steps_text("Short route.")
+        viewer.root.update_idletasks()
+        short_route_height = int(viewer.route_steps_text.cget("height"))
+        if short_route_height > 3:
+            raise AssertionError(f"Short route directions used {short_route_height} rows.")
+
+        viewer._set_route_steps_text("\n".join(f"{index}. Test direction step." for index in range(1, 9)))
+        viewer.root.update_idletasks()
+        long_route_height = int(viewer.route_steps_text.cget("height"))
+        if long_route_height <= short_route_height:
+            raise AssertionError("Long route directions did not expand the directions box.")
+
         if "+ Railway Finishing" in labels or "- Railway Finishing" in labels:
             raise AssertionError("Retired Railway Finishing section is still visible.")
 
