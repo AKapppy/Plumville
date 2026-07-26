@@ -14,6 +14,8 @@ const clearRouteButton = document.querySelector('#clearRouteButton');
 const routeSummary = document.querySelector('#routeSummary');
 const routeSteps = document.querySelector('#routeSteps');
 const stationSuggestions = document.querySelector('#stationSuggestions');
+const mapStage = document.querySelector('.map-stage');
+const sidePanel = document.querySelector('.side-panel');
 const resetViewButton = document.querySelector('#resetViewButton');
 const fitMapButton = document.querySelector('#fitMapButton');
 const blackportButton = document.querySelector('#blackportButton');
@@ -40,8 +42,8 @@ const CONSTANTS = {
   clampPadding: 64,
   labelAngle: -30 * Math.PI / 180,
   baseLabelFontSize: 13,
-  stationRadius: 4,
-  stationHitTolerance: 10,
+  stationRadius: 9,
+  stationHitTolerance: 16,
   unconnectedDash: [10, 6],
   unconnectedWidth: 3,
   connectedWidth: 4,
@@ -76,7 +78,9 @@ const CONSTANTS = {
   stationDarkOutline: '#050505',
   stationSelectedOutline: '#8ad4ff',
   phosphagosOutline: '#f0c75e',
-  lineMarkerRadius: 8,
+  lineMarkerRadius: 9,
+  lineMarkerDistances: [34, 48, 64, 82],
+  overlayMargin: 8,
 };
 
 const state = {
@@ -121,6 +125,10 @@ const state = {
   dragDistance: 0,
   lastPointer: null,
   renderScheduled: false,
+  stationSuggestionStops: [],
+  activeSuggestionInput: null,
+  activeSuggestionIndex: -1,
+  resizeFrame: null,
 };
 
 init();
@@ -345,29 +353,237 @@ function lineLegendStatusText(lineName) {
 }
 
 function populateStationSuggestions() {
-  if (!stationSuggestions) {
+  state.stationSuggestionStops = [...state.data.stops].sort(
+    (first, second) => displayLabel(first.lbl).localeCompare(
+      displayLabel(second.lbl),
+      undefined,
+      { numeric: true },
+    ),
+  );
+  stationSuggestions.replaceChildren();
+}
+
+function suggestionStopsForInput(input) {
+  const query = input.value.trim();
+  if (!query) {
+    return state.stationSuggestionStops.slice(0, 100);
+  }
+  return searchMatches(query).slice(0, 100);
+}
+
+function renderStationSuggestions(input) {
+  if (!input || document.activeElement !== input) {
     return;
   }
-  const seen = new Set();
-  const values = [];
-  for (const stop of state.data.stops) {
-    for (const value of [
-      displayLabel(stop.lbl),
-      stationAbbreviation(stop),
-      stop.var,
-      stop.var.replace(/^P_/, ''),
-    ]) {
-      const normalized = normalizeIdentity(value);
-      if (normalized && !seen.has(normalized)) {
-        seen.add(normalized);
-        values.push(value);
+  state.activeSuggestionInput = input;
+  state.activeSuggestionIndex = -1;
+  const stops = suggestionStopsForInput(input);
+  stationSuggestions.replaceChildren();
+
+  if (!stops.length) {
+    const empty = document.createElement('div');
+    empty.className = 'station-suggestion-empty';
+    empty.textContent = 'No station matches.';
+    stationSuggestions.append(empty);
+  } else {
+    stops.forEach((stop, index) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.id = `station-suggestion-${index}`;
+      button.className = 'station-suggestion';
+      button.setAttribute('role', 'option');
+      button.setAttribute('aria-selected', 'false');
+      button.dataset.stopVar = stop.var;
+
+      const name = document.createElement('span');
+      name.className = 'station-suggestion-name';
+      name.textContent = displayLabel(stop.lbl);
+
+      const meta = document.createElement('span');
+      meta.className = 'station-suggestion-meta';
+      const abbreviation = stationAbbreviation(stop);
+      if (abbreviation) {
+        const abbr = document.createElement('span');
+        abbr.className = 'station-suggestion-abbr';
+        abbr.textContent = abbreviation;
+        meta.append(abbr);
       }
-    }
+      const code = document.createElement('span');
+      code.textContent = stop.var.replace(/^P_/, '');
+      meta.append(code);
+
+      button.append(name, meta);
+      button.addEventListener('pointerdown', (event) => {
+        event.preventDefault();
+      });
+      button.addEventListener('click', () => {
+        chooseStationSuggestion(stop);
+      });
+      stationSuggestions.append(button);
+    });
   }
-  values.sort((first, second) => first.localeCompare(second, undefined, { numeric: true }));
-  stationSuggestions.innerHTML = values
-    .map((value) => `<option value="${escapeHtml(value)}"></option>`)
-    .join('');
+
+  stationSuggestions.hidden = false;
+  input.setAttribute('aria-expanded', 'true');
+  input.removeAttribute('aria-activedescendant');
+  positionStationSuggestions(input);
+}
+
+function openStationSuggestions(input) {
+  if (!state.data) {
+    return;
+  }
+  renderStationSuggestions(input);
+}
+
+function hideStationSuggestions() {
+  const input = state.activeSuggestionInput;
+  if (input) {
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+  }
+  state.activeSuggestionInput = null;
+  state.activeSuggestionIndex = -1;
+  stationSuggestions.hidden = true;
+  stationSuggestions.replaceChildren();
+}
+
+function chooseStationSuggestion(stop) {
+  const input = state.activeSuggestionInput;
+  if (!input || !stop) {
+    return;
+  }
+  input.value = displayLabel(stop.lbl);
+  hideStationSuggestions();
+
+  if (input === searchInput) {
+    refreshSearch();
+    jumpToSearchResult();
+    return;
+  }
+
+  clearRouteStateForInput();
+  state.preferredRouteInput = input === routeStartInput
+    ? routeEndInput
+    : routeStartInput;
+  input.focus();
+}
+
+function positionStationSuggestions(input = state.activeSuggestionInput) {
+  if (!input || stationSuggestions.hidden) {
+    return;
+  }
+  const rect = input.getBoundingClientRect();
+  const viewportWidth = window.visualViewport?.width
+    || document.documentElement.clientWidth;
+  const viewportHeight = window.visualViewport?.height
+    || document.documentElement.clientHeight;
+  const margin = 8;
+  const width = Math.max(220, rect.width);
+  const availableBelow = viewportHeight - rect.bottom - margin;
+  const availableAbove = rect.top - margin;
+  const panelHeight = Math.min(
+    stationSuggestions.scrollHeight,
+    Math.max(120, Math.max(availableBelow, availableAbove)),
+  );
+  const openAbove = availableBelow < 160 && availableAbove > availableBelow;
+  const left = clamp(
+    rect.left,
+    margin,
+    Math.max(margin, viewportWidth - width - margin),
+  );
+  const top = openAbove
+    ? Math.max(margin, rect.top - panelHeight - 4)
+    : Math.min(
+      viewportHeight - panelHeight - margin,
+      rect.bottom + 4,
+    );
+  stationSuggestions.style.left = `${left}px`;
+  stationSuggestions.style.top = `${Math.max(margin, top)}px`;
+  stationSuggestions.style.width = `${Math.min(
+    width,
+    viewportWidth - (margin * 2),
+  )}px`;
+  stationSuggestions.style.maxHeight = `${Math.max(120, panelHeight)}px`;
+}
+
+function moveStationSuggestion(delta) {
+  const buttons = [...stationSuggestions.querySelectorAll(
+    '.station-suggestion',
+  )];
+  if (!buttons.length) {
+    return false;
+  }
+  state.activeSuggestionIndex = (
+    state.activeSuggestionIndex + delta + buttons.length
+  ) % buttons.length;
+  buttons.forEach((button, index) => {
+    const active = index === state.activeSuggestionIndex;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-selected', String(active));
+  });
+  const active = buttons[state.activeSuggestionIndex];
+  state.activeSuggestionInput?.setAttribute(
+    'aria-activedescendant',
+    active.id,
+  );
+  active.scrollIntoView({ block: 'nearest' });
+  return true;
+}
+
+function chooseActiveStationSuggestion() {
+  const buttons = [...stationSuggestions.querySelectorAll(
+    '.station-suggestion',
+  )];
+  const active = buttons[state.activeSuggestionIndex];
+  if (!active) {
+    return false;
+  }
+  const stop = state.stopsByVar.get(active.dataset.stopVar);
+  if (!stop) {
+    return false;
+  }
+  chooseStationSuggestion(stop);
+  return true;
+}
+
+function handleStationSuggestionKeydown(
+  event,
+  input,
+  fallbackEnter,
+) {
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    if (stationSuggestions.hidden) {
+      openStationSuggestions(input);
+    }
+    moveStationSuggestion(1);
+    return;
+  }
+  if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (stationSuggestions.hidden) {
+      openStationSuggestions(input);
+    }
+    moveStationSuggestion(-1);
+    return;
+  }
+  if (event.key === 'Escape') {
+    hideStationSuggestions();
+    return;
+  }
+  if (event.key === 'Tab') {
+    hideStationSuggestions();
+    return;
+  }
+  if (event.key === 'Enter') {
+    if (!stationSuggestions.hidden && chooseActiveStationSuggestion()) {
+      event.preventDefault();
+      return;
+    }
+    hideStationSuggestions();
+    fallbackEnter();
+  }
 }
 
 function pointFromSpec(spec) {
@@ -436,12 +652,33 @@ function segmentConstructionStatus(startStop, endStop, routingOpen) {
 }
 
 function bindEvents() {
-  window.addEventListener('resize', () => {
-    resizeCanvas();
-    requestRender();
+  window.addEventListener('resize', scheduleViewportSync);
+  window.visualViewport?.addEventListener(
+    'resize',
+    scheduleViewportSync,
+  );
+  window.addEventListener('orientationchange', () => {
+    scheduleViewportSync();
+    window.setTimeout(scheduleViewportSync, 240);
   });
 
+  if (window.ResizeObserver && mapStage) {
+    const observer = new ResizeObserver(() => {
+      scheduleViewportSync();
+    });
+    observer.observe(mapStage);
+  }
+
+  window.addEventListener('scroll', () => {
+    positionStationSuggestions();
+  }, { passive: true });
+
+  sidePanel?.addEventListener('scroll', () => {
+    positionStationSuggestions();
+  }, { passive: true });
+
   canvas.addEventListener('pointerdown', (event) => {
+    hideStationSuggestions();
     canvas.setPointerCapture(event.pointerId);
     state.dragging = true;
     state.dragDistance = 0;
@@ -497,10 +734,27 @@ function bindEvents() {
   }, { passive: false });
 
   document.addEventListener('pointerdown', (event) => {
-    if (infoPopup.hidden || infoPopup.contains(event.target)) {
+    const target = event.target;
+    if (
+      target instanceof Node
+      && (
+        stationSuggestions.contains(target)
+        || target === searchInput
+        || target === routeStartInput
+        || target === routeEndInput
+      )
+    ) {
       return;
     }
-    if (event.target instanceof HTMLElement && event.target.closest('.side-panel')) {
+    hideStationSuggestions();
+
+    if (infoPopup.hidden || infoPopup.contains(target)) {
+      return;
+    }
+    if (
+      target instanceof HTMLElement
+      && target.closest('.side-panel')
+    ) {
       return;
     }
     state.selectedStop = null;
@@ -511,32 +765,50 @@ function bindEvents() {
   });
   document.addEventListener('keydown', handleHotkey);
 
-  searchInput.addEventListener('input', refreshSearch);
+  searchInput.addEventListener('input', () => {
+    refreshSearch();
+    renderStationSuggestions(searchInput);
+  });
+  searchInput.addEventListener('focus', () => {
+    openStationSuggestions(searchInput);
+  });
   searchInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      jumpToSearchResult();
-    }
+    handleStationSuggestionKeydown(
+      event,
+      searchInput,
+      jumpToSearchResult,
+    );
   });
-  searchButton.addEventListener('click', jumpToSearchResult);
+  searchButton.addEventListener('click', () => {
+    hideStationSuggestions();
+    jumpToSearchResult();
+  });
 
-  routeStartInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      planRoute();
-    }
-  });
-  routeEndInput.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      planRoute();
-    }
-  });
   for (const input of [routeStartInput, routeEndInput]) {
-    input.addEventListener('input', clearRouteStateForInput);
-    input.addEventListener('focus', () => prepareRouteInput(input));
+    input.addEventListener('input', () => {
+      clearRouteStateForInput();
+      renderStationSuggestions(input);
+    });
+    input.addEventListener('focus', () => {
+      prepareRouteInput(input);
+      openStationSuggestions(input);
+    });
     input.addEventListener('pointerdown', () => {
       state.preferredRouteInput = input;
     });
+    input.addEventListener('keydown', (event) => {
+      handleStationSuggestionKeydown(
+        event,
+        input,
+        planRoute,
+      );
+    });
   }
-  routeButton.addEventListener('click', planRoute);
+
+  routeButton.addEventListener('click', () => {
+    hideStationSuggestions();
+    planRoute();
+  });
   swapRouteButton.addEventListener('click', swapRoute);
   clearRouteButton.addEventListener('click', clearRoute);
 
@@ -548,22 +820,55 @@ function bindEvents() {
   blackportButton.addEventListener('click', showBlackportView);
   copyLinkButton.addEventListener('click', copyCurrentLink);
   clearSelectionButton.addEventListener('click', clearSelection);
-  mapZoomInButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom * CONSTANTS.zoomStep));
-  mapZoomOutButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom / CONSTANTS.zoomStep));
+  mapZoomInButton?.addEventListener(
+    'click',
+    () => zoomAtViewportCenter(
+      state.camera.zoom * CONSTANTS.zoomStep,
+    ),
+  );
+  mapZoomOutButton?.addEventListener(
+    'click',
+    () => zoomAtViewportCenter(
+      state.camera.zoom / CONSTANTS.zoomStep,
+    ),
+  );
   mapFitButton?.addEventListener('click', fitPrimaryView);
 
-  for (const input of [showWorldMapInput, showLabelsInput, showSuggestedWalkingPathsInput]) {
+  for (const input of [
+    showWorldMapInput,
+    showLabelsInput,
+    showSuggestedWalkingPathsInput,
+  ]) {
     input.addEventListener('change', requestRender);
   }
 }
 
-function resizeCanvas() {
+function scheduleViewportSync() {
+  if (state.resizeFrame !== null) {
+    window.cancelAnimationFrame(state.resizeFrame);
+  }
+  state.resizeFrame = window.requestAnimationFrame(() => {
+    state.resizeFrame = null;
+    resizeCanvas({ refitRoute: true });
+    positionStationSuggestions();
+    requestRender();
+  });
+}
+
+function resizeCanvas(options = {}) {
   const rect = canvas.getBoundingClientRect();
   const pixelRatio = window.devicePixelRatio || 1;
-  canvas.width = Math.max(1, Math.round(rect.width * pixelRatio));
-  canvas.height = Math.max(1, Math.round(rect.height * pixelRatio));
+  const width = Math.max(1, Math.round(rect.width * pixelRatio));
+  const height = Math.max(1, Math.round(rect.height * pixelRatio));
+  if (canvas.width !== width || canvas.height !== height) {
+    canvas.width = width;
+    canvas.height = height;
+  }
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   updateCameraViewport(rect.width, rect.height);
+  if (options.refitRoute && state.currentRoute) {
+    fitCurrentRoute({ render: false });
+  }
 }
 
 function updateCameraViewport(width, height) {
@@ -1315,7 +1620,9 @@ function drawStations() {
   const labelFontSize = labelFontSizeForZoom();
   ctx.font = `${labelFontSize}px Helvetica, Arial, sans-serif`;
   ctx.textBaseline = 'alphabetic';
-  const visibleStops = state.data.stops.filter((stop) => stopHasVisibleLine(stop));
+  const visibleStops = state.data.stops.filter(
+    (stop) => stopHasVisibleLine(stop),
+  );
   const stationRects = visibleStops.map((stop) => {
     const point = plotToCanvas(stationPlotPoint(stop));
     const radius = stationMarkerSize(stop);
@@ -1330,26 +1637,42 @@ function drawStations() {
       },
     };
   });
+  const lineShields = stationLineShieldPlacements(stationRects);
+  const shieldRects = lineShields.map((shield) => shield.rect);
   const labelLayout = showLabelsInput.checked
-    ? placeStationLabels(stationRects, labelFontSize)
+    ? placeStationLabels(
+      stationRects,
+      labelFontSize,
+      shieldRects,
+    )
     : new Map();
 
   for (const item of stationRects) {
     drawStationMarker(item.stop, item.point);
-    drawStationLineMarkers(item.stop, item.point);
-    if (showLabelsInput.checked) {
-      const label = labelLayout.get(item.stop.var);
-      if (label) {
-        drawRotatedLabel(
-          label.text,
-          label.x,
-          label.y,
-          stationLabelColor(item.stop),
-          labelFontSize,
-          stationLabelPriority(item.stop) <= 4,
-        );
-      }
+  }
+  for (const shield of lineShields) {
+    drawLineCircle(
+      shield.point,
+      shield.lineName,
+      CONSTANTS.lineMarkerRadius,
+    );
+  }
+  for (const item of stationRects) {
+    if (!showLabelsInput.checked) {
+      continue;
     }
+    const label = labelLayout.get(item.stop.var);
+    if (!label) {
+      continue;
+    }
+    drawRotatedLabel(
+      label.text,
+      label.x,
+      label.y,
+      stationLabelColor(item.stop),
+      labelFontSize,
+      stationLabelPriority(item.stop) <= 4,
+    );
   }
   ctx.restore();
 }
@@ -1375,13 +1698,13 @@ function drawStationMarker(stop, point) {
   ctx.strokeStyle = phosphagos
     ? CONSTANTS.phosphagosOutline
     : CONSTANTS.stationDarkOutline;
-  ctx.lineWidth = phosphagos ? 4 : 2;
+  ctx.lineWidth = phosphagos ? 4 : 2.5;
   ctx.stroke();
 
   if (junction && !phosphagos) {
-    drawDiamondPath(point, Math.max(3, size - 3));
+    drawDiamondPath(point, Math.max(4, size - 4));
     ctx.strokeStyle = CONSTANTS.stationOutline;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.75;
     ctx.stroke();
   }
 
@@ -1418,27 +1741,134 @@ function drawHomeGlyph(point, size) {
   ctx.restore();
 }
 
-function drawStationLineMarkers(stop, point) {
-  const lineNames = markerLineNamesForStop(stop);
-  if (!lineNames.length) {
-    return;
+function stationLineShieldPlacements(stationItems) {
+  const occupied = stationItems.map(
+    (item) => expandRect(item.rect, 4),
+  );
+  const placements = [];
+  const ordered = [...stationItems].sort((first, second) => (
+    stationLabelPriority(first.stop)
+      - stationLabelPriority(second.stop)
+  ));
+
+  for (const item of ordered) {
+    for (const lineName of markerLineNamesForStop(item.stop)) {
+      const candidates = lineShieldCandidates(
+        item.stop,
+        lineName,
+      );
+      let best = null;
+      for (const candidate of candidates) {
+        const radius = CONSTANTS.lineMarkerRadius;
+        const rect = {
+          minX: candidate.point.x - radius - 2,
+          maxX: candidate.point.x + radius + 2,
+          minY: candidate.point.y - radius - 2,
+          maxY: candidate.point.y + radius + 2,
+        };
+        const score = lineShieldPlacementScore(
+          rect,
+          occupied,
+          candidate.preference,
+        );
+        if (!best || score < best.score) {
+          best = {
+            ...candidate,
+            rect,
+            score,
+            lineName,
+          };
+        }
+        if (score === candidate.preference) {
+          break;
+        }
+      }
+      if (!best) {
+        continue;
+      }
+      placements.push(best);
+      occupied.push(expandRect(best.rect, 3));
+    }
   }
-  const markerRadius = CONSTANTS.lineMarkerRadius;
-  const distance = stationMarkerSize(stop) + markerRadius + 5;
-  const offsets = [
-    { x: distance, y: 0 },
-    { x: 0, y: distance },
-    { x: -distance, y: 0 },
-    { x: 0, y: -distance },
-  ];
-  lineNames.slice(0, offsets.length).forEach((lineName, index) => {
-    const offset = offsets[index];
-    drawLineCircle(
-      { x: point.x + offset.x, y: point.y + offset.y },
-      lineName,
-      markerRadius,
+  return placements;
+}
+
+function lineShieldCandidates(stop, lineName) {
+  const segments = state.lineSegments.filter((segment) => (
+    segment.lineName === lineName
+    && (
+      segment.startVar === stop.var
+      || segment.endVar === stop.var
+    )
+  ));
+  const candidates = [];
+  for (const segment of segments) {
+    const points = segment.startVar === stop.var
+      ? segment.points
+      : [...segment.points].reverse();
+    const screenPoints = points.map(plotToCanvas);
+    CONSTANTS.lineMarkerDistances.forEach(
+      (distance, distanceIndex) => {
+        const point = pointAtPolylineScreenDistance(
+          screenPoints,
+          distance,
+        );
+        if (!point) {
+          return;
+        }
+        candidates.push({
+          point,
+          preference: distanceIndex,
+        });
+      },
     );
-  });
+  }
+  return candidates;
+}
+
+function pointAtPolylineScreenDistance(points, targetDistance) {
+  if (points.length < 2) {
+    return null;
+  }
+  let traversed = 0;
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const first = points[index];
+    const second = points[index + 1];
+    const dx = second.x - first.x;
+    const dy = second.y - first.y;
+    const length = Math.hypot(dx, dy);
+    if (length <= 0) {
+      continue;
+    }
+    if (traversed + length >= targetDistance) {
+      const ratio = (targetDistance - traversed) / length;
+      return {
+        x: first.x + (dx * ratio),
+        y: first.y + (dy * ratio),
+      };
+    }
+    traversed += length;
+  }
+  return points[points.length - 1];
+}
+
+function lineShieldPlacementScore(rect, occupied, preference) {
+  let score = preference;
+  const viewport = {
+    minX: 4,
+    minY: 4,
+    maxX: state.camera.viewportWidth - 4,
+    maxY: state.camera.viewportHeight - 4,
+  };
+  if (!rectContainsRect(viewport, rect)) {
+    score += 1000000;
+  }
+  for (const other of occupied) {
+    if (rectsOverlap(rect, other)) {
+      score += 100000 + rectOverlapArea(rect, other);
+    }
+  }
+  return score;
 }
 
 function drawLineCircle(point, lineName, radius) {
@@ -1449,21 +1879,79 @@ function drawLineCircle(point, lineName, radius) {
   ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
   ctx.fillStyle = color;
   ctx.fill();
-  ctx.strokeStyle = contrastingTextColor(color);
-  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = backgroundContrastColorAt(point, radius);
+  ctx.lineWidth = 2.5;
   ctx.stroke();
   ctx.fillStyle = contrastingTextColor(color);
-  ctx.font = `900 ${Math.max(9, radius + 2)}px Helvetica, Arial, sans-serif`;
+  ctx.font = `900 ${Math.max(10, radius + 2)}px Helvetica, Arial, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(lineName, point.x, point.y + 0.5);
   ctx.restore();
 }
 
-function placeStationLabels(stationItems, fontSize) {
+function backgroundContrastColorAt(point, radius) {
+  const pixelRatio = window.devicePixelRatio || 1;
+  const sampleRadius = radius + 6;
+  const offsets = [
+    [-sampleRadius, 0],
+    [sampleRadius, 0],
+    [0, -sampleRadius],
+    [0, sampleRadius],
+    [-sampleRadius * 0.7, -sampleRadius * 0.7],
+    [sampleRadius * 0.7, -sampleRadius * 0.7],
+    [-sampleRadius * 0.7, sampleRadius * 0.7],
+    [sampleRadius * 0.7, sampleRadius * 0.7],
+  ];
+  let red = 0;
+  let green = 0;
+  let blue = 0;
+  let count = 0;
+  try {
+    for (const [dx, dy] of offsets) {
+      const x = clamp(
+        Math.round((point.x + dx) * pixelRatio),
+        0,
+        canvas.width - 1,
+      );
+      const y = clamp(
+        Math.round((point.y + dy) * pixelRatio),
+        0,
+        canvas.height - 1,
+      );
+      const data = ctx.getImageData(x, y, 1, 1).data;
+      red += data[0];
+      green += data[1];
+      blue += data[2];
+      count += 1;
+    }
+  } catch (_error) {
+    return CONSTANTS.stationDarkOutline;
+  }
+  if (!count) {
+    return CONSTANTS.stationDarkOutline;
+  }
+  const luminance = (
+    ((red / count) * 0.299)
+    + ((green / count) * 0.587)
+    + ((blue / count) * 0.114)
+  ) / 255;
+  return luminance > 0.53
+    ? CONSTANTS.stationDarkOutline
+    : CONSTANTS.stationOutline;
+}
+
+function placeStationLabels(
+  stationItems,
+  fontSize,
+  extraOccupiedRects = [],
+) {
   const mapRect = currentMapScreenRect();
   const linePaths = visibleLineCanvasPaths();
-  const occupiedRects = stationItems.map((item) => item.rect);
+  const occupiedRects = [
+    ...stationItems.map((item) => item.rect),
+    ...extraOccupiedRects,
+  ];
   const labels = new Map();
   const orderedItems = [...stationItems].sort((a, b) => (
     stationLabelPriority(a.stop) - stationLabelPriority(b.stop)
@@ -1698,17 +2186,88 @@ function drawRotatedLabel(text, x, y, fill, fontSize, bold) {
 function updateHover(event) {
   const stop = findStopAt(event.offsetX, event.offsetY);
   state.hoverStop = stop;
-  if (stop) {
-    const lines = linesForStop(stop);
-    const abbr = stationAbbreviation(stop);
-    const abbrText = abbr ? ` · ${escapeHtml(abbr)}` : '';
-    tooltip.innerHTML = `<strong>${escapeHtml(displayLabel(stop.lbl))}${abbrText}</strong><span>${stop.x}, ${stop.y} · ${lines.join(', ')}</span>`;
-    tooltip.hidden = false;
-    tooltip.style.left = `${Math.min(event.offsetX + 14, canvas.clientWidth - 290)}px`;
-    tooltip.style.top = `${Math.max(14, event.offsetY + 14)}px`;
-  } else {
+  if (!stop) {
     tooltip.hidden = true;
+    return;
   }
+  const lines = linesForStop(stop);
+  const abbr = stationAbbreviation(stop);
+  const abbrText = abbr ? ` · ${escapeHtml(abbr)}` : '';
+  tooltip.innerHTML = `<strong>${escapeHtml(displayLabel(stop.lbl))}${abbrText}</strong><span>${stop.x}, ${stop.y} · ${lines.join(', ')}</span>`;
+  tooltip.hidden = false;
+  positionOverlayNearPoint(
+    tooltip,
+    { x: event.offsetX, y: event.offsetY },
+    { preferAbove: false },
+  );
+}
+
+function positionOverlayNearPoint(
+  element,
+  point,
+  options = {},
+) {
+  const margin = CONSTANTS.overlayMargin;
+  const gap = 12;
+  const box = element.getBoundingClientRect();
+  const width = Math.min(
+    box.width,
+    state.camera.viewportWidth - (margin * 2),
+  );
+  const height = Math.min(
+    box.height,
+    state.camera.viewportHeight - (margin * 2),
+  );
+  const horizontal = [
+    point.x + gap,
+    point.x - gap - width,
+  ];
+  const vertical = options.preferAbove
+    ? [point.y - gap - height, point.y + gap]
+    : [point.y + gap, point.y - gap - height];
+
+  let left = horizontal[0];
+  let top = vertical[0];
+  let found = false;
+  for (const candidateTop of vertical) {
+    for (const candidateLeft of horizontal) {
+      if (
+        candidateLeft >= margin
+        && candidateLeft + width
+          <= state.camera.viewportWidth - margin
+        && candidateTop >= margin
+        && candidateTop + height
+          <= state.camera.viewportHeight - margin
+      ) {
+        left = candidateLeft;
+        top = candidateTop;
+        found = true;
+        break;
+      }
+    }
+    if (found) {
+      break;
+    }
+  }
+
+  left = clamp(
+    left,
+    margin,
+    Math.max(
+      margin,
+      state.camera.viewportWidth - width - margin,
+    ),
+  );
+  top = clamp(
+    top,
+    margin,
+    Math.max(
+      margin,
+      state.camera.viewportHeight - height - margin,
+    ),
+  );
+  element.style.left = `${left}px`;
+  element.style.top = `${top}px`;
 }
 
 function findStopAt(screenX, screenY) {
@@ -1880,7 +2439,14 @@ function updatePathEdgePopup(edge) {
 }
 
 function positionInfoPopup() {
-  if ((!state.selectedStop && !state.selectedPathEdge && !state.selectedSearchPoint) || infoPopup.hidden) {
+  if (
+    (
+      !state.selectedStop
+      && !state.selectedPathEdge
+      && !state.selectedSearchPoint
+    )
+    || infoPopup.hidden
+  ) {
     return;
   }
   const point = state.selectedStop
@@ -1888,21 +2454,11 @@ function positionInfoPopup() {
     : state.selectedPathEdge
       ? selectedPathEdgeAnchorPoint(state.selectedPathEdge)
       : plotToCanvas(state.selectedSearchPoint.point);
-  const stageRect = canvas.getBoundingClientRect();
-  const box = infoPopup.getBoundingClientRect();
-  const margin = CONSTANTS.padding / 2;
-  let left = point.x + 14;
-  if (left + box.width > stageRect.width - margin) {
-    left = point.x - 14 - box.width;
-  }
-  left = Math.max(margin, Math.min(left, stageRect.width - margin - box.width));
-  let top = point.y - 14 - box.height;
-  if (top < margin) {
-    top = point.y + 14;
-  }
-  top = Math.max(margin, Math.min(top, stageRect.height - margin - box.height));
-  infoPopup.style.left = `${left}px`;
-  infoPopup.style.top = `${top}px`;
+  positionOverlayNearPoint(
+    infoPopup,
+    point,
+    { preferAbove: true },
+  );
 }
 
 function hidePopup() {
@@ -2908,12 +3464,12 @@ function markerLineNamesForStop(stop) {
 
 function stationMarkerSize(stop) {
   if (isPhosphagos(stop)) {
-    return 11;
+    return 14;
   }
   if (isJunctionStop(stop)) {
-    return 9;
+    return 12;
   }
-  return 7;
+  return 9;
 }
 
 function labelZoomMode() {

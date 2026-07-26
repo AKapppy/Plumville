@@ -2,33 +2,66 @@
 <html lang="en">
   <head>
     <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    >
     <title>Plumville Metro Viewer</title>
     <link rel="canonical" href="https://akapppy.github.io/Plumville/">
     <meta property="og:title" content="Plumville Metro Viewer">
-    <meta property="og:description" content="Explore the Plumville metro map.">
+    <meta
+      property="og:description"
+      content="Explore the Plumville metro map."
+    >
     <meta property="og:type" content="website">
-    <meta property="og:url" content="https://akapppy.github.io/Plumville/">
-    <link rel="stylesheet" href="styles.css">
+    <meta
+      property="og:url"
+      content="https://akapppy.github.io/Plumville/"
+    >
+    <link rel="stylesheet" href="styles.css?v=20260726-run03">
   </head>
   <body>
     <main class="viewer-shell">
-      <aside class="side-panel" aria-label="Map controls and station details">
+      <aside
+        class="side-panel"
+        aria-label="Map controls and station details"
+      >
         <section class="control-section" aria-label="Network">
           <h1>Plumville Metro</h1>
-          <p id="summaryText" class="summary">Loading the network...</p>
+          <p id="summaryText" class="summary">
+            Loading the network...
+          </p>
         </section>
 
         <section class="control-section" aria-label="Search">
-          <label class="field-label section-heading" for="searchInput">Search</label>
+          <label
+            class="field-label section-heading"
+            for="searchInput"
+          >
+            Search
+          </label>
           <div class="input-row">
-            <input id="searchInput" class="sidebar-input" type="search" autocomplete="off" placeholder="Blackport">
+            <input
+              id="searchInput"
+              class="sidebar-input"
+              type="search"
+              autocomplete="off"
+              aria-autocomplete="list"
+              aria-controls="stationSuggestions"
+              aria-expanded="false"
+              placeholder="Blackport"
+            >
             <button id="searchButton" type="button">Go</button>
           </div>
-          <p id="searchStatus" class="hint">Search by station, or enter x, y to plot a point.</p>
+          <p id="searchStatus" class="hint">
+            Search by station, or enter x, y to plot a point.
+          </p>
         </section>
 
-        <section class="control-section" aria-labelledby="showHideHeading">
+        <section
+          class="control-section"
+          aria-labelledby="showHideHeading"
+        >
           <p id="showHideHeading" class="section-heading">View</p>
           <label class="check-row">
             <input id="showWorldMapInput" type="checkbox" checked>
@@ -39,23 +72,54 @@
             <span>Station labels</span>
           </label>
           <label class="check-row">
-            <input id="showSuggestedWalkingPathsInput" type="checkbox">
+            <input
+              id="showSuggestedWalkingPathsInput"
+              type="checkbox"
+            >
             <span>Suggested walking paths</span>
           </label>
-          <div id="lineLegend" class="line-legend" aria-label="Line visibility"></div>
+          <div
+            id="lineLegend"
+            class="line-legend"
+            aria-label="Line visibility"
+          ></div>
         </section>
 
         <details class="collapsible-section" open>
           <summary>Directions</summary>
           <section class="control-section">
-            <label class="field-label" for="routeStartInput">From</label>
-            <input id="routeStartInput" class="sidebar-input" type="search" autocomplete="off" list="stationSuggestions" placeholder="Blackport">
+            <label class="field-label" for="routeStartInput">
+              From
+            </label>
+            <input
+              id="routeStartInput"
+              class="sidebar-input"
+              type="search"
+              autocomplete="off"
+              aria-autocomplete="list"
+              aria-controls="stationSuggestions"
+              aria-expanded="false"
+              placeholder="Blackport"
+            >
             <p class="hint">Station label or code</p>
 
-            <label class="field-label spaced" for="routeEndInput">To</label>
-            <input id="routeEndInput" class="sidebar-input" type="search" autocomplete="off" list="stationSuggestions" placeholder="Dicton">
+            <label
+              class="field-label spaced"
+              for="routeEndInput"
+            >
+              To
+            </label>
+            <input
+              id="routeEndInput"
+              class="sidebar-input"
+              type="search"
+              autocomplete="off"
+              aria-autocomplete="list"
+              aria-controls="stationSuggestions"
+              aria-expanded="false"
+              placeholder="Dicton"
+            >
             <p class="hint">Station label or code</p>
-            <datalist id="stationSuggestions"></datalist>
 
             <div class="actions" aria-label="Route actions">
               <button id="routeButton" type="button">Route</button>
@@ -71,26 +135,66 @@
         </details>
 
         <div class="actions" aria-label="Map actions">
-          <button id="resetViewButton" type="button">Reset view</button>
+          <button id="resetViewButton" type="button">
+            Reset view
+          </button>
           <button id="fitMapButton" type="button">Fit map</button>
-          <button id="blackportButton" type="button">Blackport</button>
-          <button id="copyLinkButton" type="button">Copy link</button>
-          <button id="clearSelectionButton" type="button">Clear selection</button>
+          <button id="blackportButton" type="button">
+            Blackport
+          </button>
+          <button id="copyLinkButton" type="button">
+            Copy link
+          </button>
+          <button id="clearSelectionButton" type="button">
+            Clear selection
+          </button>
         </div>
       </aside>
 
-      <section class="map-stage" aria-label="Interactive Plumville metro map">
-        <canvas id="metroCanvas" aria-label="Metro map canvas"></canvas>
+      <section
+        class="map-stage"
+        aria-label="Interactive Plumville metro map"
+      >
+        <canvas
+          id="metroCanvas"
+          aria-label="Metro map canvas"
+        ></canvas>
         <div class="map-controls" aria-label="Map zoom controls">
-          <button id="mapZoomInButton" type="button" aria-label="Zoom in">+</button>
-          <button id="mapZoomOutButton" type="button" aria-label="Zoom out">−</button>
-          <button id="mapFitButton" type="button" aria-label="Fit map">Fit</button>
+          <button
+            id="mapZoomInButton"
+            type="button"
+            aria-label="Zoom in"
+          >
+            +
+          </button>
+          <button
+            id="mapZoomOutButton"
+            type="button"
+            aria-label="Zoom out"
+          >
+            −
+          </button>
+          <button
+            id="mapFitButton"
+            type="button"
+            aria-label="Fit active route or map"
+          >
+            Fit
+          </button>
         </div>
         <div id="tooltip" class="tooltip" hidden></div>
         <div id="infoPopup" class="info-popup" hidden></div>
       </section>
     </main>
 
-    <script src="app.js?v=20260722-underlay-sync" defer></script>
+    <div
+      id="stationSuggestions"
+      class="station-suggestions"
+      role="listbox"
+      aria-label="Station suggestions"
+      hidden
+    ></div>
+
+    <script src="app.js?v=20260726-run03" defer></script>
   </body>
 </html>
