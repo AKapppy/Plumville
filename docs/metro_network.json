@@ -28,7 +28,8 @@
         "coord:340,321"
       ],
       "station_entry_x": 319,
-      "station_entry_y": 339
+      "station_entry_y": 339,
+      "abbr": "BKP"
     },
     {
       "var": "P_B2",
@@ -57,7 +58,8 @@
         "coord:692,118"
       ],
       "station_entry_x": 776,
-      "station_entry_y": 115
+      "station_entry_y": 115,
+      "abbr": "DIC"
     },
     {
       "var": "P_E2",
@@ -83,7 +85,8 @@
         "coord:-402,202"
       ],
       "station_entry_x": -434,
-      "station_entry_y": 174
+      "station_entry_y": 174,
+      "abbr": "NBG"
     },
     {
       "var": "P_D2",
@@ -110,7 +113,8 @@
         "coord:36,1235"
       ],
       "station_entry_x": 42,
-      "station_entry_y": 1312
+      "station_entry_y": 1312,
+      "abbr": "TMB"
     },
     {
       "var": "P_A2",
@@ -136,7 +140,8 @@
         "coord:60,-459"
       ],
       "station_entry_x": 140,
-      "station_entry_y": -542
+      "station_entry_y": -542,
+      "abbr": "CHI"
     },
     {
       "var": "P_C2",
@@ -161,7 +166,8 @@
         "coord:700,1433"
       ],
       "station_entry_x": 629,
-      "station_entry_y": 1339
+      "station_entry_y": 1339,
+      "abbr": "RGW"
     },
     {
       "var": "P_B3",
@@ -189,7 +195,8 @@
         "coord:1296,85"
       ],
       "station_entry_x": 1282,
-      "station_entry_y": 85
+      "station_entry_y": 85,
+      "abbr": "HVR"
     },
     {
       "var": "P_EN",
@@ -219,7 +226,8 @@
         "coord:-912,679",
         "coord:-951,675",
         "coord:-964,675"
-      ]
+      ],
+      "abbr": "ALX"
     },
     {
       "var": "P_AP",
@@ -245,7 +253,8 @@
         "coord:-248,-988"
       ],
       "station_entry_x": -265,
-      "station_entry_y": -840
+      "station_entry_y": -840,
+      "abbr": "ARF"
     },
     {
       "var": "P_P2",
@@ -287,7 +296,8 @@
         "coord:-307,1893",
         "coord:-301,1845",
         "coord:-301,1825"
-      ]
+      ],
+      "abbr": "GRN"
     },
     {
       "var": "P_N2",
@@ -312,7 +322,8 @@
         "coord:-951,1397"
       ],
       "station_entry_x": -983,
-      "station_entry_y": 1379
+      "station_entry_y": 1379,
+      "abbr": "GCB"
     },
     {
       "var": "P_E4",
@@ -340,7 +351,8 @@
         "coord:-1326,713",
         "coord:-1381,610",
         "coord:-1383,608"
-      ]
+      ],
+      "abbr": "EDG"
     },
     {
       "var": "P_C3",
@@ -367,7 +379,8 @@
         "coord:287,2354",
         "coord:308,2313",
         "coord:274,2270"
-      ]
+      ],
+      "abbr": "TRI"
     },
     {
       "var": "P_A4",
@@ -394,7 +407,8 @@
         "coord:99,-1572",
         "coord:107,-1565",
         "coord:124,-1594"
-      ]
+      ],
+      "abbr": "MNR"
     },
     {
       "var": "P_B4",
@@ -419,7 +433,8 @@
         "coord:2243,57"
       ],
       "station_entry_x": 2273,
-      "station_entry_y": 97
+      "station_entry_y": 97,
+      "abbr": "PNK"
     },
     {
       "var": "P_P3",
@@ -459,7 +474,8 @@
         "coord:-734,2394",
         "coord:-734,2388",
         "coord:-739,2361"
-      ]
+      ],
+      "abbr": "NUJ"
     },
     {
       "var": "P_B5",
@@ -472,7 +488,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "CVD"
     },
     {
       "var": "P_N3",
@@ -500,7 +517,8 @@
         "coord:-1469,1875",
         "coord:-1469,1856",
         "coord:-1496,1826"
-      ]
+      ],
+      "abbr": "WTP"
     },
     {
       "var": "P_E5",
@@ -513,7 +531,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "IST"
     },
     {
       "var": "P_A5",
@@ -544,7 +563,8 @@
         "coord:207,-2029",
         "coord:205,-2030",
         "coord:187,-2031"
-      ]
+      ],
+      "abbr": "NED"
     },
     {
       "var": "P_F5",
@@ -584,7 +604,8 @@
         "coord:-226,3019",
         "coord:-187,2974",
         "coord:-269,2931"
-      ]
+      ],
+      "abbr": "EVL"
     },
     {
       "var": "P_F4",
@@ -648,7 +669,8 @@
         "coord:-1264,2813",
         "coord:-1269,2780",
         "coord:-1272,2762"
-      ]
+      ],
+      "abbr": "PMP"
     },
     {
       "var": "P_A6",
@@ -677,7 +699,8 @@
         "coord:671,-2642"
       ],
       "station_entry_x": 800,
-      "station_entry_y": -2582
+      "station_entry_y": -2582,
+      "abbr": "HLH"
     },
     {
       "var": "P_E6",
@@ -690,7 +713,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "MTP"
     },
     {
       "var": "P_CU5",
@@ -714,7 +738,8 @@
         "coord:-472,3355",
         "coord:-473,3336",
         "coord:-476,3321"
-      ]
+      ],
+      "abbr": "AMR"
     },
     {
       "var": "P_G2",
@@ -740,7 +765,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "RCK"
     },
     {
       "var": "P_F3",
@@ -789,7 +815,8 @@
         "coord:256,-2998",
         "coord:278,-2998",
         "coord:282,-3052"
-      ]
+      ],
+      "abbr": "IWH"
     },
     {
       "var": "P_KL",
@@ -833,7 +860,8 @@
         "coord:1245,-3041"
       ],
       "station_entry_x": 1257,
-      "station_entry_y": -3068
+      "station_entry_y": -3068,
+      "abbr": "CHO"
     },
     {
       "var": "P_F2",
@@ -859,7 +887,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "CLF"
     },
     {
       "var": "P_K3",
@@ -896,7 +925,8 @@
         "coord:592,-3475",
         "coord:650,-3543",
         "coord:692,-3520"
-      ]
+      ],
+      "abbr": "GCH"
     },
     {
       "var": "P_P5",
@@ -935,7 +965,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "EAR"
     },
     {
       "var": "P_K5",
@@ -974,7 +1005,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "WAR"
     },
     {
       "var": "P_K9",
@@ -1000,7 +1032,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "NMG"
     },
     {
       "var": "P_H10",
@@ -1052,7 +1085,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "ASP"
     },
     {
       "var": "P_H5",
@@ -1091,7 +1125,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "KLP"
     },
     {
       "var": "P_S2",
@@ -1130,7 +1165,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "KRM"
     },
     {
       "var": "P_V3",
@@ -1169,7 +1205,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "MCL"
     },
     {
       "var": "P_KX7",
@@ -1208,7 +1245,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "PNT"
     },
     {
       "var": "P_H3",
@@ -1234,7 +1272,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "TTT"
     },
     {
       "var": "P_E8",
@@ -1247,7 +1286,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "CSX"
     },
     {
       "var": "P_H7",
@@ -1260,7 +1300,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "LNG"
     },
     {
       "var": "P_R2",
@@ -1390,7 +1431,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "STL"
     },
     {
       "var": "P_J2",
@@ -1455,7 +1497,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "HBF"
     },
     {
       "var": "P_H2",
@@ -1494,7 +1537,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "PRM"
     },
     {
       "var": "P_G6",
@@ -1520,7 +1564,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "SLI"
     },
     {
       "var": "P_T2",
@@ -1572,7 +1617,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "PPD"
     },
     {
       "var": "P_MN",
@@ -1585,7 +1631,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "MYC"
     },
     {
       "var": "P_G",
@@ -1641,7 +1688,7 @@
     },
     {
       "var": "P_CT",
-      "lbl": "Aldinh\u00f6fn",
+      "lbl": "Aldinhöfn",
       "x": -3656,
       "y": 5592,
       "has_connector": false,
@@ -1650,7 +1697,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "ALD"
     },
     {
       "var": "P_Z6",
@@ -1702,7 +1750,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "WST"
     },
     {
       "var": "P_GJ10",
@@ -1754,7 +1803,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "CML"
     },
     {
       "var": "P_J9",
@@ -1767,7 +1817,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "VLB"
     },
     {
       "var": "P_R6",
@@ -1784,7 +1835,7 @@
     },
     {
       "var": "P_J11",
-      "lbl": "\u00d8stligste",
+      "lbl": "Østligste",
       "x": 7864,
       "y": -888,
       "has_connector": false,
@@ -1793,7 +1844,8 @@
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "abbr": "OST"
     },
     {
       "var": "P_V6",
@@ -23735,7 +23787,7 @@
       "start_key": "P_C6",
       "end_key": "P_D6",
       "start_label": "Neamegapolis",
-      "end_label": "D\u2086",
+      "end_label": "D₆",
       "length": 794.33,
       "cost": 9.66,
       "path": [
@@ -23828,7 +23880,7 @@
     {
       "start_key": "P_P2",
       "end_key": "coord:-326,-904",
-      "start_label": "P\u2082",
+      "start_label": "P₂",
       "end_label": "Node node_239",
       "length": 916.81,
       "cost": 10.24,
@@ -23922,7 +23974,7 @@
     {
       "start_key": "P_N6",
       "end_key": "coord:-187,2974",
-      "start_label": "N\u2086",
+      "start_label": "N₆",
       "end_label": "Node node_590",
       "length": 1015.19,
       "cost": 12.49,
@@ -23952,7 +24004,7 @@
     {
       "start_key": "P_D6",
       "end_key": "coord:-1308,2829",
-      "start_label": "D\u2086",
+      "start_label": "D₆",
       "end_label": "Node node_490",
       "length": 1210.16,
       "cost": 14.41,
@@ -23974,7 +24026,7 @@
     {
       "start_key": "P_P2",
       "end_key": "coord:-495,246",
-      "start_label": "P\u2082",
+      "start_label": "P₂",
       "end_label": "Node node_268_268",
       "length": 1071.89,
       "cost": 15.53,
@@ -24046,7 +24098,7 @@
     {
       "start_key": "P_B5",
       "end_key": "coord:1350,168",
-      "start_label": "B\u2085",
+      "start_label": "B₅",
       "end_label": "Node node_79",
       "length": 1844.27,
       "cost": 29.07,

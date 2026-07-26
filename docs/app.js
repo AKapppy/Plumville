@@ -69,6 +69,14 @@ const CONSTANTS = {
   terrainMetadataUrl: 'assets/blackport_topdown.render.json',
   blackportVar: 'P_ABCDE',
   blackportViewRadius: 2000,
+  routeFitPadding: 72,
+  routeFitMinSpan: 900,
+  routeFitMaxScale: 7,
+  stationOutline: '#f7f7f7',
+  stationDarkOutline: '#050505',
+  stationSelectedOutline: '#8ad4ff',
+  phosphagosOutline: '#f0c75e',
+  lineMarkerRadius: 8,
 };
 
 const state = {
@@ -306,11 +314,15 @@ function populateLineLegend() {
     });
 
     const swatch = document.createElement('span');
+    const lineColor = colorForLine(lineName);
     swatch.className = 'line-swatch';
-    swatch.style.backgroundColor = colorForLine(lineName);
+    swatch.style.setProperty('--line-color', lineColor);
+    swatch.style.color = contrastingTextColor(lineColor);
+    swatch.textContent = lineName;
+    swatch.setAttribute('aria-hidden', 'true');
 
     const text = document.createElement('span');
-    text.textContent = lineName;
+    text.textContent = `Line ${lineName}`;
 
     label.append(input, swatch, text);
     lineLegend.append(label);
@@ -339,7 +351,12 @@ function populateStationSuggestions() {
   const seen = new Set();
   const values = [];
   for (const stop of state.data.stops) {
-    for (const value of [displayLabel(stop.lbl), stop.var, stop.var.replace(/^P_/, '')]) {
+    for (const value of [
+      displayLabel(stop.lbl),
+      stationAbbreviation(stop),
+      stop.var,
+      stop.var.replace(/^P_/, ''),
+    ]) {
       const normalized = normalizeIdentity(value);
       if (normalized && !seen.has(normalized)) {
         seen.add(normalized);
@@ -533,10 +550,7 @@ function bindEvents() {
   clearSelectionButton.addEventListener('click', clearSelection);
   mapZoomInButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom * CONSTANTS.zoomStep));
   mapZoomOutButton?.addEventListener('click', () => zoomAtViewportCenter(state.camera.zoom / CONSTANTS.zoomStep));
-  mapFitButton?.addEventListener('click', () => {
-    fitToMap();
-    render();
-  });
+  mapFitButton?.addEventListener('click', fitPrimaryView);
 
   for (const input of [showWorldMapInput, showLabelsInput, showSuggestedWalkingPathsInput]) {
     input.addEventListener('change', requestRender);
@@ -601,7 +615,75 @@ function fitRenderedMap() {
   render();
 }
 
-function setViewToPlotBounds(bounds) {
+function routePlotPoints(route) {
+  if (!route) {
+    return [];
+  }
+  const points = [];
+  const start = state.stopsByVar.get(route.startVar);
+  const end = state.stopsByVar.get(route.endVar);
+  if (start) {
+    points.push(stationPlotPoint(start));
+  }
+  for (const step of route.steps || []) {
+    for (const point of step.pathPoints || []) {
+      if (Number.isFinite(point?.x) && Number.isFinite(point?.y)) {
+        points.push(point);
+      }
+    }
+  }
+  if (end) {
+    points.push(stationPlotPoint(end));
+  }
+  return points;
+}
+
+function routePlotBounds(route) {
+  const points = routePlotPoints(route);
+  if (!points.length) {
+    return null;
+  }
+  const bounds = boundsForPoints(points);
+  if (!validBounds(bounds)) {
+    return null;
+  }
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const spanX = Math.max(bounds.maxX - bounds.minX, 0);
+  const spanY = Math.max(bounds.maxY - bounds.minY, 0);
+  const halfWidth = Math.max(spanX, CONSTANTS.routeFitMinSpan) / 2;
+  const halfHeight = Math.max(spanY, CONSTANTS.routeFitMinSpan) / 2;
+  return {
+    minX: centerX - halfWidth,
+    minY: centerY - halfHeight,
+    maxX: centerX + halfWidth,
+    maxY: centerY + halfHeight,
+  };
+}
+
+function fitCurrentRoute(options = {}) {
+  const bounds = routePlotBounds(state.currentRoute);
+  if (!bounds || !cameraHasWorld()) {
+    return false;
+  }
+  setViewToPlotBounds(bounds, {
+    padding: CONSTANTS.routeFitPadding,
+    maxZoom: state.camera.minZoom * CONSTANTS.routeFitMaxScale,
+  });
+  if (options.render !== false) {
+    render();
+  }
+  return true;
+}
+
+function fitPrimaryView() {
+  if (!fitCurrentRoute()) {
+    fitToMap();
+    render();
+  }
+}
+
+function setViewToPlotBounds(bounds, options = {}) {
   if (!cameraHasWorld()) {
     return;
   }
@@ -610,12 +692,27 @@ function setViewToPlotBounds(bounds) {
   const worldBounds = normalizedWorldBounds(first, second);
   const spanX = Math.max(worldBounds.maxX - worldBounds.minX, 1);
   const spanY = Math.max(worldBounds.maxY - worldBounds.minY, 1);
-  const availableWidth = Math.max(state.camera.viewportWidth - (CONSTANTS.padding * 2), 1);
-  const availableHeight = Math.max(state.camera.viewportHeight - (CONSTANTS.padding * 2), 1);
+  const padding = Number.isFinite(options.padding)
+    ? Math.max(0, options.padding)
+    : CONSTANTS.padding;
+  const availableWidth = Math.max(
+    state.camera.viewportWidth - (padding * 2),
+    1,
+  );
+  const availableHeight = Math.max(
+    state.camera.viewportHeight - (padding * 2),
+    1,
+  );
+  const maxZoom = Number.isFinite(options.maxZoom)
+    ? Math.min(
+      state.camera.maxZoom,
+      Math.max(state.camera.minZoom, options.maxZoom),
+    )
+    : state.camera.maxZoom;
   state.camera.zoom = clamp(
     Math.min(availableWidth / spanX, availableHeight / spanY),
     state.camera.minZoom,
-    state.camera.maxZoom,
+    maxZoom,
   );
   const worldCenter = {
     x: (bounds.minX + bounds.maxX) / 2,
@@ -1221,14 +1318,15 @@ function drawStations() {
   const visibleStops = state.data.stops.filter((stop) => stopHasVisibleLine(stop));
   const stationRects = visibleStops.map((stop) => {
     const point = plotToCanvas(stationPlotPoint(stop));
+    const radius = stationMarkerSize(stop);
     return {
       stop,
       point,
       rect: {
-        minX: point.x - CONSTANTS.stationRadius - 2,
-        maxX: point.x + CONSTANTS.stationRadius + 2,
-        minY: point.y - CONSTANTS.stationRadius - 2,
-        maxY: point.y + CONSTANTS.stationRadius + 2,
+        minX: point.x - radius - 3,
+        maxX: point.x + radius + 3,
+        minY: point.y - radius - 3,
+        maxY: point.y + radius + 3,
       },
     };
   });
@@ -1237,29 +1335,128 @@ function drawStations() {
     : new Map();
 
   for (const item of stationRects) {
-    const { stop, point } = item;
-    const fill = stationColor(stop);
-    ctx.beginPath();
-    ctx.arc(point.x, point.y, CONSTANTS.stationRadius, 0, Math.PI * 2);
-    ctx.fillStyle = fill;
-    ctx.fill();
-
+    drawStationMarker(item.stop, item.point);
+    drawStationLineMarkers(item.stop, item.point);
     if (showLabelsInput.checked) {
-      const label = labelLayout.get(stop.var) || {
-        text: displayLabel(stop.lbl),
-        x: point.x + labelOffset(),
-        y: point.y - labelOffset(),
-      };
-      drawRotatedLabel(
-        label.text,
-        label.x,
-        label.y,
-        stationLabelColor(stop),
-        labelFontSize,
-        false,
-      );
+      const label = labelLayout.get(item.stop.var);
+      if (label) {
+        drawRotatedLabel(
+          label.text,
+          label.x,
+          label.y,
+          stationLabelColor(item.stop),
+          labelFontSize,
+          stationLabelPriority(item.stop) <= 4,
+        );
+      }
     }
   }
+  ctx.restore();
+}
+
+function drawStationMarker(stop, point) {
+  const size = stationMarkerSize(stop);
+  const selected = state.selectedStop?.var === stop.var;
+  const phosphagos = isPhosphagos(stop);
+  const junction = isJunctionStop(stop);
+
+  ctx.save();
+  ctx.setLineDash([]);
+  if (selected) {
+    drawDiamondPath(point, size + 5);
+    ctx.strokeStyle = CONSTANTS.stationSelectedOutline;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  drawDiamondPath(point, size);
+  ctx.fillStyle = stationColor(stop);
+  ctx.fill();
+  ctx.strokeStyle = phosphagos
+    ? CONSTANTS.phosphagosOutline
+    : CONSTANTS.stationDarkOutline;
+  ctx.lineWidth = phosphagos ? 4 : 2;
+  ctx.stroke();
+
+  if (junction && !phosphagos) {
+    drawDiamondPath(point, Math.max(3, size - 3));
+    ctx.strokeStyle = CONSTANTS.stationOutline;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  if (phosphagos) {
+    drawHomeGlyph(point, size);
+  }
+  ctx.restore();
+}
+
+function drawDiamondPath(point, radius) {
+  ctx.beginPath();
+  ctx.moveTo(point.x, point.y - radius);
+  ctx.lineTo(point.x + radius, point.y);
+  ctx.lineTo(point.x, point.y + radius);
+  ctx.lineTo(point.x - radius, point.y);
+  ctx.closePath();
+}
+
+function drawHomeGlyph(point, size) {
+  const scale = Math.max(4, size - 3);
+  ctx.save();
+  ctx.strokeStyle = CONSTANTS.stationDarkOutline;
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(point.x - scale, point.y);
+  ctx.lineTo(point.x, point.y - scale + 1);
+  ctx.lineTo(point.x + scale, point.y);
+  ctx.moveTo(point.x - scale + 2, point.y - 1);
+  ctx.lineTo(point.x - scale + 2, point.y + scale - 2);
+  ctx.lineTo(point.x + scale - 2, point.y + scale - 2);
+  ctx.lineTo(point.x + scale - 2, point.y - 1);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawStationLineMarkers(stop, point) {
+  const lineNames = markerLineNamesForStop(stop);
+  if (!lineNames.length) {
+    return;
+  }
+  const markerRadius = CONSTANTS.lineMarkerRadius;
+  const distance = stationMarkerSize(stop) + markerRadius + 5;
+  const offsets = [
+    { x: distance, y: 0 },
+    { x: 0, y: distance },
+    { x: -distance, y: 0 },
+    { x: 0, y: -distance },
+  ];
+  lineNames.slice(0, offsets.length).forEach((lineName, index) => {
+    const offset = offsets[index];
+    drawLineCircle(
+      { x: point.x + offset.x, y: point.y + offset.y },
+      lineName,
+      markerRadius,
+    );
+  });
+}
+
+function drawLineCircle(point, lineName, radius) {
+  const color = colorForLine(lineName);
+  ctx.save();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = contrastingTextColor(color);
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = contrastingTextColor(color);
+  ctx.font = `900 ${Math.max(9, radius + 2)}px Helvetica, Arial, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(lineName, point.x, point.y + 0.5);
   ctx.restore();
 }
 
@@ -1269,24 +1466,49 @@ function placeStationLabels(stationItems, fontSize) {
   const occupiedRects = stationItems.map((item) => item.rect);
   const labels = new Map();
   const orderedItems = [...stationItems].sort((a, b) => (
-    distanceToRectEdge(a.point, mapRect) - distanceToRectEdge(b.point, mapRect)
+    stationLabelPriority(a.stop) - stationLabelPriority(b.stop)
+    || distanceToRectEdge(a.point, mapRect) - distanceToRectEdge(b.point, mapRect)
   ));
 
   for (const item of orderedItems) {
-    const text = displayLabel(item.stop.lbl);
-    const candidates = labelCandidatesForStation(item.point, text, fontSize);
+    if (!shouldAttemptStationLabel(item.stop)) {
+      continue;
+    }
     let best = null;
-    for (const candidate of candidates) {
-      const placed = clampLabelCandidate(candidate, text, fontSize, mapRect);
-      const score = labelPlacementScore(placed.rect, occupiedRects, linePaths, mapRect) + candidate.preference;
-      if (!best || score < best.score) {
-        best = { ...placed, score, text };
+    for (const text of stationLabelTextOptions(item.stop)) {
+      for (const candidate of labelCandidatesForStation(
+        item.point,
+        text,
+        fontSize,
+      )) {
+        const placed = clampLabelCandidate(
+          candidate,
+          text,
+          fontSize,
+          mapRect,
+        );
+        const score = labelPlacementScore(
+          placed.rect,
+          occupiedRects,
+          linePaths,
+          mapRect,
+        ) + candidate.preference;
+        if (!best || score < best.score) {
+          best = { ...placed, score, text };
+        }
+        if (score === 0) {
+          break;
+        }
       }
-      if (score === 0) {
+      if (best?.score === 0) {
         break;
       }
     }
     if (!best) {
+      continue;
+    }
+    const priority = stationLabelPriority(item.stop);
+    if (priority > 4 && best.score > stationLabelScoreLimit()) {
       continue;
     }
     labels.set(item.stop.var, best);
@@ -1297,7 +1519,11 @@ function placeStationLabels(stationItems, fontSize) {
 
 function labelCandidatesForStation(point, text, fontSize) {
   const width = ctx.measureText(text).width;
-  const textCenter = rotatedVector(width / 2, -fontSize / 2, CONSTANTS.labelAngle);
+  const textCenter = rotatedVector(
+    width / 2,
+    -fontSize / 2,
+    CONSTANTS.labelAngle,
+  );
   const baseOffset = labelOffset();
   const candidates = [
     {
@@ -1307,15 +1533,38 @@ function labelCandidatesForStation(point, text, fontSize) {
     },
   ];
   const distances = [
-    CONSTANTS.stationRadius + Math.max(16, fontSize) + (Math.min(width, 90) / 2),
+    CONSTANTS.stationRadius
+      + Math.max(16, fontSize)
+      + (Math.min(width, 90) / 2),
     CONSTANTS.stationRadius + Math.max(30, fontSize * 2),
     CONSTANTS.stationRadius + Math.max(48, fontSize * 3),
     CONSTANTS.stationRadius + Math.max(70, fontSize * 4),
   ];
-  const angles = [-45, -90, 0, 45, 90, 135, 180, -135, -30, 30, -120, 120];
-  for (let distanceIndex = 0; distanceIndex < distances.length; distanceIndex += 1) {
+  const angles = [
+    -45,
+    45,
+    -135,
+    135,
+    -90,
+    90,
+    0,
+    180,
+    -30,
+    30,
+    -120,
+    120,
+  ];
+  for (
+    let distanceIndex = 0;
+    distanceIndex < distances.length;
+    distanceIndex += 1
+  ) {
     const distance = distances[distanceIndex];
-    for (let angleIndex = 0; angleIndex < angles.length; angleIndex += 1) {
+    for (
+      let angleIndex = 0;
+      angleIndex < angles.length;
+      angleIndex += 1
+    ) {
       const radians = angles[angleIndex] * Math.PI / 180;
       const center = {
         x: point.x + (Math.cos(radians) * distance),
@@ -1451,7 +1700,9 @@ function updateHover(event) {
   state.hoverStop = stop;
   if (stop) {
     const lines = linesForStop(stop);
-    tooltip.innerHTML = `<strong>${escapeHtml(displayLabel(stop.lbl))}</strong><span>${stop.x}, ${stop.y} · ${lines.join(', ')}</span>`;
+    const abbr = stationAbbreviation(stop);
+    const abbrText = abbr ? ` · ${escapeHtml(abbr)}` : '';
+    tooltip.innerHTML = `<strong>${escapeHtml(displayLabel(stop.lbl))}${abbrText}</strong><span>${stop.x}, ${stop.y} · ${lines.join(', ')}</span>`;
     tooltip.hidden = false;
     tooltip.style.left = `${Math.min(event.offsetX + 14, canvas.clientWidth - 290)}px`;
     tooltip.style.top = `${Math.max(14, event.offsetY + 14)}px`;
@@ -1565,8 +1816,12 @@ function updateInfoPopup() {
   const chimeText = stop.is_connected && stop.chime_directions?.length
     ? `<p class="section-label">Chimes</p><p>${stop.chime_directions.map(capitalize).join(', ')}</p>`
     : '';
+  const abbreviation = stationAbbreviation(stop);
+  const abbreviationHtml = abbreviation
+    ? `<span class="station-abbr">${escapeHtml(abbreviation)}</span>`
+    : '';
   infoPopup.innerHTML = `
-    <h2>${escapeHtml(displayLabel(stop.lbl))}</h2>
+    <h2>${escapeHtml(displayLabel(stop.lbl))} ${abbreviationHtml}</h2>
     <p>Coords: (${stop.x}, ${stop.y})<br>Status: ${statusText}<br>${railwayText}</p>
     <p class="section-label">Lines</p>
     <div class="line-badges">${lineBadgeText}</div>
@@ -1580,9 +1835,11 @@ function lineBadgesHtml(lineNames) {
   if (!lineNames.length) {
     return '<span class="line-badge muted">None</span>';
   }
-  return lineNames.map((lineName) => (
-    `<span class="line-badge" style="--line-color: ${escapeHtml(colorForLine(lineName))}">${escapeHtml(lineName)}</span>`
-  )).join('');
+  return lineNames.map((lineName) => {
+    const lineColor = colorForLine(lineName);
+    const lineInk = contrastingTextColor(lineColor);
+    return `<span class="line-badge" style="--line-color: ${escapeHtml(lineColor)}; --line-ink: ${escapeHtml(lineInk)}">${escapeHtml(lineName)}</span>`;
+  }).join('');
 }
 
 function updateSearchPointPopup(result) {
@@ -1715,20 +1972,38 @@ function searchMatches(query) {
   for (const stop of state.data.stops) {
     const normalizedLabel = normalizeIdentity(stop.lbl);
     const normalizedDisplay = normalizeIdentity(displayLabel(stop.lbl));
+    const normalizedAbbr = normalizeIdentity(stationAbbreviation(stop));
     const normalizedVar = normalizeIdentity(stop.var.replace(/^P_/, ''));
+    const labelCandidates = [normalizedLabel, normalizedDisplay];
     let rank = null;
-    if ([normalizedLabel, normalizedDisplay].includes(normalizedQuery)) {
+    if (labelCandidates.includes(normalizedQuery)) {
       rank = [0, stop.lbl.length, stop.lbl.toLowerCase()];
+    } else if (normalizedAbbr && normalizedQuery === normalizedAbbr) {
+      rank = [1, stationAbbreviation(stop).length, stop.lbl.toLowerCase()];
     } else if (normalizedQuery === normalizedVar) {
-      rank = [1, stop.var.length, stop.lbl.toLowerCase()];
-    } else if ([normalizedLabel, normalizedDisplay].some((candidate) => candidate.startsWith(normalizedQuery))) {
-      rank = [2, stop.lbl.length, stop.lbl.toLowerCase()];
+      rank = [2, stop.var.length, stop.lbl.toLowerCase()];
+    } else if (
+      labelCandidates.some((candidate) => candidate.startsWith(normalizedQuery))
+    ) {
+      rank = [3, stop.lbl.length, stop.lbl.toLowerCase()];
+    } else if (
+      normalizedAbbr
+      && normalizedAbbr.startsWith(normalizedQuery)
+    ) {
+      rank = [4, stationAbbreviation(stop).length, stop.lbl.toLowerCase()];
     } else if (normalizedVar.startsWith(normalizedQuery)) {
-      rank = [3, stop.var.length, stop.lbl.toLowerCase()];
-    } else if ([normalizedLabel, normalizedDisplay].some((candidate) => candidate.includes(normalizedQuery))) {
-      rank = [4, stop.lbl.length, stop.lbl.toLowerCase()];
-    } else if (normalizedVar.includes(normalizedQuery)) {
       rank = [5, stop.var.length, stop.lbl.toLowerCase()];
+    } else if (
+      labelCandidates.some((candidate) => candidate.includes(normalizedQuery))
+    ) {
+      rank = [6, stop.lbl.length, stop.lbl.toLowerCase()];
+    } else if (
+      normalizedAbbr
+      && normalizedAbbr.includes(normalizedQuery)
+    ) {
+      rank = [7, stationAbbreviation(stop).length, stop.lbl.toLowerCase()];
+    } else if (normalizedVar.includes(normalizedQuery)) {
+      rank = [8, stop.var.length, stop.lbl.toLowerCase()];
     }
     if (rank) {
       ranked.push({ rank, stop });
@@ -1917,6 +2192,7 @@ function planRoute(options = {}) {
   } else {
     routeSummary.textContent = `${displayLabel(start.lbl)} to ${displayLabel(end.lbl)}\n${formatDistanceAndTime(route.totalDistance)}, ${formatInterchangeCount(route.totalInterchanges)}`;
     routeSteps.textContent = routeInstructions(route);
+    fitCurrentRoute({ render: false });
   }
   render();
 }
@@ -2573,10 +2849,152 @@ function resolveStop(value) {
   const normalized = normalizeIdentity(query);
   return state.data.stops.find((stop) => normalizeIdentity(stop.lbl) === normalized)
     || state.data.stops.find((stop) => normalizeIdentity(displayLabel(stop.lbl)) === normalized)
+    || state.data.stops.find((stop) => normalizeIdentity(stationAbbreviation(stop)) === normalized)
     || state.data.stops.find((stop) => normalizeIdentity(stop.var) === normalized)
     || state.data.stops.find((stop) => normalizeIdentity(stop.var.replace(/^P_/, '')) === normalized)
     || searchMatches(query)[0]
     || null;
+}
+
+function stationAbbreviation(stop) {
+  return String(stop?.abbr || '').trim();
+}
+
+function isPlaceholderStop(stop) {
+  return /^[A-Z]{1,3}\d+(?:_\d+)?$/.test(displayLabel(stop.lbl));
+}
+
+function isPhosphagos(stop) {
+  return normalizeIdentity(displayLabel(stop.lbl))
+    === normalizeIdentity('Mt. Phosphagos');
+}
+
+function isJunctionStop(stop) {
+  return linesForStop(stop).filter(
+    (lineName) => state.visibleLines.has(lineName),
+  ).length > 1;
+}
+
+function terminalLineNames(stop) {
+  const terminalLines = [];
+  for (const [lineName, stopVars] of Object.entries(
+    state.data.line_stop_vars || {},
+  )) {
+    if (!state.visibleLines.has(lineName) || !stopVars.length) {
+      continue;
+    }
+    if (
+      stopVars[0] === stop.var
+      || stopVars[stopVars.length - 1] === stop.var
+    ) {
+      terminalLines.push(lineName);
+    }
+  }
+  return terminalLines;
+}
+
+function markerLineNamesForStop(stop) {
+  const terminalLines = terminalLineNames(stop);
+  if (isJunctionStop(stop) && labelZoomMode() !== 'world') {
+    return [...new Set([
+      ...terminalLines,
+      ...linesForStop(stop).filter(
+        (lineName) => state.visibleLines.has(lineName),
+      ),
+    ])];
+  }
+  return terminalLines;
+}
+
+function stationMarkerSize(stop) {
+  if (isPhosphagos(stop)) {
+    return 11;
+  }
+  if (isJunctionStop(stop)) {
+    return 9;
+  }
+  return 7;
+}
+
+function labelZoomMode() {
+  const scale = cameraStyleScale();
+  if (scale < 2.15) {
+    return 'world';
+  }
+  if (scale < 5.25) {
+    return 'regional';
+  }
+  return 'close';
+}
+
+function stationIsRouteEndpoint(stop) {
+  return state.currentRoute
+    && (
+      state.currentRoute.startVar === stop.var
+      || state.currentRoute.endVar === stop.var
+    );
+}
+
+function stationLabelPriority(stop) {
+  if (isPhosphagos(stop)) return 0;
+  if (state.selectedStop?.var === stop.var) return 1;
+  if (stationIsRouteEndpoint(stop)) return 2;
+  if (isJunctionStop(stop)) return 3;
+  if (terminalLineNames(stop).length) return 4;
+  if (stop.is_connected) return 5;
+  return 6;
+}
+
+function shouldAttemptStationLabel(stop) {
+  if (labelZoomMode() === 'close') {
+    return true;
+  }
+  if (labelZoomMode() === 'world' && isPlaceholderStop(stop)) {
+    return stationLabelPriority(stop) <= 4;
+  }
+  return true;
+}
+
+function stationLabelTextOptions(stop) {
+  const fullLabel = displayLabel(stop.lbl);
+  const abbreviation = stationAbbreviation(stop);
+  if (labelZoomMode() === 'close' || !abbreviation) {
+    return [fullLabel];
+  }
+  return abbreviation === fullLabel
+    ? [fullLabel]
+    : [fullLabel, abbreviation];
+}
+
+function stationLabelScoreLimit() {
+  if (labelZoomMode() === 'world') {
+    return 60000;
+  }
+  if (labelZoomMode() === 'regional') {
+    return 125000;
+  }
+  return Number.POSITIVE_INFINITY;
+}
+
+function contrastingTextColor(color) {
+  const match = /^#?([0-9a-f]{6})$/i.exec(
+    String(color || '').trim(),
+  );
+  if (!match) {
+    return CONSTANTS.textColor;
+  }
+  const value = match[1];
+  const red = parseInt(value.slice(0, 2), 16);
+  const green = parseInt(value.slice(2, 4), 16);
+  const blue = parseInt(value.slice(4, 6), 16);
+  const luminance = (
+    (red * 0.299)
+    + (green * 0.587)
+    + (blue * 0.114)
+  ) / 255;
+  return luminance > 0.58
+    ? CONSTANTS.stationDarkOutline
+    : CONSTANTS.textColor;
 }
 
 function stationColor(stop) {
