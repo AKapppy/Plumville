@@ -1,0 +1,425 @@
+PLUMVILLE FILE PRIORITY LIST
+
+Last revised: 2026-07-26
+
+PURPOSE
+
+This file ranks project files by how much useful checklist work can be
+completed by changing that file, while also accounting for implementation
+risk, testability, and whether the user can verify the result immediately.
+
+Update this file after every implementation run.
+
+SORTING RULES
+
+1. Active high-value files first.
+2. Within a similar value, prefer changes that are easy to test on web/mobile.
+3. High-risk monoliths may rank lower even when they contain more total logic.
+4. Completed file-level work moves to the COMPLETED FILE WORK section.
+5. Re-rank after every run because dependencies and leverage will change.
+6. A one-file production change may still require a separate test-file update.
+
+======================================================================
+PRIORITY 1 — docs/app.js
+======================================================================
+
+Leverage: Extremely high
+Risk: Medium
+Immediate testing: Web and mobile
+Preferred change style: Focused replacement or carefully generated full file
+
+Can accomplish:
+- Public route auto-fit
+- Context-sensitive Fit button
+- Route bounds and short-route zoom limits
+- Refit after swap, URL restoration, and visible-line changes
+- Abbreviation search and route resolution
+- Abbreviation display in station details
+- Station diamonds
+- Junction styling
+- Terminal line circles
+- Mt. Phosphagos landmark rendering
+- Selected/searched focus treatment
+- Semantic zoom
+- Label priorities and abbreviation fallback
+- Improved line visibility behavior
+- Public construction interactions
+- Mobile map behavior after matching HTML/CSS structure exists
+
+Recommended first slice:
+- Route auto-fit only
+- Add focused smoke-test coverage separately
+
+Do not combine route fitting, semantic zoom, construction, and a full symbol
+redesign in one uncontrolled replacement.
+
+======================================================================
+PRIORITY 2 — docs/styles.css
+======================================================================
+
+Leverage: Very high
+Risk: Low to medium
+Immediate testing: Web and mobile
+Preferred change style: Full replacement is reasonable after inspection
+
+Can accomplish:
+- Broad MMCP visual pass
+- Shared web design tokens
+- Dark charcoal hierarchy
+- Minecraft-inspired borders
+- Typography and spacing
+- Button/input/panel states
+- Circular line badges
+- Popup and route-result styling
+- Mobile responsiveness improvements
+- Touch-target sizing
+- Safe-area padding
+- Better current stacked mobile layout
+
+Cannot accomplish alone:
+- Bottom navigation
+- Draggable bottom sheet
+- New DOM controls
+- Route-fitting behavior
+- Canvas symbol rendering
+
+======================================================================
+PRIORITY 3 — data/station_abbreviations.json
+======================================================================
+
+Leverage: Medium foundational value
+Risk: Very low
+Immediate testing: File validation; later web/desktop integration
+Preferred change style: Full replacement
+
+Current state:
+- A corrected replacement file has been prepared from the latest screenshots.
+- Five authoritative changes were identified:
+  - Isle of Whales: IWH
+  - Slimin: SLI
+  - Triarchidia: TRI
+  - Everly: EVL
+  - Michael: MCL
+
+Can accomplish:
+- Establish the authoritative abbreviation source
+- Correct previous mapping values
+- Support later canonical-network import
+- Avoid rebuilding the mapping during UI implementation
+
+Cannot accomplish alone:
+- Add abbr fields to station records
+- Search by abbreviation
+- Display abbreviations
+- Validate duplicates in the app
+- Export abbreviations to the public viewer
+
+Next action:
+- Replace the repository copy with the prepared file.
+- Then use it as the source when enriching canonical station records.
+
+======================================================================
+PRIORITY 4 — docs/metro_network.json
+======================================================================
+
+Leverage: High for data; low for behavior
+Risk: Medium because desktop currently also depends on it
+Immediate testing: Web, with caution
+Preferred change style: Generated replacement
+
+Can accomplish:
+- Add all station abbr fields
+- Correct changed abbreviations
+- Make abbreviation data available to current consumers
+- Preserve abbreviation data for later migration
+
+Cannot accomplish alone:
+- Search by abbreviation
+- Display abbreviations
+- Validation
+- Editing UI
+- Canonical/public data separation
+
+Before replacement:
+- Apply the user's latest screenshot corrections
+- Validate every mapped station name
+- Preserve every unrelated field and ordering
+- Confirm no duplicate station records were introduced
+
+======================================================================
+PRIORITY 5 — development/IMPLEMENTATION_AND_QA.md
+======================================================================
+
+Leverage: High for workflow and verification
+Risk: Very low
+Immediate testing: Not applicable
+Preferred change style: Full replacement
+
+Can accomplish:
+- Living checklist
+- Web test queue
+- Mobile test queue
+- Desktop-pending queue
+- Open-issue log
+- Verification history
+- Pull-checkpoint guidance
+- Automated-test record
+
+Must be updated after every implementation run.
+
+======================================================================
+PRIORITY 6 — docs/index.html
+======================================================================
+
+Leverage: Medium to high
+Risk: Low to medium
+Immediate testing: Web and mobile
+Preferred change style: Full replacement is usually reasonable
+
+Can accomplish:
+- Add Fit Route button
+- Add structural containers for mobile layout
+- Add bottom navigation
+- Add bottom-sheet markup
+- Improve accessibility labels
+- Reorganize controls
+- Add public construction panel containers
+- Add versioned script/style references
+
+Cannot supply behavior or styling alone.
+
+======================================================================
+PRIORITY 7 — ui_extensions.py
+======================================================================
+
+Leverage: High for desktop interface
+Risk: Medium to high
+Immediate testing: No; requires desktop pull
+Preferred change style: Patch, not blind full replacement
+
+Can accomplish:
+- Hide path detection from normal UI
+- Move experimental tools to Advanced
+- Reorganize existing patched panels
+- Remove obsolete no-op extension calls after caller review
+- Begin desktop mode-navigation integration
+- Coordinate station-inspector behavior
+
+Desktop verification must remain pending until a local pull and launch.
+
+======================================================================
+PRIORITY 8 — legacy_core.py
+======================================================================
+
+Leverage: Extremely high
+Risk: Extremely high
+Immediate testing: No; requires desktop pull
+Preferred change style: Small patch only
+
+Can technically accomplish:
+- Desktop route auto-fit
+- Worldgen completion behavior
+- Station rendering
+- Desktop abbreviation support
+- Search and route behavior
+- Inspector/dialog changes
+- Data-path migration
+
+Do not use a whole-file replacement unless no safer method exists.
+The file is a large monolith and unrelated local changes are easy to overwrite.
+
+======================================================================
+PRIORITY 9 — plumville/core/network.py
+======================================================================
+
+Leverage: Medium to high foundational value
+Risk: Medium
+Immediate testing: Automated tests; later desktop/public integration
+Preferred change style: Focused replacement or patch
+
+Can accomplish:
+- Abbreviation normalization
+- Abbreviation lookup helpers
+- Duplicate detection helpers
+- Shared station resolution
+- Shared validation
+- Data normalization behavior
+- Foundations for later network editing
+
+Cannot expose features in UI without consumer changes.
+
+======================================================================
+PRIORITY 10 — plumville/paths.py (new file)
+======================================================================
+
+Leverage: Medium foundational value
+Risk: Low
+Immediate testing: Automated tests
+Preferred change style: New file
+
+Can accomplish:
+- Central repository paths
+- Canonical data path
+- Public export path
+- Abbreviation path
+- Runtime/history/export paths
+- Safer migration foundation
+
+Requires consumer files to adopt the constants before behavior changes.
+
+======================================================================
+PRIORITY 11 — docs/smoke_test.js
+======================================================================
+
+Leverage: Medium for safety
+Risk: Low
+Immediate testing: Automated
+Preferred change style: Full replacement or focused edit
+
+Can accomplish regression checks for:
+- Route-fit functions and controls
+- Network data path
+- Abbreviation support
+- Station symbol functions
+- Mobile structural elements
+- Public/private safety assertions
+
+Tests implementation; does not create user-facing behavior.
+
+======================================================================
+PRIORITY 12 — plumville/core/public_export.py
+======================================================================
+
+Leverage: High once data migration begins
+Risk: Medium
+Immediate testing: Automated and public preview
+Preferred change style: Focused patch/replacement after inspection
+
+Can accomplish:
+- Sanitized public output
+- Abbreviation preservation
+- Public construction contract
+- Private-field exclusion
+- Canonical-to-public generation
+
+Requires path constants, consumers, and tests.
+
+======================================================================
+PRIORITY 13 — metro_station_extensions.py
+======================================================================
+
+Leverage: Medium to high for desktop station workflows
+Risk: Medium
+Immediate testing: Desktop pull required
+Preferred change style: Focused patch
+
+Can accomplish:
+- Abbreviation editing
+- Station dialog enhancements
+- Live preview
+- Duplicate warnings
+- Station inspector additions
+
+======================================================================
+PRIORITY 14 — README.md
+======================================================================
+
+Leverage: Medium documentation value
+Risk: Very low
+Immediate testing: Not applicable
+Preferred change style: Full replacement
+
+Can accomplish:
+- Correct three-part architecture description
+- Canonical/public data workflow
+- Setup and pull instructions
+- Public/private safety rules
+- Current entry points
+- Testing commands
+- Desktop checkpoint workflow
+
+======================================================================
+PRIORITY 15 — worldgen-related UI file(s)
+======================================================================
+
+Leverage: Medium
+Risk: Medium to high
+Immediate testing: Desktop pull required
+Preferred change style: Focused patch after identifying actual owner
+
+Can accomplish:
+- Hide generation controls at verified completion
+- Restore controls when completion becomes uncertain
+- Compact complete status
+- Disable unnecessary Auto Fill work
+
+The owning file must be confirmed before implementation.
+
+======================================================================
+PRIORITY 16 — documentation and classification files
+======================================================================
+
+Files may include:
+- FILE_CLASSIFICATION_2026-07-24.md
+- Other architecture documents
+
+Leverage: Low for runtime; useful for safety
+Risk: Very low
+Immediate testing: Not applicable
+
+Can accomplish:
+- Correct tracked/generated/private classifications
+- Prevent accidental public exposure
+- Record migration decisions
+
+======================================================================
+MULTI-FILE FEATURES — DO NOT FORCE INTO ONE FILE
+======================================================================
+
+These require coordinated changes:
+- Canonical data migration
+- Generated public network copy
+- Full end-to-end abbreviation support
+- Full mobile bottom sheet
+- Shared desktop/web design system
+- Desktop mode navigation
+- Docked station inspector
+- Public construction dashboard
+- Shared construction calculations
+- Stable station IDs
+- Config example plus ignored local config
+
+======================================================================
+RECOMMENDED CURRENT ONE-FILE RUN ORDER
+======================================================================
+
+1. development/IMPLEMENTATION_AND_QA.md
+2. data/station_abbreviations.json — install the corrected mapping
+3. docs/app.js — route auto-fit
+4. docs/metro_network.json — embed corrected abbreviations
+5. docs/app.js — abbreviation search/details
+6. docs/styles.css — first MMCP pass
+7. docs/app.js — diamonds, line circles, landmark
+8. docs/app.js — semantic zoom
+9. ui_extensions.py — hide path detection
+10. README.md and classification documentation
+
+This order must be re-evaluated after every run.
+
+======================================================================
+COMPLETED FILE WORK
+======================================================================
+
+[verify] Prepared replacement data/station_abbreviations.json with:
+- Isle of Whales = IWH
+- Slimin = SLI
+- Triarchidia = TRI
+- Everly = EVL
+- Michael = MCL
+
+This file still needs to replace the repository copy before the file-level task
+is considered verified.
+
+Move file-level accomplishments here after implementation and verification.
+
+None yet.
