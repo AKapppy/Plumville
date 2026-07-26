@@ -2,6 +2,30 @@ PLUMVILLE FILE PRIORITY LIST
 
 Last revised: 2026-07-26
 
+RUN 02 VERIFIED — NEW TOP THREE FILES
+
+1. docs/app.js
+   - Move line-letter circles onto line segments.
+   - Increase ordinary diamond size.
+   - Keep junction/terminal diamonds visually primary.
+   - Improve marker contrast using map-background brightness.
+   - Fix popup bounds.
+   - Recalculate canvas and route fit on resize/orientation change.
+   - Support a custom scrollable station-suggestion UI.
+
+2. docs/styles.css
+   - Reduce excessive mobile safe-area padding.
+   - Improve responsive map height.
+   - Style custom scrollable suggestions.
+   - Support a sticky/partially persistent mobile map if selected.
+   - Refine line-shield and larger-diamond presentation.
+
+3. docs/index.html
+   - Add markup for a custom scrollable suggestion panel.
+   - Add any mobile layout structure needed for the chosen sticky-map behavior.
+
+docs/metro_network.json moves down because abbreviation enrichment is verified.
+
 PURPOSE
 
 This file ranks project files by how much useful checklist work can be
@@ -84,42 +108,7 @@ Cannot accomplish alone:
 - Canvas symbol rendering
 
 ======================================================================
-PRIORITY 3 — data/station_abbreviations.json
-======================================================================
-
-Leverage: Medium foundational value
-Risk: Very low
-Immediate testing: File validation; later web/desktop integration
-Preferred change style: Full replacement
-
-Current state:
-- A corrected replacement file has been prepared from the latest screenshots.
-- Five authoritative changes were identified:
-  - Isle of Whales: IWH
-  - Slimin: SLI
-  - Triarchidia: TRI
-  - Everly: EVL
-  - Michael: MCL
-
-Can accomplish:
-- Establish the authoritative abbreviation source
-- Correct previous mapping values
-- Support later canonical-network import
-- Avoid rebuilding the mapping during UI implementation
-
-Cannot accomplish alone:
-- Add abbr fields to station records
-- Search by abbreviation
-- Display abbreviations
-- Validate duplicates in the app
-- Export abbreviations to the public viewer
-
-Next action:
-- Replace the repository copy with the prepared file.
-- Then use it as the source when enriching canonical station records.
-
-======================================================================
-PRIORITY 4 — docs/metro_network.json
+PRIORITY 3 — docs/metro_network.json
 ======================================================================
 
 Leverage: High for data; low for behavior
@@ -147,7 +136,7 @@ Before replacement:
 - Confirm no duplicate station records were introduced
 
 ======================================================================
-PRIORITY 5 — development/IMPLEMENTATION_AND_QA.md
+PRIORITY 4 — development/IMPLEMENTATION_AND_QA.md
 ======================================================================
 
 Leverage: High for workflow and verification
@@ -168,7 +157,7 @@ Can accomplish:
 Must be updated after every implementation run.
 
 ======================================================================
-PRIORITY 6 — docs/index.html
+PRIORITY 5 — docs/index.html
 ======================================================================
 
 Leverage: Medium to high
@@ -189,7 +178,7 @@ Can accomplish:
 Cannot supply behavior or styling alone.
 
 ======================================================================
-PRIORITY 7 — ui_extensions.py
+PRIORITY 6 — ui_extensions.py
 ======================================================================
 
 Leverage: High for desktop interface
@@ -208,7 +197,7 @@ Can accomplish:
 Desktop verification must remain pending until a local pull and launch.
 
 ======================================================================
-PRIORITY 8 — legacy_core.py
+PRIORITY 7 — legacy_core.py
 ======================================================================
 
 Leverage: Extremely high
@@ -229,7 +218,7 @@ Do not use a whole-file replacement unless no safer method exists.
 The file is a large monolith and unrelated local changes are easy to overwrite.
 
 ======================================================================
-PRIORITY 9 — plumville/core/network.py
+PRIORITY 8 — plumville/core/network.py
 ======================================================================
 
 Leverage: Medium to high foundational value
@@ -249,7 +238,7 @@ Can accomplish:
 Cannot expose features in UI without consumer changes.
 
 ======================================================================
-PRIORITY 10 — plumville/paths.py (new file)
+PRIORITY 9 — plumville/paths.py (new file)
 ======================================================================
 
 Leverage: Medium foundational value
@@ -268,7 +257,7 @@ Can accomplish:
 Requires consumer files to adopt the constants before behavior changes.
 
 ======================================================================
-PRIORITY 11 — docs/smoke_test.js
+PRIORITY 10 — docs/smoke_test.js
 ======================================================================
 
 Leverage: Medium for safety
@@ -287,7 +276,7 @@ Can accomplish regression checks for:
 Tests implementation; does not create user-facing behavior.
 
 ======================================================================
-PRIORITY 12 — plumville/core/public_export.py
+PRIORITY 11 — plumville/core/public_export.py
 ======================================================================
 
 Leverage: High once data migration begins
@@ -305,7 +294,7 @@ Can accomplish:
 Requires path constants, consumers, and tests.
 
 ======================================================================
-PRIORITY 13 — metro_station_extensions.py
+PRIORITY 12 — metro_station_extensions.py
 ======================================================================
 
 Leverage: Medium to high for desktop station workflows
@@ -321,7 +310,7 @@ Can accomplish:
 - Station inspector additions
 
 ======================================================================
-PRIORITY 14 — README.md
+PRIORITY 13 — README.md
 ======================================================================
 
 Leverage: Medium documentation value
@@ -339,7 +328,7 @@ Can accomplish:
 - Desktop checkpoint workflow
 
 ======================================================================
-PRIORITY 15 — worldgen-related UI file(s)
+PRIORITY 14 — worldgen-related UI file(s)
 ======================================================================
 
 Leverage: Medium
@@ -356,7 +345,7 @@ Can accomplish:
 The owning file must be confirmed before implementation.
 
 ======================================================================
-PRIORITY 16 — documentation and classification files
+PRIORITY 15 — documentation and classification files
 ======================================================================
 
 Files may include:
@@ -394,15 +383,14 @@ RECOMMENDED CURRENT ONE-FILE RUN ORDER
 ======================================================================
 
 1. development/IMPLEMENTATION_AND_QA.md
-2. data/station_abbreviations.json — install the corrected mapping
-3. docs/app.js — route auto-fit
-4. docs/metro_network.json — embed corrected abbreviations
-5. docs/app.js — abbreviation search/details
-6. docs/styles.css — first MMCP pass
-7. docs/app.js — diamonds, line circles, landmark
-8. docs/app.js — semantic zoom
-9. ui_extensions.py — hide path detection
-10. README.md and classification documentation
+2. docs/app.js — route auto-fit
+3. docs/metro_network.json — corrected abbreviation data
+4. docs/app.js — abbreviation search/details
+5. docs/styles.css — first MMCP pass
+6. docs/app.js — diamonds, line circles, landmark
+7. docs/app.js — semantic zoom
+8. ui_extensions.py — hide path detection
+9. README.md and classification documentation
 
 This order must be re-evaluated after every run.
 
@@ -410,16 +398,12 @@ This order must be re-evaluated after every run.
 COMPLETED FILE WORK
 ======================================================================
 
-[verify] Prepared replacement data/station_abbreviations.json with:
-- Isle of Whales = IWH
-- Slimin = SLI
-- Triarchidia = TRI
-- Everly = EVL
-- Michael = MCL
-
-This file still needs to replace the repository copy before the file-level task
-is considered verified.
-
 Move file-level accomplishments here after implementation and verification.
 
 None yet.
+
+[x] docs/metro_network.json — Run 02 abbreviation enrichment
+- Valid JSON
+- All mapped named stations retain abbr fields
+- Corrected values verified
+- No stations duplicated or removed

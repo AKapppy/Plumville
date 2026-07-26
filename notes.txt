@@ -186,6 +186,33 @@ Symbol grammar:
 - Mt. Phosphagos = larger gold-outlined home diamond
 
 ======================================================================
+[info] RUN 02 USER VERIFICATION RESULTS
+
+Verified complete:
+- Public map, terrain, search, coordinate search, abbreviations, routing,
+  route instructions, route auto-fit, contextual Fit, semantic zoom,
+  MMCP styling, mobile touch targets, and network-data integrity.
+- Corrected abbreviations verified: IWH, SLI, TRI, EVL, and MCL.
+
+Still open:
+- Station/abbreviation suggestions cannot be scrolled reliably.
+- Ordinary station diamonds should be larger.
+- Junction styling is visually crowded.
+- Line-letter circles should be placed on line segments like interstate signs,
+  not clustered around stations.
+- Terminals should remain diamond-first.
+- Marker outlines should respond to the map background beneath them.
+- Shared-route URL auto-fit still needs explicit verification.
+- Mobile map height and safe-area padding are too generous on some screens.
+- Popup clamping is too conservative at the right edge and can fail at bottom.
+- Orientation/viewport changes do not reliably recalculate the canvas.
+- Decide whether the mobile map should remain visible while controls scroll.
+
+Screenshot reference:
+- Alexandropol shows the current line-circle crowding problem. The N and E
+  circles overlap the station area and each other instead of sitting cleanly
+  on their corresponding lines.
+
 MASTER CHECKLIST
 ======================================================================
 
@@ -269,21 +296,9 @@ Do not move these into tracked data/:
 A TIER — STATION ABBREVIATIONS
 ----------------------------------------------------------------------
 
-[info] Authoritative abbreviation corrections from the latest metro spreadsheet screenshots:
-- Isle of Whales: IOW → IWH
-- Slimin: SLM → SLI
-- Triarchidia: TAR → TRI
-- Everly: EVE → EVL
-- Michael: MCH → MCL
-
-[progress] A corrected replacement data/station_abbreviations.json has been prepared.
-[ ] Replace the repository copy with the corrected file.
-[ ] Propagate these corrected values into canonical station records and public exports.
-
-
 [ ] Add optional abbr fields to station records.
 [ ] Import all values from data/station_abbreviations.json.
-[ ] Confirm Slimin is always SLI.
+[ ] Confirm Slimin is always SLM.
 [ ] Preserve user-entered capitalization.
 [ ] Recommend uppercase 2–5 character abbreviations.
 [ ] Allow letters and numbers.
@@ -532,6 +547,21 @@ D TIER — EDITING DIALOGS
 [ ] Do not combine station-identity redesign with visual redesign.
 
 ----------------------------------------------------------------------
+RUN 02 FOLLOW-UP ITEMS
+----------------------------------------------------------------------
+
+[ ] Replace native/non-scrollable station suggestions with a reliably scrollable suggestion list.
+[ ] Increase ordinary public station-diamond size.
+[ ] Keep station diamonds visually primary at junctions and terminals.
+[ ] Place public line-letter circles on line segments like interstate route shields.
+[ ] Prevent multiple line circles from crowding or covering junction diamonds.
+[ ] Choose public line-marker outlines from underlying map brightness.
+[ ] Explicitly verify shared-route URL auto-fit.
+[ ] Recalculate canvas size and route fit after resize/orientation changes.
+[ ] Reduce excessive mobile safe-area and map-height margins.
+[ ] Improve popup clamping near right and bottom viewport edges.
+[ ] Decide whether the mobile map should remain visible while controls scroll.
+
 E TIER — PUBLIC DESKTOP WEB
 ----------------------------------------------------------------------
 
@@ -856,4 +886,13 @@ NON-NEGOTIABLE RULES
 - Do not silently overwrite abbreviations.
 - Do not treat implementation as verification.
 - Do not mark desktop work complete before local pull/test.
-[x] Reconciled the station-abbreviation source with the latest spreadsheet screenshots and generated a corrected replacement mapping file. Repository replacement and station-record propagation remain pending.
+
+[x] Public docs Run 02 verified:
+- Route auto-fit and contextual Fit
+- Abbreviation search and route input support
+- Abbreviations in popups, tooltips, and network data
+- First MMCP web styling pass
+- Mt. Phosphagos landmark treatment
+- Semantic zoom behavior
+- Mobile touch sizing and three-column line toggles
+- JSON and network integrity
