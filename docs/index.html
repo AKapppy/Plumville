@@ -18,7 +18,7 @@
       property="og:url"
       content="https://akapppy.github.io/Plumville/"
     >
-    <link rel="stylesheet" href="styles.css?v=20260726-run03">
+    <link rel="stylesheet" href="styles.css?v=20260726-run04">
   </head>
   <body>
     <main class="viewer-shell">
@@ -78,11 +78,14 @@
             >
             <span>Suggested walking paths</span>
           </label>
-          <div
-            id="lineLegend"
-            class="line-legend"
-            aria-label="Line visibility"
-          ></div>
+          <details class="line-filter-section">
+            <summary>Lines</summary>
+            <div
+              id="lineLegend"
+              class="line-legend"
+              aria-label="Line visibility"
+            ></div>
+          </details>
         </section>
 
         <details class="collapsible-section" open>
@@ -195,6 +198,6 @@
       hidden
     ></div>
 
-    <script src="app.js?v=20260726-run03" defer></script>
+    <script src="app.js?v=20260726-run04" defer></script>
   </body>
 </html>

@@ -1,898 +1,262 @@
-PLUMVILLE TRACKER MAINTENANCE RULES
-
-These rules are mandatory after every implementation run:
-
-1. Update this notes.txt checklist.
-2. Keep active, blocked, ready-to-test, and deferred work above completed work.
-3. Move completed and verified checklist items to the final COMPLETED ITEMS section.
-4. Do not mark an item complete merely because code was written.
-5. Update file_priority.txt to reflect:
-   - Remaining work
-   - Newly completed work
-   - New dependencies
-   - Changed risk
-   - Which file now offers the most useful next implementation slice
-6. Update development/IMPLEMENTATION_AND_QA.md when it exists.
-7. Re-output notes.txt and file_priority.txt after each implementation run.
-8. Treat the repository copies of these files as the source of truth across chats.
-9. Preserve prior decisions unless the user explicitly changes them.
-10. Record abbreviation changes in both the canonical abbreviation data and the checklist.
-
-Current tracker files:
-- notes.txt
-- file_priority.txt
-- development/IMPLEMENTATION_AND_QA.md
-
-======================================================================
-
 PLUMVILLE DEVELOPMENT NOTES AND ROADMAP
 
-Last revised: 2026-07-26
+Last revised: 2026-07-27
 
 PURPOSE
 
-This is the authoritative Codex-ready roadmap for Plumville. It contains current project context, active work, planned work, deferred work, safety rules, testing expectations, and manual QA guidance.
+This is the authoritative Codex-ready roadmap for Plumville.
 
-Completed and verified work should be removed from this file. Git already preserves history.
+Mandatory after every implementation run:
+- Update this checklist.
+- Update file_priority.txt.
+- Keep active, blocked, ready-to-test, and deferred items above completed work.
+- Move completed and verified work to the final COMPLETED ITEMS section.
+- Do not mark implementation complete before the relevant QA passes.
+- Record web, mobile, desktop, and automated verification separately.
+- Re-output notes.txt and file_priority.txt after every implementation run.
 
 STATUS LEGEND
 
-[ ] Not started or not complete
-[progress] Started but not complete
-[ready-web] Ready for desktop-browser testing
-[ready-mobile] Ready for phone/mobile-browser testing
-[desktop-pending] Implemented but waiting for a VS Code pull and desktop verification
-[verify] Fix applied and awaiting confirmation
-[blocked] Waiting on another change or missing information
-[x] Fully implemented and verified
+[ ] Not started
+[progress] Partially implemented
+[ready-web] Ready for desktop-browser verification
+[ready-mobile] Ready for mobile verification
+[desktop-pending] Waiting for desktop application pull and testing
+[verify] Implemented but not yet verified
+[blocked] Blocked
+[x] Implemented and verified
 [deferred] Intentionally postponed
-[info] Reference information, not a task
-
-A feature is not complete merely because code was written. Web, mobile, desktop, and automated-test verification must be tracked separately where relevant.
+[info] Reference information
 
 ======================================================================
-PROJECT PURPOSE
+CURRENT IMPLEMENTATION STATUS
 ======================================================================
 
-Plumville is a Minecraft Bedrock transportation, planning, navigation, and construction-tracking project.
+[verify] Public docs Run 04 is prepared but not yet fully verified.
 
-It has three active areas:
+Run 04 affects:
+- docs/app.js
+- docs/styles.css
+- docs/index.html
 
-1. Desktop application
-   - Private authoring and administration tool.
-   - Runs locally on macOS.
-   - Has full editing access.
-   - May use private local data, worldgen tools, diagnostics, and ignored runtime state.
+Run 04 v3 includes:
+- Mobile map forced above the controls
+- Sticky mobile map
+- Native pinch zoom and pinch-pan
+- Defensive resize/orientation handling
+- Midpoint/visible-midpoint line shields
+- Abbreviation-first label placement
+- Named/unnamed suggestion grouping
+- Cache-busting asset references
 
-2. Public web application
-   - Read-only visitor/helper guide hosted from docs/ through GitHub Pages.
-   - Used to view the map, search stations and coordinates, find directions, copy coordinates, understand route availability, and see selected construction information.
-   - Must never expose private desktop data or editing controls.
+Run 04 sidebar addendum includes:
+- Collapsed-by-default Lines disclosure
+- Circle-only line controls
+- No visible line checkboxes
+- No redundant text beside line circles
+- Saturated visible state
+- Dimmed/desaturated hidden state
+- Accessible pressed-state buttons
+- Preserved routing and share-link behavior
 
-3. Worldgen/backend
-   - Local Minecraft Bedrock world generation, rendering, cache, and terrain-underlay tooling.
-   - Uses Docker/LAN workflows.
-   - Large generated files remain local and ignored.
-
-The world normally has no more than about four active players. This is practical navigation and construction coordination, not real-world transit-capacity modeling.
-
-Keep the A-Z line naming system. Do not rename existing lines or stations during structural, performance, or UI work unless explicitly requested.
-
-======================================================================
-AUTHORITATIVE WORKSPACE AND CODEX RULES
-======================================================================
-
-The local VS Code workspace is the authoritative complete development copy.
-
-The GitHub repository is the authoritative tracked source, but intentionally excludes world files, generated worldgen data, local caches, runtime state, history snapshots, backups, node_modules, virtual environments, credentials, and other large/private files.
-
-Whenever Codex works on Plumville:
-
-- Inspect the actual local VS Code workspace before editing.
-- Run git status first.
-- Preserve all uncommitted, untracked, and gitignored work.
-- Do not reset, checkout over, delete, regenerate, or overwrite unrelated work.
-- Do not remove ignored files.
-- Do not expose private local data in tracked/public locations.
-- Do not commit, push, create branches, open pull requests, or change GitHub settings unless explicitly requested.
-- Make focused, integrated changes.
-- Do not create parallel replacement systems without a documented migration path.
-- Prefer small, testable slices.
-- Report every file created, moved, deleted, or modified.
-- Report exact commands and test results.
-- Identify manual-review items clearly.
-- Keep code lines reasonably short where practical.
-- Preserve current functionality, visuals, Docker behavior, and LAN behavior unless the task explicitly changes them.
-- Never expose private paths, credentials, world files, caches, backups, diagnostics, local usernames, desktop-only state, or internal history data in docs/ or public exports.
-
-The user can usually test web and mobile changes immediately. Desktop changes should be grouped into meaningful pull checkpoints because the user does not plan to pull after every small change.
+[info] Failed updater attempts:
+- Run 04 v1 failed before writing files because an exact block did not match.
+- Run 04 v2 failed before writing files because blank lines broke the indentation matcher.
+- Run 04 v3 corrects those matcher problems.
+- No production docs file was changed by the failed attempts.
 
 ======================================================================
-PUBLIC / PRIVATE RULES
+RUN 04 ACTIVE VERIFICATION ITEMS
 ======================================================================
 
-Desktop = authoring, editing, maintenance, world generation, diagnostics, administration.
+MOBILE MAP ORDER
 
-Web = read-only viewing, visitor directions, coordinates, public construction information, and helper tools.
+[ready-mobile] Render the mobile map above the controls.
+[ready-mobile] Keep the map sticky while controls scroll.
+[ready-mobile] Prevent duplicate or empty map space at the bottom.
+[ready-mobile] Preserve top-first map order in portrait and landscape.
+[ready-mobile] Keep safe-area spacing present but restrained.
 
-Desktop may contain station/line/path editing, private notes, runtime diagnostics, worldgen controls, undo/history, private export tools, and experimental tools.
+TOUCH GESTURES
 
-Public web may contain read-only station information, read-only route planning, public coordinates, public construction status, public line visibility, shareable searches/routes/tasks, visitor-friendly warnings, and sanitized terrain metadata.
+[ready-mobile] Add two-finger pinch zoom.
+[ready-mobile] Add pinch-pan around the gesture midpoint.
+[ready-mobile] Preserve one-finger panning.
+[ready-mobile] Preserve one-finger station selection.
+[ready-mobile] Prevent accidental selection after a pinch.
+[ready-mobile] Preserve +, −, and Fit controls.
+
+RESIZE AND ORIENTATION
+
+[ready-web] Prevent blank canvas after live desktop resize.
+[ready-mobile] Prevent blank canvas after orientation changes.
+[ready-mobile] Refit active routes after viewport changes.
+[ready-web] Preserve map center when appropriate.
+[ready-mobile] Ignore temporary near-zero layout measurements.
+[ready-mobile] Reposition selected popups after resize.
+[ready-mobile] Handle browser-toolbar expansion and collapse.
+
+LINE SHIELDS
+
+[ready-web] Place line circles at the midpoint of the visible track segment.
+[ready-web] Use full segment midpoint as fallback.
+[ready-web] Keep circles on the actual polyline through turns.
+[ready-web] Keep station diamonds visually primary.
+[ready-web] Separate Alexandropol’s N and E circles from its diamond.
+[ready-web] Avoid circle/circle and circle/station overlap where possible.
+[x] Use background-aware light/dark marker outlines.
+[x] Keep line letters upright.
+
+LABEL PRIORITY
+
+[ready-web] Prefer abbreviations before full names at world/regional zoom.
+[ready-web] Prefer a normal-position abbreviation over a moved full name.
+[ready-web] Use ALX for Alexandropol when the full name would be displaced.
+[ready-web] Restore full names at close zoom.
+[x] Preserve Mt. Phosphagos priority.
+[x] Preserve selected-station and route-endpoint priority.
+
+SUGGESTIONS
+
+[x] Replace the native/non-scrollable suggestions with a custom scrollable list.
+[x] Support mouse, trackpad, touch, and keyboard interaction.
+[x] Support full names, abbreviations, and internal codes.
+[ready-web] Group blank suggestions into Named stations and Unnamed stations.
+[ready-web] Sort named stations alphabetically.
+[ready-web] Sort unnamed stations alphabetically/numerically.
+[ready-web] Keep group headings out of filtered results.
+
+SHOW/HIDE LINE CONTROLS
+
+[ready-web] Add a collapsed-by-default Lines disclosure.
+[ready-web] Remove visible checkboxes.
+[ready-web] Remove redundant text outside line circles.
+[ready-web] Use circle-only pressed-state buttons.
+[ready-web] Use saturated-on styling.
+[ready-web] Use dimmed/desaturated-off styling.
+[ready-web] Preserve active-route replanning after toggling a line.
+[ready-web] Preserve shared visible-line URL state.
+[ready-mobile] Keep line buttons finger-friendly.
+[ready-web] Preserve keyboard and screen-reader accessibility.
+
+POPUPS
+
+[x] Improve popup clamping near viewport edges.
+[x] Keep bottom-edge popups onscreen.
+[x] Keep right-edge popups onscreen.
+[ready-mobile] Reposition popups correctly after orientation changes.
+
+ROUTING
+
+[x] Public route auto-fit.
+[x] Contextual Fit behavior.
+[x] Short-route zoom protection.
+[x] Swap and line-visibility replanning.
+[x] Shared-route restoration and auto-fit.
+[x] Abbreviation route resolution.
+[ready-mobile] Refit an active route after rotation and viewport changes.
 
 ======================================================================
-CURRENT ARCHITECTURE
+NEXT IMPLEMENTATION AFTER RUN 04 VERIFICATION
 ======================================================================
 
-[info] Important current paths:
-- docs/
-- tests/
-- scripts/
-- tools/
-- worldgen/
-- plumville/
-- legacy_core.py
-- metro_stops.py
-- plumville_app.py
-- ui_extensions.py
-- metro_station_extensions.py
-- path_detection.py
-- data/station_abbreviations.json
-- data/mockups/
-
-[info] Current network location:
-- docs/metro_network.json
-
-[info] Target canonical network location:
-- data/metro_network.json
-
-[info] Target public generated location:
-- docs/data/metro_network.json
-
-[info] The desktop and public viewer currently rely on docs/metro_network.json.
-
-[info] Path detection is effectively abandoned as a normal feature. Preserve saved paths and ignored local state, hide the UI, and do not spend redesign time repairing it unless explicitly requested.
-
-[info] Water/coastline work is lowest priority and must not shape the current architecture.
+[ ] Re-rank docs/app.js, docs/styles.css, and docs/index.html after QA.
+[ ] Move verified Run 04 items to COMPLETED ITEMS.
+[ ] Keep failed or visually imperfect Run 04 items active.
+[ ] Decide the next public slice:
+    - Mobile bottom navigation and sheet
+    - Public construction dashboard foundation
+    - Additional semantic-zoom refinement
+[ ] Do not begin a new large public feature until Run 04 regressions are resolved.
 
 ======================================================================
-DESIGN DIRECTION
+BROADER PROJECT CHECKLIST
 ======================================================================
 
-MMCP = Modern Minecraft Control Panel.
-
-Visual direction:
-- Dark charcoal and near-black base
-- Crisp rectangles and very small radii
-- Subtle Minecraft-inspired borders/textures
-- Modern readable body type
-- Pixel-inspired headings, badges, coordinates, and short accents
-- Metro colors as dominant identity colors
-- Minimal gradients
-- Strong contrast
-- Compact but not cramped spacing
-
-State colors:
-- Emerald green = success/open/complete
-- Gold = warning/landmark
-- Redstone red = error/destructive
-- Diamond blue = focus/selection
-- Purple and gold = Mt. Phosphagos
-
-Symbol grammar:
-- Circle = line
-- Diamond = station/place
-- Larger/double-outline diamond = junction
-- Terminal = station diamond plus line circle
-- Mt. Phosphagos = larger gold-outlined home diamond
-
-======================================================================
-[info] RUN 02 USER VERIFICATION RESULTS
-
-Verified complete:
-- Public map, terrain, search, coordinate search, abbreviations, routing,
-  route instructions, route auto-fit, contextual Fit, semantic zoom,
-  MMCP styling, mobile touch targets, and network-data integrity.
-- Corrected abbreviations verified: IWH, SLI, TRI, EVL, and MCL.
-
-Still open:
-- Station/abbreviation suggestions cannot be scrolled reliably.
-- Ordinary station diamonds should be larger.
-- Junction styling is visually crowded.
-- Line-letter circles should be placed on line segments like interstate signs,
-  not clustered around stations.
-- Terminals should remain diamond-first.
-- Marker outlines should respond to the map background beneath them.
-- Shared-route URL auto-fit still needs explicit verification.
-- Mobile map height and safe-area padding are too generous on some screens.
-- Popup clamping is too conservative at the right edge and can fail at bottom.
-- Orientation/viewport changes do not reliably recalculate the canvas.
-- Decide whether the mobile map should remain visible while controls scroll.
-
-Screenshot reference:
-- Alexandropol shows the current line-circle crowding problem. The N and E
-  circles overlap the station area and each other instead of sitting cleanly
-  on their corresponding lines.
-
-MASTER CHECKLIST
-======================================================================
-
-----------------------------------------------------------------------
-S TIER — SAFETY, WORKFLOW, AND TRACKING
-----------------------------------------------------------------------
-
-[ ] Confirm GitHub matches the intended tracked local starting point.
-[ ] Keep world files, caches, history, backups, dependencies, and runtime state ignored.
-[ ] Make each major phase a focused development round or commit.
-[ ] Preserve all current entry points.
-[ ] Add or maintain focused tests for each feature.
-[ ] Run complete Python and Node tests at pull checkpoints.
-[ ] Maintain development/IMPLEMENTATION_AND_QA.md.
-[ ] Track web, mobile, and desktop verification separately.
-[ ] Keep desktop-only verification pending until a planned pull checkpoint.
-[ ] Update this file after each completed phase.
-[ ] Remove fully completed and verified tasks from this file.
-[ ] Do not mark a feature complete solely because implementation exists.
-
-The QA tracker should include:
-- Current development round
-- Files changed
-- Web checks available now
-- Mobile checks available now
-- Desktop checks waiting for next pull
-- Automated checks
-- Open issues
-- Fixes awaiting confirmation
-- Next planned work
-- Pull-checkpoint guidance
-
-----------------------------------------------------------------------
-A TIER — DATA ARCHITECTURE
-----------------------------------------------------------------------
+DATA ARCHITECTURE
 
 [ ] Make data/ the canonical tracked application-data folder.
-[ ] Move editable network data to data/metro_network.json.
+[ ] Move editable metro data to data/metro_network.json.
 [ ] Generate sanitized public data at docs/data/metro_network.json.
-[ ] Do not let canonical and public copies be edited independently.
-[ ] Add a shared path module, likely plumville/paths.py or plumville/core/paths.py.
+[ ] Add a shared path module.
+[ ] Migrate desktop readers and writers.
+[ ] Add drift detection.
+[ ] Keep public exports sanitized.
 
-Suggested constants:
-- REPO_ROOT
-- DATA_DIR
-- CANONICAL_NETWORK_PATH
-- PUBLIC_DATA_DIR
-- PUBLIC_NETWORK_PATH
-- STATION_ABBREVIATIONS_PATH
-- PRIORITY_LIST_PATH
-- METRO_LINES_PATH
-- EXPORTS_DIR
-- HISTORY_DIR
-- BACKUP_PATH
+STATION ABBREVIATIONS
 
-[ ] Migrate desktop reads/writes to data/metro_network.json.
-[ ] Keep docs/metro_network.json temporarily during migration.
-[ ] Add a public export/sync step.
-[ ] Update docs/app.js to load docs/data/metro_network.json.
-[ ] Update validators, previews, smoke tests, scripts, tests, and README.
-[ ] Add drift detection between canonical and public data.
-[ ] Ensure public export includes only approved fields.
-[ ] Move other appropriate tracked data into data/, likely metro_lines.txt and priority_list.csv.
+[x] Correct data/station_abbreviations.json.
+[x] Correct IWH, SLI, TRI, EVL, and MCL.
+[x] Add abbreviations to public network records.
+[x] Public abbreviation search.
+[x] Public abbreviation route resolution.
+[x] Public abbreviation display.
+[x] Public semantic-zoom abbreviation fallback.
+[ ] Add desktop abbreviation editing.
+[ ] Add duplicate warnings in desktop.
+[ ] Preserve abbreviations through desktop history and rename workflows.
+[ ] Add canonical public-export support after data migration.
 
-Do not move these into tracked data/:
-- worldgen_data/
-- worldgen_output/
-- .worldgen/
-- exports/
-- metro_network.history/
-- metro_network.last.json
-- path_detection_state.json
-- node_modules/
-- Minecraft world files
-- caches
-- backups
-- logs
-- credentials
+DESKTOP APPLICATION
 
-----------------------------------------------------------------------
-A TIER — STATION ABBREVIATIONS
-----------------------------------------------------------------------
-
-[ ] Add optional abbr fields to station records.
-[ ] Import all values from data/station_abbreviations.json.
-[ ] Confirm Slimin is always SLM.
-[ ] Preserve user-entered capitalization.
-[ ] Recommend uppercase 2–5 character abbreviations.
-[ ] Allow letters and numbers.
-[ ] Never silently overwrite abbreviations.
-[ ] Warn about duplicates.
-[ ] Permit deliberate duplicates only with confirmation.
-[ ] Preserve abbreviations through load, save, undo, history, rename, line changes, public export, and rendering.
-[ ] Add abbreviation fields to station creation/editing.
-[ ] Add live preview and editable suggestions.
-[ ] Search by label, display label, abbreviation, internal code, and supported var suffix.
-[ ] Add abbreviations to desktop/public route inputs and suggestions.
-[ ] Display abbreviations in station details.
-[ ] Use abbreviations as semantic-zoom fallbacks.
-[ ] Keep line circles line-only.
-[ ] Add validation and regression tests.
-
-Target record:
-
-{
-  "var": "P_ABCDE",
-  "lbl": "Blackport",
-  "abbr": "BKP",
-  "x": 294,
-  "y": 390
-}
-
-----------------------------------------------------------------------
-A TIER — ROUTE AUTO-FIT
-----------------------------------------------------------------------
-
-[ ] Calculate route bounds from endpoints and every route path point.
-[ ] Automatically fit routes in desktop.
-[ ] Automatically fit routes in web.
-[ ] Add persistent Fit Route actions in desktop, web, and mobile.
-[ ] Refit after calculation, swap, line-visibility replanning, URL restoration, route-option changes, and task routing.
-[ ] Preserve route highlighting when the user pans away.
-[ ] Add comfortable padding.
-[ ] Prevent short routes from zooming absurdly close.
-[ ] Add minimum visible span and maximum route-fit zoom.
-[ ] Account for desktop sidebar.
-[ ] Account for future inspector.
-[ ] Account for future mobile bottom sheet and safe areas.
-[ ] Keep route endpoints visible.
-[ ] Add tests for long, short, same-station, transfer, multi-step, URL-restored, and replanned routes.
-
-----------------------------------------------------------------------
-A TIER — WORLDGEN COMPLETION
-----------------------------------------------------------------------
-
-[ ] Determine completion from reliable backend/render metadata.
-[ ] Hide normal generation controls at verified 100%.
-[ ] Show a compact “World map complete” status.
-[ ] Safely stop, cancel, or disable pending generation work.
-[ ] Disable Auto Fill when no valid targets remain.
-[ ] Preserve terrain visibility, validation, export, status, and map display.
-[ ] Restore generation controls if bounds change, completion drops, render is invalid, cache is uncertain, metadata is missing, map area expands, or targets remain.
-[ ] Add complete/incomplete/unknown/invalid tests.
-
-----------------------------------------------------------------------
-A TIER — PATH DETECTION
-----------------------------------------------------------------------
-
+[ ] Desktop route auto-fit.
+[ ] Desktop Fit Route action.
+[ ] Hide completed worldgen controls.
 [ ] Hide path detection from normal UI.
-[ ] Do not present it as a working feature.
-[ ] Preserve saved paths and ignored state.
-[ ] Optionally place it under Advanced → Experimental with a warning.
-[ ] Remove or hide broken normal-workflow controls.
-[ ] Do not repair it during redesign.
-[ ] Remove no-op patches only after checking callers.
-[deferred] Later choose salvage, replacement, or retirement.
+[ ] Add Explore, Directions, Construction, Edit, World, and Advanced modes.
+[ ] Add docked station inspector.
+[ ] Restyle station editing dialogs.
+[ ] Add desktop abbreviation fields and live preview.
 
-----------------------------------------------------------------------
-B TIER — MMCP DESIGN SYSTEM
-----------------------------------------------------------------------
+CONSTRUCTION
 
-[ ] Define shared colors, spacing, borders, radii, typography, shadows, focus rings, states, icons, panel sizes, and safe-area spacing.
-[ ] Create equivalent Tk helpers and web CSS variables.
-[ ] Use near-black/charcoal surfaces.
-[ ] Use subtle raised/inset Minecraft-inspired borders.
-[ ] Use crisp rectangular geometry and restrained detail.
-[ ] Use a 4 px or 8 px spacing rhythm.
-[ ] Define default, hover, pressed, selected, focused, disabled, warning, success, danger, loading, and experimental states.
-[ ] Use modern body typography and pixel-inspired accents.
-[ ] Create a consistent icon set.
-[ ] Apply the same language across desktop and web where practical.
-[ ] Restyle a representative control set first.
-[ ] Validate contrast, focus, keyboard navigation, touch targets, labels, and motion restraint.
+[ ] Shared construction calculations.
+[ ] Sanitized public construction contract.
+[ ] Public construction dashboard.
+[ ] Desktop construction administration view.
+[ ] Shareable public construction tasks.
 
-----------------------------------------------------------------------
-C TIER — LINE CIRCLES
-----------------------------------------------------------------------
+STRUCTURAL CLEANUP
 
-[ ] Use circles exclusively for metro lines.
-[ ] Fill with configured line color.
-[ ] Center line letter.
-[ ] Auto-select black/white text for contrast.
-[ ] Add thin contrasting outline.
-[ ] Keep size screen-stable while zooming.
-[ ] Keep letters upright.
-[ ] Add accessible web labels.
-[ ] Use consistently in map terminals, junction clusters, legends, visibility controls, station details, route instructions, construction views, line selectors, dialogs, inspector, and mobile sheets.
+[ ] Remove obsolete no-op shim calls after caller verification.
+[ ] Update README.
+[ ] Update file-classification documentation.
+[ ] Continue tested extraction from legacy_core.py.
+[ ] Extract network mutation logic.
+[ ] Move station dialogs into a desktop module.
+[ ] Consider local ignored worldgen config plus tracked example config.
 
-----------------------------------------------------------------------
-C TIER — STATION DIAMONDS
-----------------------------------------------------------------------
+PERFORMANCE
 
-[ ] Replace ordinary station circles with diamonds.
-[ ] Add contrasting outline.
-[ ] Improve selection hit areas.
-[ ] Use larger/double-outline diamonds for junctions.
-[ ] Use station diamond plus adjacent line circle for terminals.
-[ ] Add focus rings for selected/searched stations.
-[ ] Prioritize route endpoints.
-[ ] Keep symbol meaning consistent across desktop/web.
-
-----------------------------------------------------------------------
-C TIER — MT. PHOSPHAGOS
-----------------------------------------------------------------------
-
-[ ] Use a larger station diamond.
-[ ] Add gold outer outline.
-[ ] Add home/bed/roof glyph.
-[ ] Preserve purple line identity.
-[ ] Keep full name visible at normal zoom.
-[ ] Give highest normal label priority.
-[ ] Repeat purple/gold treatment in details and route results.
-[ ] Add specific rendering test.
-
-----------------------------------------------------------------------
-C TIER — SEMANTIC ZOOM
-----------------------------------------------------------------------
-
-[ ] Define full-world, regional, and close zoom categories.
-
-Full-world:
-- Always show Mt. Phosphagos, junctions, terminals, selected/searched stations, route endpoints, and major hubs.
-- Show many named stations.
-- Hide unnamed/minor/edit handles.
-- Prefer full names, then abbreviations, then hide only if both fail.
-
-Regional:
-- Show all named stations where practical.
-- Show junctions, terminals, most line circles, and route detail.
-- Prefer full names; use abbreviations on collision.
-
-Close:
-- Show all stations, labels, paths, entrances, city boundaries, and editing handles.
-
-[ ] Add priority ordering.
-[ ] Add candidate positions: upper-right, lower-right, upper-left, lower-left, above, below.
-[ ] Add collision detection against markers, labels, route lines, metro lines, viewport edges, popups, and mobile sheets.
-[ ] Keep first implementation generous.
-[ ] Reduce opening mobile density more than desktop.
-[ ] Test against the full network.
-
-----------------------------------------------------------------------
-D TIER — DESKTOP WORKSPACE
-----------------------------------------------------------------------
-
-[ ] Replace endless sidebar with Explore, Directions, Construction, Edit, World, and Advanced modes.
-[ ] Show one organized mode panel at a time.
-[ ] Preserve selection and working commands.
-[ ] Use structured cards instead of one huge accordion.
-[ ] Put experimental/deprecated tools only in Advanced.
-[ ] Hide generation controls from World mode when complete.
-
-Explore:
-[ ] Station/abbreviation search
-[ ] Coordinate lookup
-[ ] Layers
-[ ] Line visibility
-[ ] Map controls
-[ ] Selected-place summary
-
-Directions:
-[ ] From/To
-[ ] Swap
-[ ] Route options
-[ ] Route results
-[ ] Fit Route
-[ ] Clear
-[ ] Stops/transfers/distance/time
-[ ] Line circles
-[ ] Construction warnings
-
-Construction:
-[ ] Network progress
-[ ] Per-line progress
-[ ] Frontiers
-[ ] Help-needed tasks
-[ ] Checklist summaries
-[ ] Desktop administration
-
-Edit:
-[ ] Station editing
-[ ] Line editing
-[ ] Path editing
-[ ] POIs
-[ ] City limits
-[ ] Alignment
-[ ] No normal path-detection workflow
-
-World:
-[ ] Terrain visibility
-[ ] Completion/render status
-[ ] Export/validation
-[ ] Generation only while incomplete
-
-Advanced:
-[ ] Experimental/deprecated tools
-[ ] Diagnostics
-[ ] Developer details
-
-----------------------------------------------------------------------
-D TIER — DOCKED STATION INSPECTOR
-----------------------------------------------------------------------
-
-[ ] Replace floating station panel with collapsible right inspector.
-[ ] Keep map interactive.
-[ ] Account for width during route fitting.
-[ ] Add Overview, Construction, Lines, Signs, and Actions sections.
-[ ] Show station diamond, name, abbreviation, coordinates, status, lines, adjacent stations, and travel times.
-[ ] Show construction/checklist details.
-[ ] Show line membership and terminal/junction status.
-[ ] Keep sign preview.
-[ ] Add Route From Here / Route To Here.
-[ ] Separate destructive actions in a danger area.
-
-----------------------------------------------------------------------
-D TIER — EDITING DIALOGS
-----------------------------------------------------------------------
-
-[ ] Restyle Add Station, Switch Line, naming, and related dialogs.
-[ ] Add abbreviation fields.
-[ ] Add line circles beside choices.
-[ ] Improve hierarchy, spacing, actions, validation, and live previews.
-[ ] Use guided steps for complex flows:
-1. Location
-2. Line action
-3. Position/order
-4. Name and abbreviation
-5. Preview
-6. Confirm
-
-[ ] Be careful because station vars currently encode line membership in places.
-[ ] Do not combine station-identity redesign with visual redesign.
-
-----------------------------------------------------------------------
-RUN 02 FOLLOW-UP ITEMS
-----------------------------------------------------------------------
-
-[ ] Replace native/non-scrollable station suggestions with a reliably scrollable suggestion list.
-[ ] Increase ordinary public station-diamond size.
-[ ] Keep station diamonds visually primary at junctions and terminals.
-[ ] Place public line-letter circles on line segments like interstate route shields.
-[ ] Prevent multiple line circles from crowding or covering junction diamonds.
-[ ] Choose public line-marker outlines from underlying map brightness.
-[ ] Explicitly verify shared-route URL auto-fit.
-[ ] Recalculate canvas size and route fit after resize/orientation changes.
-[ ] Reduce excessive mobile safe-area and map-height margins.
-[ ] Improve popup clamping near right and bottom viewport edges.
-[ ] Decide whether the mobile map should remain visible while controls scroll.
-
-E TIER — PUBLIC DESKTOP WEB
-----------------------------------------------------------------------
-
-[ ] Apply MMCP system.
-[ ] Keep map central.
-[ ] Use station diamonds and line circles.
-[ ] Add route auto-fit and Fit Route.
-[ ] Improve search and route hierarchy.
-[ ] Improve station details:
-- Name
-- Abbreviation
-- Coordinates
-- Status
-- Railway checklist
-- Lines
-- Adjacent travel
-- Construction summary
-
-[ ] Improve A-Z visibility controls.
-[ ] Add All, Open only, and Hide all.
-[ ] Optionally add line search/filter.
-[ ] Preserve shareable visible-line state, routes, searches, and coordinates.
-[ ] Use abbreviations in crowded views.
-[ ] Keep visitor-friendly errors and console-only technical details.
-
-----------------------------------------------------------------------
-E TIER — MOBILE
-----------------------------------------------------------------------
-
-[ ] Replace stacked desktop layout with full-screen map.
-[ ] Add floating search, zoom, Fit Route, and compact status.
-[ ] Add Map, Directions, Construction, More bottom navigation.
-[ ] Add draggable collapsed/medium/full bottom sheet.
-[ ] Put search, station details, route instructions, line filters, and construction tasks in the sheet.
-[ ] Fit routes above the visible sheet.
-[ ] Allow tapping map to collapse sheet.
-[ ] Preserve selection across sheet states.
-[ ] Respect safe areas and enlarge touch targets.
-[ ] Reduce opening label density.
-[ ] Test narrow/large phones, portrait, landscape, browser toolbar states, and route-with-sheet behavior.
-
-----------------------------------------------------------------------
-F TIER — CONSTRUCTION MODEL
-----------------------------------------------------------------------
-
-[ ] Define shared calculations for total/open/planned stations, railway distance by status, per-line completion, checklists, frontiers, unnamed placeholders, public tasks, nearest usable station, and travel time.
-[ ] Keep routing availability, checklist completion, and construction status separate.
-[ ] Preserve dotted/dashed = unfinished/unbuilt/unconnected and solid = complete/open.
-
-----------------------------------------------------------------------
-F TIER — PUBLIC CONSTRUCTION CONTRACT
-----------------------------------------------------------------------
-
-[ ] Add sanitized public_construction structure with summary, lines, and tasks.
-[ ] Permit counts, percentages, public status, coordinates, line names, station names/abbreviations, public descriptions, route references, nearest open station, and public priorities.
-[ ] Exclude private notes, internal weights, diagnostics, cache/backup paths, editing state, history, undo state, usernames, world details, and credentials.
-
-----------------------------------------------------------------------
-F TIER — PUBLIC CONSTRUCTION DASHBOARD
-----------------------------------------------------------------------
-
-[ ] Show network totals, overall completion, per-line progress, help-needed tasks, task type/priority, coordinates, nearest station, and travel time.
-[ ] Add filters by line, type, priority, status, and proximity.
-[ ] Highlight selected task on map.
-[ ] Provide route to task.
-[ ] Add shareable task links.
-
-----------------------------------------------------------------------
-F TIER — DESKTOP CONSTRUCTION VIEW
-----------------------------------------------------------------------
-
-[ ] Use shared calculations.
-[ ] Add editing controls and status changes.
-[ ] Show private notes/internal details.
-[ ] Link to station, segment, path, checklist, signs, and chimes editors.
-
-----------------------------------------------------------------------
-G TIER — STRUCTURAL CLEANUP
-----------------------------------------------------------------------
-
-[ ] Remove obsolete no-op shim imports/calls from ui_extensions.py after verifying callers.
-[ ] Remove no-op path-detection refresh-stats patch after verifying callers.
-[ ] Update README for desktop, worldgen, and public web.
-[ ] Update stale file-classification report.
-[ ] Continue behavior-preserving extraction from legacy_core.py.
-[ ] Extract station/line mutation logic to plumville/core/network_editing.py.
-[ ] Move station dialogs to plumville/desktop/station_editor.py.
-[ ] Reduce ui_extensions.py to explicit coordination/compatibility.
-[ ] Keep shims until callers are migrated and tests pass.
-[ ] Consider splitting docs/app.js only after regression coverage improves.
-[ ] Consider tracked worldgen_config.example.toml plus ignored local worldgen_config.toml.
-[ ] Never expose local config values publicly.
-[ ] Do not combine cleanup and visual redesign in one uncontrolled change.
-
-----------------------------------------------------------------------
-H TIER — PERFORMANCE
-----------------------------------------------------------------------
-
-Measure before optimizing.
-
-Desktop:
-[ ] Startup
-[ ] Initial render
-[ ] Full redraw
-[ ] Panning
-[ ] Zooming
-[ ] Labels
-[ ] Routing
-[ ] Route fitting
-[ ] Editing
-[ ] Saving/history
-
-Web:
-[ ] Data loading
-[ ] Initial render
-[ ] Panning
-[ ] Zooming
-[ ] Labels
-[ ] Hit testing
-[ ] Routing
-[ ] Route fitting
-[ ] Mobile sheet interaction
-
-Potential measured improvements:
-[ ] Cache transformed geometry.
-[ ] Cache label layouts by zoom/viewport.
-[ ] Avoid off-screen rendering.
-[ ] Separate static and interaction layers.
-[ ] Avoid full redraws for small desktop edits.
-[ ] Avoid map rerenders for sheet-only changes.
-[ ] Preserve sharp terrain at block zoom.
-[ ] Keep requestAnimationFrame coalescing.
-[ ] Avoid duplicate route calculations and repeated hot-loop normalization.
+[ ] Measure before optimizing.
+[ ] Measure web render, pan, zoom, labels, route calculation, and route fit.
+[ ] Measure desktop startup, redraw, editing, save, and history.
+[ ] Cache only demonstrated bottlenecks.
 
 ======================================================================
 DEFERRED
 ======================================================================
 
-[deferred] Decide whether path detection should be salvaged or retired.
-[deferred] Separate stable station identity from line-membership-based vars.
-[deferred] Add schema versioning and backward-compatible migration.
-[deferred] Water/river/coastline detection and overlays.
-
-Water/coastline work must not shape current architecture.
+[deferred] Stable station IDs separate from line-membership vars.
+[deferred] Path-detection repair or retirement decision.
+[deferred] Water, river, and coastline detection.
 
 ======================================================================
-TESTING REQUIREMENTS
+COMPLETED ITEMS
 ======================================================================
 
-For each focused round:
-
-[ ] Run relevant focused Python tests.
-[ ] Run relevant focused Node/public tests.
-[ ] Run public validation when docs/ or public export changes.
-[ ] Run public preview check when docs/ changes.
-[ ] Run git diff --check.
-[ ] Report exact commands/results.
-[ ] Record manual QA in development/IMPLEMENTATION_AND_QA.md.
-
-At stable pull checkpoints:
-
-[ ] Run full pytest suite.
-[ ] Run full unittest suite if separately used.
-[ ] Run full npm test.
-[ ] Run public validation.
-[ ] Run public preview check.
-[ ] Run git diff --check.
-[ ] Launch desktop app locally.
-[ ] Verify ignored local data was untouched.
-[ ] Verify save/load.
-[ ] Verify GitHub Pages.
-[ ] Verify mobile on an actual phone.
-
-Coverage should include:
-- Canonical/public migration
-- Abbreviations
-- Route bounds/fit
-- Public export safety
-- Desktop load/save
-- Search
-- Shared URLs
-- Line visibility
-- Worldgen completion
-- Hidden path detection
-- Symbols
-- Semantic zoom
-- Mobile layout
-- Construction contract
-
-======================================================================
-QA TRACKER FORMAT
-======================================================================
-
-Maintain development/IMPLEMENTATION_AND_QA.md with:
-
-# Plumville Implementation and QA Tracker
-
-## Current phase
-## Changes in latest round
-## Web checks available now
-## Mobile checks available now
-## Desktop checks waiting for next pull
-## Open issues
-## Fixes awaiting confirmation
-## Automated checks
-## Next development round
-## Pull checkpoint guidance
-
-Use:
-- [ready-web]
-- [ready-mobile]
-- [desktop-pending]
-- [verify]
-- [x]
-
-======================================================================
-RECOMMENDED ORDER
-======================================================================
-
-Phase 1 — Data and immediate behavior
-1. Create QA tracker.
-2. Add shared path module.
-3. Move canonical network safely.
-4. Add generated public copy.
-5. Add abbreviations.
-6. Add abbreviation search/display.
-7. Add public route fit.
-8. Add desktop route fit.
-9. Hide worldgen controls at completion.
-10. Hide path detection.
-11. Run checkpoint tests.
-12. Pull and verify desktop.
-
-Phase 2 — Shared visuals
-1. MMCP tokens
-2. Line circles
-3. Station diamonds
-4. Mt. Phosphagos
-5. Semantic zoom
-6. Web/mobile testing
-7. Desktop checkpoint
-
-Phase 3 — Mobile
-1. Full-screen map
-2. Floating controls
-3. Bottom navigation
-4. Bottom sheet
-5. Route fit above sheet
-6. Safe-area/touch polish
-7. Device testing
-
-Phase 4 — Desktop workspace
-1. Mode navigation
-2. Docked inspector
-3. Editing dialogs
-4. Abbreviation editor
-5. Construction mode
-6. Desktop checkpoint
-
-Phase 5 — Construction
-1. Shared calculations
-2. Sanitized public contract
-3. Public dashboard
-4. Desktop admin view
-5. Shareable tasks/routes
-
-Phase 6 — Cleanup/performance
-1. Remove obsolete no-op calls
-2. Update docs
-3. Continue extraction
-4. Measure
-5. Optimize measured bottlenecks
-6. Final regression
-
-======================================================================
-FIRST CODEX TASK
-======================================================================
-
-Start with a focused, low-risk foundation:
-
-- Run git status.
-- Inspect current paths and tests.
-- Create development/IMPLEMENTATION_AND_QA.md.
-- Add a shared path module.
-- Identify every reader/writer of docs/metro_network.json.
-- Plan the canonical/public migration without deleting or moving the current file yet.
-- Add focused tests for path constants.
-- Report all references that must be migrated.
-- Do not begin visual redesign.
-- Do not modify ignored files.
-- Do not commit or push unless explicitly instructed.
-
-Expected report:
-- Files changed
-- Commands run
-- Tests run
-- Migration dependency list
-- Risks
-- Manual review items
-- Next recommended slice
-
-======================================================================
-NON-NEGOTIABLE RULES
-======================================================================
-
-- Preserve functionality unless explicitly changing it.
-- Preserve line names.
-- Preserve station names.
-- Preserve A-Z line system.
-- Preserve dotted/solid meaning.
-- Preserve public sharing behavior.
-- Preserve Docker and LAN modes.
-- Preserve ignored local data.
-- Preserve saved paths.
-- Keep public output sanitized.
-- Keep changes focused.
-- Keep compatibility during migration.
-- Do not perform broad rewrites without tests.
-- Do not repair path detection during redesign.
-- Do not prioritize water/coastline work.
-- Do not expose private data.
-- Do not silently overwrite abbreviations.
-- Do not treat implementation as verification.
-- Do not mark desktop work complete before local pull/test.
-
-[x] Public docs Run 02 verified:
-- Route auto-fit and contextual Fit
-- Abbreviation search and route input support
-- Abbreviations in popups, tooltips, and network data
-- First MMCP web styling pass
-- Mt. Phosphagos landmark treatment
-- Semantic zoom behavior
-- Mobile touch sizing and three-column line toggles
-- JSON and network integrity
+[x] Corrected authoritative station abbreviation mapping.
+[x] Added all mapped abbreviations to public metro data.
+[x] Public abbreviation search and routing.
+[x] Public route auto-fit and contextual Fit.
+[x] Short-route fit protection.
+[x] First MMCP public styling pass.
+[x] Larger public station diamonds.
+[x] Diamond-first junction and terminal symbols.
+[x] Mt. Phosphagos landmark treatment.
+[x] Public semantic zoom and abbreviation fallback.
+[x] Custom scrollable public station suggestions.
+[x] Viewport-safe public popups.
+[x] Background-aware line-circle outlines.
+[x] Shared route restoration and auto-fit.
+[x] Public network JSON integrity verified.

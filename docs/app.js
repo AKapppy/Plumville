@@ -79,7 +79,7 @@ const CONSTANTS = {
   stationSelectedOutline: '#8ad4ff',
   phosphagosOutline: '#f0c75e',
   lineMarkerRadius: 9,
-  lineMarkerDistances: [34, 48, 64, 82],
+  lineMarkerViewportInset: 14,
   overlayMargin: 8,
 };
 
@@ -129,6 +129,9 @@ const state = {
   activeSuggestionInput: null,
   activeSuggestionIndex: -1,
   resizeFrame: null,
+  activePointers: new Map(),
+  pinchGesture: null,
+  gestureHadPinch: false,
 };
 
 init();
@@ -295,31 +298,20 @@ function populateLineLegend() {
     return;
   }
   lineLegend.replaceChildren();
-  const lineNames = Object.keys(state.data.line_stop_vars || {}).sort((first, second) => (
-    first.localeCompare(second, undefined, { numeric: true })
+  const lineNames = Object.keys(
+    state.data.line_stop_vars || {},
+  ).sort((first, second) => (
+    first.localeCompare(
+      second,
+      undefined,
+      { numeric: true },
+    )
   ));
-  for (const lineName of lineNames) {
-    const label = document.createElement('label');
-    label.className = 'line-toggle';
-    label.title = lineLegendStatusText(lineName);
 
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = state.visibleLines.has(lineName);
-    input.addEventListener('change', () => {
-      if (input.checked) {
-        state.visibleLines.add(lineName);
-      } else {
-        state.visibleLines.delete(lineName);
-      }
-      updateInfoPopup();
-      if (routeStartInput.value.trim() && routeEndInput.value.trim()) {
-        planRoute();
-      } else {
-        replaceShareParams(currentShareParams());
-        render();
-      }
-    });
+  for (const lineName of lineNames) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'line-toggle';
 
     const swatch = document.createElement('span');
     const lineColor = colorForLine(lineName);
@@ -329,11 +321,42 @@ function populateLineLegend() {
     swatch.textContent = lineName;
     swatch.setAttribute('aria-hidden', 'true');
 
-    const text = document.createElement('span');
-    text.textContent = `Line ${lineName}`;
+    button.append(swatch);
 
-    label.append(input, swatch, text);
-    lineLegend.append(label);
+    const updateButtonState = () => {
+      const visible = state.visibleLines.has(lineName);
+      button.setAttribute('aria-pressed', String(visible));
+      button.setAttribute(
+        'aria-label',
+        `${visible ? 'Hide' : 'Show'} Line ${lineName}`,
+      );
+      button.title = [
+        lineLegendStatusText(lineName),
+        visible ? 'Click to hide' : 'Click to show',
+      ].join(' · ');
+    };
+
+    button.addEventListener('click', () => {
+      if (state.visibleLines.has(lineName)) {
+        state.visibleLines.delete(lineName);
+      } else {
+        state.visibleLines.add(lineName);
+      }
+      updateButtonState();
+      updateInfoPopup();
+      if (
+        routeStartInput.value.trim()
+        && routeEndInput.value.trim()
+      ) {
+        planRoute();
+      } else {
+        replaceShareParams(currentShareParams());
+        render();
+      }
+    });
+
+    updateButtonState();
+    lineLegend.append(button);
   }
 }
 
@@ -354,10 +377,14 @@ function lineLegendStatusText(lineName) {
 
 function populateStationSuggestions() {
   state.stationSuggestionStops = [...state.data.stops].sort(
-    (first, second) => displayLabel(first.lbl).localeCompare(
-      displayLabel(second.lbl),
-      undefined,
-      { numeric: true },
+    (first, second) => (
+      Number(isPlaceholderStop(first))
+        - Number(isPlaceholderStop(second))
+      || displayLabel(first.lbl).localeCompare(
+        displayLabel(second.lbl),
+        undefined,
+        { numeric: true },
+      )
     ),
   );
   stationSuggestions.replaceChildren();
@@ -386,7 +413,20 @@ function renderStationSuggestions(input) {
     empty.textContent = 'No station matches.';
     stationSuggestions.append(empty);
   } else {
+    const showGroups = !input.value.trim();
+    let currentGroup = null;
     stops.forEach((stop, index) => {
+      const group = isPlaceholderStop(stop)
+        ? 'Unnamed stations'
+        : 'Named stations';
+      if (showGroups && group !== currentGroup) {
+        const heading = document.createElement('div');
+        heading.className = 'station-suggestion-group';
+        heading.textContent = group;
+        stationSuggestions.append(heading);
+        currentGroup = group;
+      }
+
       const button = document.createElement('button');
       button.type = 'button';
       button.id = `station-suggestion-${index}`;
@@ -658,8 +698,9 @@ function bindEvents() {
     scheduleViewportSync,
   );
   window.addEventListener('orientationchange', () => {
-    scheduleViewportSync();
-    window.setTimeout(scheduleViewportSync, 240);
+    for (const delay of [0, 120, 320, 700]) {
+      window.setTimeout(scheduleViewportSync, delay);
+    }
   });
 
   if (window.ResizeObserver && mapStage) {
@@ -680,47 +721,75 @@ function bindEvents() {
   canvas.addEventListener('pointerdown', (event) => {
     hideStationSuggestions();
     canvas.setPointerCapture(event.pointerId);
-    state.dragging = true;
-    state.dragDistance = 0;
-    state.lastPointer = { x: event.clientX, y: event.clientY };
-    canvas.classList.add('dragging');
+    const point = canvasPoint(event);
+    state.activePointers.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      x: point.x,
+      y: point.y,
+    });
+
+    if (state.activePointers.size === 1) {
+      state.dragging = true;
+      state.dragDistance = 0;
+      state.gestureHadPinch = false;
+      state.lastPointer = {
+        x: event.clientX,
+        y: event.clientY,
+      };
+      canvas.classList.add('dragging');
+      return;
+    }
+
+    if (state.activePointers.size === 2) {
+      beginPinchGesture();
+      state.dragging = false;
+      state.dragDistance = Math.max(state.dragDistance, 10);
+      canvas.classList.add('dragging');
+    }
   });
 
   canvas.addEventListener('pointermove', (event) => {
+    if (state.activePointers.has(event.pointerId)) {
+      const point = canvasPoint(event);
+      state.activePointers.set(event.pointerId, {
+        clientX: event.clientX,
+        clientY: event.clientY,
+        x: point.x,
+        y: point.y,
+      });
+    }
+
+    if (state.activePointers.size >= 2) {
+      updatePinchGesture();
+      return;
+    }
+
     if (state.dragging && state.lastPointer) {
       const dx = event.clientX - state.lastPointer.x;
       const dy = event.clientY - state.lastPointer.y;
       panBy(dx, dy);
       state.dragDistance += Math.abs(dx) + Math.abs(dy);
-      state.lastPointer = { x: event.clientX, y: event.clientY };
+      state.lastPointer = {
+        x: event.clientX,
+        y: event.clientY,
+      };
       requestRender();
       return;
     }
-    updateHover(event);
-  });
 
-  canvas.addEventListener('pointerup', (event) => {
-    if (canvas.hasPointerCapture(event.pointerId)) {
-      canvas.releasePointerCapture(event.pointerId);
-    }
-    state.dragging = false;
-    state.lastPointer = null;
-    canvas.classList.remove('dragging');
-    if (state.dragDistance <= 4) {
-      const point = canvasPoint(event);
-      const stop = findStopAt(point.x, point.y);
-      if (stop) {
-        selectStop(stop, { updateRouteStart: true });
-      } else {
-        const edge = findExtraEdgeAt(point.x, point.y);
-        if (edge) {
-          selectPathEdge(edge);
-        }
-      }
+    if (event.pointerType === 'mouse') {
+      updateHover(event);
     }
   });
 
-  canvas.addEventListener('pointerleave', () => {
+  canvas.addEventListener('pointerup', endCanvasPointer);
+  canvas.addEventListener('pointercancel', endCanvasPointer);
+
+  canvas.addEventListener('pointerleave', (event) => {
+    if (event.pointerType !== 'mouse' || state.dragging) {
+      return;
+    }
     state.hoverStop = null;
     tooltip.hidden = true;
     render();
@@ -843,20 +912,160 @@ function bindEvents() {
   }
 }
 
+function canvasPointerValues() {
+  return [...state.activePointers.values()];
+}
+
+function pointerMidpoint(first, second) {
+  return {
+    x: (first.x + second.x) / 2,
+    y: (first.y + second.y) / 2,
+  };
+}
+
+function pointerDistance(first, second) {
+  return Math.hypot(
+    second.x - first.x,
+    second.y - first.y,
+  );
+}
+
+function beginPinchGesture() {
+  const [first, second] = canvasPointerValues();
+  if (!first || !second || !cameraHasWorld()) {
+    state.pinchGesture = null;
+    return;
+  }
+  const midpoint = pointerMidpoint(first, second);
+  const distance = pointerDistance(first, second);
+  if (distance < 2) {
+    state.pinchGesture = null;
+    return;
+  }
+  state.pinchGesture = {
+    startDistance: distance,
+    startZoom: state.camera.zoom,
+    anchorWorld: screenToWorld(midpoint),
+  };
+  state.gestureHadPinch = true;
+  hidePopup();
+}
+
+function updatePinchGesture() {
+  const [first, second] = canvasPointerValues();
+  if (!first || !second || !cameraHasWorld()) {
+    return;
+  }
+  if (!state.pinchGesture) {
+    beginPinchGesture();
+  }
+  if (!state.pinchGesture) {
+    return;
+  }
+
+  const midpoint = pointerMidpoint(first, second);
+  const distance = pointerDistance(first, second);
+  const ratio = distance / state.pinchGesture.startDistance;
+  state.camera.zoom = clamp(
+    state.pinchGesture.startZoom * ratio,
+    state.camera.minZoom,
+    state.camera.maxZoom,
+  );
+  state.camera.translateX = midpoint.x
+    - (state.pinchGesture.anchorWorld.x * state.camera.zoom);
+  state.camera.translateY = midpoint.y
+    - (state.pinchGesture.anchorWorld.y * state.camera.zoom);
+  state.camera.userChangedView = true;
+  clampCamera();
+  hidePopup();
+  requestRender();
+}
+
+function endCanvasPointer(event) {
+  if (canvas.hasPointerCapture(event.pointerId)) {
+    canvas.releasePointerCapture(event.pointerId);
+  }
+  state.activePointers.delete(event.pointerId);
+
+  if (state.activePointers.size >= 2) {
+    beginPinchGesture();
+    return;
+  }
+
+  state.pinchGesture = null;
+  if (state.activePointers.size === 1) {
+    const [remaining] = canvasPointerValues();
+    state.dragging = true;
+    state.lastPointer = {
+      x: remaining.clientX,
+      y: remaining.clientY,
+    };
+    return;
+  }
+
+  const shouldSelect = (
+    !state.gestureHadPinch
+    && state.dragDistance <= 4
+  );
+  state.dragging = false;
+  state.lastPointer = null;
+  canvas.classList.remove('dragging');
+
+  if (shouldSelect) {
+    const point = canvasPoint(event);
+    const stop = findStopAt(point.x, point.y);
+    if (stop) {
+      selectStop(stop, { updateRouteStart: true });
+    } else {
+      const edge = findExtraEdgeAt(point.x, point.y);
+      if (edge) {
+        selectPathEdge(edge);
+      }
+    }
+  }
+
+  state.dragDistance = 0;
+  state.gestureHadPinch = false;
+}
+
 function scheduleViewportSync() {
   if (state.resizeFrame !== null) {
     window.cancelAnimationFrame(state.resizeFrame);
   }
   state.resizeFrame = window.requestAnimationFrame(() => {
     state.resizeFrame = null;
-    resizeCanvas({ refitRoute: true });
+    const resized = resizeCanvas({
+      preserveCenter: true,
+      refitRoute: true,
+    });
     positionStationSuggestions();
-    requestRender();
+    if (resized) {
+      requestRender();
+    } else {
+      window.setTimeout(scheduleViewportSync, 80);
+    }
   });
 }
 
 function resizeCanvas(options = {}) {
   const rect = canvas.getBoundingClientRect();
+  if (rect.width < 32 || rect.height < 32) {
+    return false;
+  }
+
+  const hadWorld = cameraHasWorld();
+  const preserveWorld = (
+    options.preserveCenter
+    && hadWorld
+    && state.camera.userChangedView
+    && !state.currentRoute
+  )
+    ? screenToWorld({
+      x: state.camera.viewportWidth / 2,
+      y: state.camera.viewportHeight / 2,
+    })
+    : null;
+
   const pixelRatio = window.devicePixelRatio || 1;
   const width = Math.max(1, Math.round(rect.width * pixelRatio));
   const height = Math.max(1, Math.round(rect.height * pixelRatio));
@@ -866,9 +1075,19 @@ function resizeCanvas(options = {}) {
   }
   ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   updateCameraViewport(rect.width, rect.height);
+
   if (options.refitRoute && state.currentRoute) {
     fitCurrentRoute({ render: false });
+  } else if (preserveWorld) {
+    state.camera.translateX = (rect.width / 2)
+      - (preserveWorld.x * state.camera.zoom);
+    state.camera.translateY = (rect.height / 2)
+      - (preserveWorld.y * state.camera.zoom);
+    clampCamera();
   }
+
+  positionInfoPopup();
+  return true;
 }
 
 function updateCameraViewport(width, height) {
@@ -1745,6 +1964,7 @@ function stationLineShieldPlacements(stationItems) {
   const occupied = stationItems.map(
     (item) => expandRect(item.rect, 4),
   );
+  const usedSegments = new Set();
   const placements = [];
   const ordered = [...stationItems].sort((first, second) => (
     stationLabelPriority(first.stop)
@@ -1766,10 +1986,15 @@ function stationLineShieldPlacements(stationItems) {
           minY: candidate.point.y - radius - 2,
           maxY: candidate.point.y + radius + 2,
         };
+        const duplicatePenalty = usedSegments.has(
+          candidate.segmentKey,
+        )
+          ? 200000
+          : 0;
         const score = lineShieldPlacementScore(
           rect,
           occupied,
-          candidate.preference,
+          candidate.preference + duplicatePenalty,
         );
         if (!best || score < best.score) {
           best = {
@@ -1779,14 +2004,12 @@ function stationLineShieldPlacements(stationItems) {
             lineName,
           };
         }
-        if (score === candidate.preference) {
-          break;
-        }
       }
       if (!best) {
         continue;
       }
       placements.push(best);
+      usedSegments.add(best.segmentKey);
       occupied.push(expandRect(best.rect, 3));
     }
   }
@@ -1794,6 +2017,14 @@ function stationLineShieldPlacements(stationItems) {
 }
 
 function lineShieldCandidates(stop, lineName) {
+  const viewport = {
+    minX: CONSTANTS.lineMarkerViewportInset,
+    minY: CONSTANTS.lineMarkerViewportInset,
+    maxX: state.camera.viewportWidth
+      - CONSTANTS.lineMarkerViewportInset,
+    maxY: state.camera.viewportHeight
+      - CONSTANTS.lineMarkerViewportInset,
+  };
   const segments = state.lineSegments.filter((segment) => (
     segment.lineName === lineName
     && (
@@ -1801,64 +2032,172 @@ function lineShieldCandidates(stop, lineName) {
       || segment.endVar === stop.var
     )
   ));
-  const candidates = [];
-  for (const segment of segments) {
-    const points = segment.startVar === stop.var
-      ? segment.points
-      : [...segment.points].reverse();
-    const screenPoints = points.map(plotToCanvas);
-    CONSTANTS.lineMarkerDistances.forEach(
-      (distance, distanceIndex) => {
-        const point = pointAtPolylineScreenDistance(
-          screenPoints,
-          distance,
-        );
-        if (!point) {
-          return;
-        }
-        candidates.push({
-          point,
-          preference: distanceIndex,
-        });
-      },
+  return segments.map((segment) => {
+    const screenPoints = segment.points.map(plotToCanvas);
+    const visiblePieces = clippedPolylinePieces(
+      screenPoints,
+      viewport,
     );
-  }
-  return candidates;
+    const visibleLength = polylinePiecesLength(visiblePieces);
+    const point = visibleLength > 0
+      ? pointAtPolylinePiecesFraction(
+        visiblePieces,
+        0.5,
+      )
+      : pointAtScreenPolylineFraction(
+        screenPoints,
+        0.5,
+      );
+    const segmentKey = [
+      lineName,
+      ...[segment.startVar, segment.endVar].sort(),
+    ].join('|');
+    return {
+      point,
+      segmentKey,
+      preference: Math.max(
+        0,
+        1000 - Math.min(visibleLength, 1000),
+      ) / 100,
+    };
+  }).filter((candidate) => candidate.point);
 }
 
-function pointAtPolylineScreenDistance(points, targetDistance) {
+function pointAtScreenPolylineFraction(points, fraction) {
   if (points.length < 2) {
-    return null;
+    return points[0] || null;
   }
-  let traversed = 0;
+  const lengths = [];
+  let total = 0;
   for (let index = 0; index < points.length - 1; index += 1) {
-    const first = points[index];
-    const second = points[index + 1];
-    const dx = second.x - first.x;
-    const dy = second.y - first.y;
-    const length = Math.hypot(dx, dy);
-    if (length <= 0) {
-      continue;
-    }
-    if (traversed + length >= targetDistance) {
-      const ratio = (targetDistance - traversed) / length;
+    const length = Math.hypot(
+      points[index + 1].x - points[index].x,
+      points[index + 1].y - points[index].y,
+    );
+    lengths.push(length);
+    total += length;
+  }
+  if (total <= 0) {
+    return points[0];
+  }
+  let target = total * clamp(fraction, 0, 1);
+  for (let index = 0; index < lengths.length; index += 1) {
+    const length = lengths[index];
+    if (target <= length) {
+      const first = points[index];
+      const second = points[index + 1];
+      const ratio = length > 0 ? target / length : 0;
       return {
-        x: first.x + (dx * ratio),
-        y: first.y + (dy * ratio),
+        x: first.x + ((second.x - first.x) * ratio),
+        y: first.y + ((second.y - first.y) * ratio),
       };
     }
-    traversed += length;
+    target -= length;
   }
   return points[points.length - 1];
+}
+
+function clippedPolylinePieces(points, rect) {
+  const pieces = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const clipped = clipScreenSegment(
+      points[index],
+      points[index + 1],
+      rect,
+    );
+    if (clipped) {
+      pieces.push(clipped);
+    }
+  }
+  return pieces;
+}
+
+function clipScreenSegment(first, second, rect) {
+  const dx = second.x - first.x;
+  const dy = second.y - first.y;
+  const p = [-dx, dx, -dy, dy];
+  const q = [
+    first.x - rect.minX,
+    rect.maxX - first.x,
+    first.y - rect.minY,
+    rect.maxY - first.y,
+  ];
+  let start = 0;
+  let end = 1;
+
+  for (let index = 0; index < p.length; index += 1) {
+    if (p[index] === 0) {
+      if (q[index] < 0) {
+        return null;
+      }
+      continue;
+    }
+    const ratio = q[index] / p[index];
+    if (p[index] < 0) {
+      start = Math.max(start, ratio);
+    } else {
+      end = Math.min(end, ratio);
+    }
+    if (start > end) {
+      return null;
+    }
+  }
+
+  return {
+    first: {
+      x: first.x + (dx * start),
+      y: first.y + (dy * start),
+    },
+    second: {
+      x: first.x + (dx * end),
+      y: first.y + (dy * end),
+    },
+  };
+}
+
+function polylinePiecesLength(pieces) {
+  return pieces.reduce((total, piece) => (
+    total + Math.hypot(
+      piece.second.x - piece.first.x,
+      piece.second.y - piece.first.y,
+    )
+  ), 0);
+}
+
+function pointAtPolylinePiecesFraction(pieces, fraction) {
+  const total = polylinePiecesLength(pieces);
+  if (total <= 0) {
+    return pieces[0]?.first || null;
+  }
+  let target = total * clamp(fraction, 0, 1);
+  for (const piece of pieces) {
+    const length = Math.hypot(
+      piece.second.x - piece.first.x,
+      piece.second.y - piece.first.y,
+    );
+    if (target <= length) {
+      const ratio = length > 0 ? target / length : 0;
+      return {
+        x: piece.first.x
+          + ((piece.second.x - piece.first.x) * ratio),
+        y: piece.first.y
+          + ((piece.second.y - piece.first.y) * ratio),
+      };
+    }
+    target -= length;
+  }
+  return pieces[pieces.length - 1]?.second || null;
 }
 
 function lineShieldPlacementScore(rect, occupied, preference) {
   let score = preference;
   const viewport = {
-    minX: 4,
-    minY: 4,
-    maxX: state.camera.viewportWidth - 4,
-    maxY: state.camera.viewportHeight - 4,
+    minX: CONSTANTS.lineMarkerViewportInset,
+    minY: CONSTANTS.lineMarkerViewportInset,
+    maxX: state.camera.viewportWidth
+      - CONSTANTS.lineMarkerViewportInset,
+    maxY: state.camera.viewportHeight
+      - CONSTANTS.lineMarkerViewportInset,
   };
   if (!rectContainsRect(viewport, rect)) {
     score += 1000000;
@@ -1963,7 +2302,13 @@ function placeStationLabels(
       continue;
     }
     let best = null;
-    for (const text of stationLabelTextOptions(item.stop)) {
+    const textOptions = stationLabelTextOptions(item.stop);
+    for (
+      let textIndex = 0;
+      textIndex < textOptions.length;
+      textIndex += 1
+    ) {
+      const text = textOptions[textIndex];
       for (const candidate of labelCandidatesForStation(
         item.point,
         text,
@@ -1980,7 +2325,9 @@ function placeStationLabels(
           occupiedRects,
           linePaths,
           mapRect,
-        ) + candidate.preference;
+        )
+          + candidate.preference
+          + (textIndex * 40000);
         if (!best || score < best.score) {
           best = { ...placed, score, text };
         }
@@ -2061,7 +2408,10 @@ function labelCandidatesForStation(point, text, fontSize) {
       candidates.push({
         x: center.x - textCenter.x,
         y: center.y - textCenter.y,
-        preference: 1 + (distanceIndex * 2) + (angleIndex / 100),
+        preference:
+  30000
+  + (distanceIndex * 2000)
+  + (angleIndex * 10),
       });
     }
   }
@@ -3519,7 +3869,7 @@ function stationLabelTextOptions(stop) {
   }
   return abbreviation === fullLabel
     ? [fullLabel]
-    : [fullLabel, abbreviation];
+    : [abbreviation, fullLabel];
 }
 
 function stationLabelScoreLimit() {

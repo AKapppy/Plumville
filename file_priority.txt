@@ -1,409 +1,285 @@
 PLUMVILLE FILE PRIORITY LIST
 
-Last revised: 2026-07-26
-
-RUN 02 VERIFIED — NEW TOP THREE FILES
-
-1. docs/app.js
-   - Move line-letter circles onto line segments.
-   - Increase ordinary diamond size.
-   - Keep junction/terminal diamonds visually primary.
-   - Improve marker contrast using map-background brightness.
-   - Fix popup bounds.
-   - Recalculate canvas and route fit on resize/orientation change.
-   - Support a custom scrollable station-suggestion UI.
-
-2. docs/styles.css
-   - Reduce excessive mobile safe-area padding.
-   - Improve responsive map height.
-   - Style custom scrollable suggestions.
-   - Support a sticky/partially persistent mobile map if selected.
-   - Refine line-shield and larger-diamond presentation.
-
-3. docs/index.html
-   - Add markup for a custom scrollable suggestion panel.
-   - Add any mobile layout structure needed for the chosen sticky-map behavior.
-
-docs/metro_network.json moves down because abbreviation enrichment is verified.
+Last revised: 2026-07-27
 
 PURPOSE
 
-This file ranks project files by how much useful checklist work can be
-completed by changing that file, while also accounting for implementation
-risk, testability, and whether the user can verify the result immediately.
+This file ranks project files by:
+- How much remaining checklist work can be completed by changing the file
+- Risk of regression
+- Ease of desktop-browser and mobile verification
+- Whether the work can be completed in a focused implementation slice
 
 Update this file after every implementation run.
 
-SORTING RULES
+Completed file-level work belongs at the bottom.
 
-1. Active high-value files first.
-2. Within a similar value, prefer changes that are easy to test on web/mobile.
-3. High-risk monoliths may rank lower even when they contain more total logic.
-4. Completed file-level work moves to the COMPLETED FILE WORK section.
-5. Re-rank after every run because dependencies and leverage will change.
-6. A one-file production change may still require a separate test-file update.
+======================================================================
+CURRENT RUN 04 PRIORITY
+======================================================================
+
+Run 04 is not complete until the consolidated QA checklist passes.
+
+The current highest-priority files remain:
+
+1. docs/app.js
+2. docs/styles.css
+3. docs/index.html
+
+Run 04 v3 and the sidebar addendum must be evaluated together before re-ranking.
 
 ======================================================================
 PRIORITY 1 — docs/app.js
 ======================================================================
 
 Leverage: Extremely high
-Risk: Medium
-Immediate testing: Web and mobile
-Preferred change style: Focused replacement or carefully generated full file
+Risk: Medium to high
+Immediate testing: Desktop browser and mobile
+Preferred change style: Focused updater or reviewed full replacement
 
-Can accomplish:
-- Public route auto-fit
-- Context-sensitive Fit button
-- Route bounds and short-route zoom limits
-- Refit after swap, URL restoration, and visible-line changes
-- Abbreviation search and route resolution
-- Abbreviation display in station details
-- Station diamonds
-- Junction styling
-- Terminal line circles
-- Mt. Phosphagos landmark rendering
-- Selected/searched focus treatment
-- Semantic zoom
-- Label priorities and abbreviation fallback
-- Improved line visibility behavior
+Run 04 work awaiting verification:
+- Native pinch zoom and pinch-pan
+- One-finger/pinch gesture transitions
+- Defensive resize/orientation handling
+- Active-route refitting after viewport changes
+- Midpoint/visible-midpoint line shields
+- Collision scoring for line shields
+- Abbreviation-first label scoring
+- Named/unnamed suggestion grouping
+- Circle-only line-filter buttons
+- Pressed-state line visibility behavior
+- Route replanning after line toggles
+- Shared visible-line URL state
+
+After Run 04 verification, likely remaining work:
+- Mobile bottom navigation
+- Draggable mobile bottom sheet
 - Public construction interactions
-- Mobile map behavior after matching HTML/CSS structure exists
+- Further label/marker refinement
+- Performance measurement and targeted caching
 
-Recommended first slice:
-- Route auto-fit only
-- Add focused smoke-test coverage separately
-
-Do not combine route fitting, semantic zoom, construction, and a full symbol
-redesign in one uncontrolled replacement.
+Do not combine all remaining public work into one uncontrolled app.js rewrite.
 
 ======================================================================
 PRIORITY 2 — docs/styles.css
 ======================================================================
 
 Leverage: Very high
-Risk: Low to medium
-Immediate testing: Web and mobile
+Risk: Medium
+Immediate testing: Desktop browser and mobile
 Preferred change style: Full replacement is reasonable after inspection
 
-Can accomplish:
-- Broad MMCP visual pass
-- Shared web design tokens
-- Dark charcoal hierarchy
-- Minecraft-inspired borders
-- Typography and spacing
-- Button/input/panel states
-- Circular line badges
-- Popup and route-result styling
-- Mobile responsiveness improvements
-- Touch-target sizing
-- Safe-area padding
-- Better current stacked mobile layout
+Run 04 work awaiting verification:
+- Mobile flex order with map above controls
+- Sticky top map
+- Tighter safe-area spacing
+- Suggestion group-heading styling
+- Collapsed Lines disclosure styling
+- Compact line-circle grid
+- Saturated-on line state
+- Dimmed/desaturated-off line state
+- Finger-friendly mobile line buttons
 
-Cannot accomplish alone:
-- Bottom navigation
-- Draggable bottom sheet
-- New DOM controls
-- Route-fitting behavior
-- Canvas symbol rendering
+After Run 04 verification, likely remaining work:
+- Mobile bottom sheet and navigation styling
+- Final responsive polish
+- Construction dashboard styling
+- Additional accessibility refinements
 
 ======================================================================
-PRIORITY 3 — docs/metro_network.json
+PRIORITY 3 — docs/index.html
 ======================================================================
 
-Leverage: High for data; low for behavior
-Risk: Medium because desktop currently also depends on it
-Immediate testing: Web, with caution
-Preferred change style: Generated replacement
+Leverage: Medium
+Risk: Low
+Immediate testing: Desktop browser and mobile
+Preferred change style: Full replacement
 
-Can accomplish:
-- Add all station abbr fields
-- Correct changed abbreviations
-- Make abbreviation data available to current consumers
-- Preserve abbreviation data for later migration
+Run 04 work awaiting verification:
+- Cache-busting Run 04 asset references
+- Collapsed-by-default Lines details element
 
-Cannot accomplish alone:
-- Search by abbreviation
-- Display abbreviations
-- Validation
-- Editing UI
-- Canonical/public data separation
-
-Before replacement:
-- Apply the user's latest screenshot corrections
-- Validate every mapped station name
-- Preserve every unrelated field and ordering
-- Confirm no duplicate station records were introduced
+After Run 04 verification:
+- This file should drop substantially in priority.
+- It rises again when adding mobile bottom navigation, bottom-sheet structure,
+  or public construction sections.
 
 ======================================================================
 PRIORITY 4 — development/IMPLEMENTATION_AND_QA.md
 ======================================================================
 
-Leverage: High for workflow and verification
+Leverage: High for workflow
 Risk: Very low
 Immediate testing: Not applicable
-Preferred change style: Full replacement
+Preferred change style: Full replacement/update after every run
 
-Can accomplish:
-- Living checklist
-- Web test queue
-- Mobile test queue
-- Desktop-pending queue
-- Open-issue log
-- Verification history
-- Pull-checkpoint guidance
-- Automated-test record
-
-Must be updated after every implementation run.
+Must track:
+- Run 04 desktop-browser checks
+- Run 04 mobile checks
+- Run 04 failures
+- Run 04 fixes awaiting verification
+- Desktop application work waiting for pull
+- Next pull checkpoint
 
 ======================================================================
-PRIORITY 5 — docs/index.html
+PRIORITY 5 — plumville/core/network.py
 ======================================================================
 
-Leverage: Medium to high
-Risk: Low to medium
-Immediate testing: Web and mobile
-Preferred change style: Full replacement is usually reasonable
-
-Can accomplish:
-- Add Fit Route button
-- Add structural containers for mobile layout
-- Add bottom navigation
-- Add bottom-sheet markup
-- Improve accessibility labels
-- Reorganize controls
-- Add public construction panel containers
-- Add versioned script/style references
-
-Cannot supply behavior or styling alone.
-
-======================================================================
-PRIORITY 6 — ui_extensions.py
-======================================================================
-
-Leverage: High for desktop interface
-Risk: Medium to high
-Immediate testing: No; requires desktop pull
-Preferred change style: Patch, not blind full replacement
-
-Can accomplish:
-- Hide path detection from normal UI
-- Move experimental tools to Advanced
-- Reorganize existing patched panels
-- Remove obsolete no-op extension calls after caller review
-- Begin desktop mode-navigation integration
-- Coordinate station-inspector behavior
-
-Desktop verification must remain pending until a local pull and launch.
-
-======================================================================
-PRIORITY 7 — legacy_core.py
-======================================================================
-
-Leverage: Extremely high
-Risk: Extremely high
-Immediate testing: No; requires desktop pull
-Preferred change style: Small patch only
-
-Can technically accomplish:
-- Desktop route auto-fit
-- Worldgen completion behavior
-- Station rendering
-- Desktop abbreviation support
-- Search and route behavior
-- Inspector/dialog changes
-- Data-path migration
-
-Do not use a whole-file replacement unless no safer method exists.
-The file is a large monolith and unrelated local changes are easy to overwrite.
-
-======================================================================
-PRIORITY 8 — plumville/core/network.py
-======================================================================
-
-Leverage: Medium to high foundational value
+Leverage: High foundational value
 Risk: Medium
-Immediate testing: Automated tests; later desktop/public integration
-Preferred change style: Focused replacement or patch
+Immediate testing: Automated
+Preferred change style: Focused patch
 
 Can accomplish:
-- Abbreviation normalization
-- Abbreviation lookup helpers
-- Duplicate detection helpers
+- Shared abbreviation normalization and lookup
+- Duplicate detection
 - Shared station resolution
-- Shared validation
-- Data normalization behavior
-- Foundations for later network editing
+- Validation foundations
+- Canonical-data migration support
 
-Cannot expose features in UI without consumer changes.
+No public UI change should begin here until Run 04 is settled.
 
 ======================================================================
-PRIORITY 9 — plumville/paths.py (new file)
+PRIORITY 6 — plumville/paths.py
 ======================================================================
 
 Leverage: Medium foundational value
 Risk: Low
-Immediate testing: Automated tests
+Immediate testing: Automated
 Preferred change style: New file
 
 Can accomplish:
-- Central repository paths
-- Canonical data path
-- Public export path
-- Abbreviation path
-- Runtime/history/export paths
-- Safer migration foundation
-
-Requires consumer files to adopt the constants before behavior changes.
+- Central canonical/public data paths
+- Runtime/history/export path definitions
+- Safer future migration
 
 ======================================================================
-PRIORITY 10 — docs/smoke_test.js
+PRIORITY 7 — plumville/core/public_export.py
 ======================================================================
 
-Leverage: Medium for safety
-Risk: Low
-Immediate testing: Automated
-Preferred change style: Full replacement or focused edit
-
-Can accomplish regression checks for:
-- Route-fit functions and controls
-- Network data path
-- Abbreviation support
-- Station symbol functions
-- Mobile structural elements
-- Public/private safety assertions
-
-Tests implementation; does not create user-facing behavior.
-
-======================================================================
-PRIORITY 11 — plumville/core/public_export.py
-======================================================================
-
-Leverage: High once data migration begins
+Leverage: High after path migration
 Risk: Medium
 Immediate testing: Automated and public preview
-Preferred change style: Focused patch/replacement after inspection
+Preferred change style: Focused patch
 
 Can accomplish:
-- Sanitized public output
+- Sanitized canonical-to-public export
 - Abbreviation preservation
 - Public construction contract
 - Private-field exclusion
-- Canonical-to-public generation
-
-Requires path constants, consumers, and tests.
 
 ======================================================================
-PRIORITY 12 — metro_station_extensions.py
+PRIORITY 8 — ui_extensions.py
 ======================================================================
 
-Leverage: Medium to high for desktop station workflows
+Leverage: High for desktop interface
+Risk: Medium to high
+Immediate testing: Desktop pull required
+Preferred change style: Patch
+
+Can accomplish:
+- Hide path detection from normal UI
+- Move experimental tools to Advanced
+- Begin desktop mode navigation
+- Coordinate future inspector behavior
+
+======================================================================
+PRIORITY 9 — legacy_core.py
+======================================================================
+
+Leverage: Extremely high
+Risk: Extremely high
+Immediate testing: Desktop pull required
+Preferred change style: Small patch only
+
+Can accomplish:
+- Desktop route fit
+- Worldgen completion behavior
+- Desktop abbreviations
+- Desktop station rendering
+- Desktop data-path migration
+
+Never use a blind whole-file replacement.
+
+======================================================================
+PRIORITY 10 — metro_station_extensions.py
+======================================================================
+
+Leverage: Medium to high
 Risk: Medium
 Immediate testing: Desktop pull required
 Preferred change style: Focused patch
 
 Can accomplish:
 - Abbreviation editing
-- Station dialog enhancements
 - Live preview
 - Duplicate warnings
-- Station inspector additions
+- Dialog improvements
+- Inspector additions
 
 ======================================================================
-PRIORITY 13 — README.md
+PRIORITY 11 — README.md AND CLASSIFICATION DOCUMENTS
 ======================================================================
 
 Leverage: Medium documentation value
 Risk: Very low
 Immediate testing: Not applicable
-Preferred change style: Full replacement
 
 Can accomplish:
-- Correct three-part architecture description
-- Canonical/public data workflow
-- Setup and pull instructions
-- Public/private safety rules
-- Current entry points
-- Testing commands
-- Desktop checkpoint workflow
+- Correct three-part architecture
+- Public/private data rules
+- Setup and testing commands
+- Pull-checkpoint workflow
+- File classification and safety documentation
 
 ======================================================================
-PRIORITY 14 — worldgen-related UI file(s)
+MULTI-FILE FEATURES
 ======================================================================
 
-Leverage: Medium
-Risk: Medium to high
-Immediate testing: Desktop pull required
-Preferred change style: Focused patch after identifying actual owner
-
-Can accomplish:
-- Hide generation controls at verified completion
-- Restore controls when completion becomes uncertain
-- Compact complete status
-- Disable unnecessary Auto Fill work
-
-The owning file must be confirmed before implementation.
-
-======================================================================
-PRIORITY 15 — documentation and classification files
-======================================================================
-
-Files may include:
-- FILE_CLASSIFICATION_2026-07-24.md
-- Other architecture documents
-
-Leverage: Low for runtime; useful for safety
-Risk: Very low
-Immediate testing: Not applicable
-
-Can accomplish:
-- Correct tracked/generated/private classifications
-- Prevent accidental public exposure
-- Record migration decisions
-
-======================================================================
-MULTI-FILE FEATURES — DO NOT FORCE INTO ONE FILE
-======================================================================
-
-These require coordinated changes:
-- Canonical data migration
-- Generated public network copy
-- Full end-to-end abbreviation support
-- Full mobile bottom sheet
-- Shared desktop/web design system
+Do not force these into one file:
+- Canonical/public metro-data migration
+- Full desktop abbreviation workflow
+- Mobile bottom sheet
 - Desktop mode navigation
-- Docked station inspector
+- Docked desktop inspector
 - Public construction dashboard
 - Shared construction calculations
 - Stable station IDs
 - Config example plus ignored local config
 
 ======================================================================
-RECOMMENDED CURRENT ONE-FILE RUN ORDER
+RECOMMENDED NEXT ACTION
 ======================================================================
 
-1. development/IMPLEMENTATION_AND_QA.md
-2. docs/app.js — route auto-fit
-3. docs/metro_network.json — corrected abbreviation data
-4. docs/app.js — abbreviation search/details
-5. docs/styles.css — first MMCP pass
-6. docs/app.js — diamonds, line circles, landmark
-7. docs/app.js — semantic zoom
-8. ui_extensions.py — hide path detection
-9. README.md and classification documentation
-
-This order must be re-evaluated after every run.
+1. Apply Run 04 v3.
+2. Apply the Run 04 sidebar addendum.
+3. Complete the consolidated QA checklist.
+4. Record all failures.
+5. Update notes.txt and file_priority.txt again.
+6. Re-rank files only after Run 04 is verified.
 
 ======================================================================
 COMPLETED FILE WORK
 ======================================================================
 
-Move file-level accomplishments here after implementation and verification.
+[x] data/station_abbreviations.json
+- Corrected authoritative mapping installed
 
-None yet.
-
-[x] docs/metro_network.json — Run 02 abbreviation enrichment
+[x] docs/metro_network.json
+- Public abbreviation enrichment verified
 - Valid JSON
-- All mapped named stations retain abbr fields
-- Corrected values verified
-- No stations duplicated or removed
+- No station duplication or loss
+
+[x] docs/app.js — verified work through Run 03
+- Route auto-fit
+- Abbreviation search and routing
+- Custom scrollable suggestions
+- Larger diamonds
+- Semantic zoom
+- Viewport-safe popups
+- Shared route restoration
+
+[x] docs/styles.css — verified work through Run 03
+- First MMCP public styling pass
+- Touch-sized controls
+- Safe popup and responsive foundations
