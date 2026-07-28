@@ -129,6 +129,7 @@ const state = {
   activeSuggestionInput: null,
   activeSuggestionIndex: -1,
   resizeFrame: null,
+  resizeSettleTimer: null,
   activePointers: new Map(),
   pinchGesture: null,
   gestureHadPinch: false,
@@ -1034,17 +1035,31 @@ function scheduleViewportSync() {
   }
   state.resizeFrame = window.requestAnimationFrame(() => {
     state.resizeFrame = null;
-    const resized = resizeCanvas({
-      preserveCenter: true,
-      refitRoute: true,
-    });
-    positionStationSuggestions();
-    if (resized) {
-      requestRender();
-    } else {
-      window.setTimeout(scheduleViewportSync, 80);
-    }
+    syncViewportNow();
   });
+
+  if (state.resizeSettleTimer !== null) {
+    window.clearTimeout(state.resizeSettleTimer);
+  }
+  state.resizeSettleTimer = window.setTimeout(() => {
+    state.resizeSettleTimer = null;
+    syncViewportNow();
+  }, 140);
+}
+
+function syncViewportNow() {
+  const resized = resizeCanvas({
+    preserveCenter: true,
+    refitRoute: true,
+  });
+  positionStationSuggestions();
+  if (!resized) {
+    return false;
+  }
+
+  state.renderScheduled = false;
+  render();
+  return true;
 }
 
 function resizeCanvas(options = {}) {
@@ -1067,13 +1082,27 @@ function resizeCanvas(options = {}) {
     : null;
 
   const pixelRatio = window.devicePixelRatio || 1;
-  const width = Math.max(1, Math.round(rect.width * pixelRatio));
-  const height = Math.max(1, Math.round(rect.height * pixelRatio));
+  const width = Math.max(
+    1,
+    Math.round(rect.width * pixelRatio),
+  );
+  const height = Math.max(
+    1,
+    Math.round(rect.height * pixelRatio),
+  );
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
-  ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+  ctx.setTransform(
+    pixelRatio,
+    0,
+    0,
+    pixelRatio,
+    0,
+    0,
+  );
   updateCameraViewport(rect.width, rect.height);
 
   if (options.refitRoute && state.currentRoute) {
@@ -3767,7 +3796,8 @@ function stationAbbreviation(stop) {
 }
 
 function isPlaceholderStop(stop) {
-  return /^[A-Z]{1,3}\d+(?:_\d+)?$/.test(displayLabel(stop.lbl));
+  const label = String(stop?.lbl || '').trim();
+  return /^[A-Z0-9_{}]+$/.test(label);
 }
 
 function isPhosphagos(stop) {

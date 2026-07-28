@@ -680,6 +680,35 @@ button:active {
   text-transform: uppercase;
 }
 
+@media (min-width: 861px) {
+  html,
+  body {
+    overflow: hidden;
+  }
+
+  .viewer-shell {
+    height: 100vh;
+    height: 100svh;
+    min-height: 0;
+  }
+
+  .side-panel {
+    height: 100%;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .map-stage {
+    height: 100%;
+    min-height: 0;
+  }
+
+  #metroCanvas {
+    height: 100%;
+    min-height: 0;
+  }
+}
+
 @media (max-width: 860px) {
   .viewer-shell {
     display: flex;

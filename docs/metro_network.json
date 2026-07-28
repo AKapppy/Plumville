@@ -717,7 +717,7 @@
       "abbr": "MTP"
     },
     {
-      "var": "P_CU5",
+      "var": "P_C5",
       "lbl": "Amortay",
       "x": -472,
       "y": 3380,
@@ -755,7 +755,7 @@
       "has_walking_paths": false
     },
     {
-      "var": "P_N6",
+      "var": "P_NU6",
       "lbl": "Rack City",
       "x": 632,
       "y": 3480,
@@ -1195,7 +1195,7 @@
       "has_walking_paths": false
     },
     {
-      "var": "P_NX8",
+      "var": "P_N8",
       "lbl": "Michael",
       "x": 1768,
       "y": 4984,
@@ -1607,7 +1607,7 @@
       "has_walking_paths": false
     },
     {
-      "var": "P_CD",
+      "var": "P_CDU",
       "lbl": "Peapod",
       "x": -3112,
       "y": 5544,
@@ -1621,7 +1621,7 @@
       "abbr": "PPD"
     },
     {
-      "var": "P_MN",
+      "var": "P_MNX",
       "lbl": "Mycopolis",
       "x": 3848,
       "y": 5624,
@@ -1688,7 +1688,7 @@
     },
     {
       "var": "P_CT",
-      "lbl": "Aldinhöfn",
+      "lbl": "Aldinh\u00f6fn",
       "x": -3656,
       "y": 5592,
       "has_connector": false,
@@ -1768,7 +1768,7 @@
     },
     {
       "var": "P_VW5",
-      "lbl": "VW_5",
+      "lbl": "VW",
       "x": -5704,
       "y": 3512,
       "has_connector": false,
@@ -1835,7 +1835,7 @@
     },
     {
       "var": "P_J11",
-      "lbl": "Østligste",
+      "lbl": "\u00d8stligste",
       "x": 7864,
       "y": -888,
       "has_connector": false,
@@ -2030,8 +2030,8 @@
       "chime_directions": []
     },
     {
-      "var": "P_Y6",
-      "lbl": "Y_2",
+      "var": "P_XY6",
+      "lbl": "XY",
       "x": 7686,
       "y": 4402,
       "has_connector": false,
@@ -2043,8 +2043,8 @@
       "chime_directions": []
     },
     {
-      "var": "P_Z7",
-      "lbl": "Z_9",
+      "var": "P_XZ7",
+      "lbl": "XZ",
       "x": 8290,
       "y": 4417,
       "has_connector": false,
@@ -2069,8 +2069,8 @@
       "chime_directions": []
     },
     {
-      "var": "P_IJ13",
-      "lbl": "IJ",
+      "var": "P_J13",
+      "lbl": "J_9",
       "x": 8238,
       "y": -894,
       "has_connector": false,
@@ -2095,8 +2095,8 @@
       "chime_directions": []
     },
     {
-      "var": "P_I3",
-      "lbl": "I_9",
+      "var": "P_IJ3",
+      "lbl": "IJ",
       "x": 8457,
       "y": -1456,
       "has_connector": false,
@@ -2433,8 +2433,8 @@
       "chime_directions": []
     },
     {
-      "var": "P_VW11",
-      "lbl": "VW_11",
+      "var": "P_W11",
+      "lbl": "W_7",
       "x": -7427,
       "y": 5629,
       "has_connector": false,
@@ -2551,7 +2551,7 @@
     },
     {
       "var": "P_U8",
-      "lbl": "U_8",
+      "lbl": "U_9",
       "x": -322,
       "y": 5606,
       "has_connector": false,
@@ -2577,7 +2577,7 @@
     },
     {
       "var": "P_X1",
-      "lbl": "X_3",
+      "lbl": "X_2",
       "x": 2895,
       "y": 6190,
       "has_connector": false,
@@ -2590,7 +2590,7 @@
     },
     {
       "var": "P_X4",
-      "lbl": "X_4",
+      "lbl": "X_3",
       "x": 3537,
       "y": 6185,
       "has_connector": false,
@@ -2603,7 +2603,7 @@
     },
     {
       "var": "P_X5",
-      "lbl": "X_5",
+      "lbl": "X_4",
       "x": 3928,
       "y": 6182,
       "has_connector": false,
@@ -2628,8 +2628,8 @@
       "chime_directions": []
     },
     {
-      "var": "P_XY7",
-      "lbl": "XY",
+      "var": "P_Y7",
+      "lbl": "Y_1",
       "x": 7137,
       "y": 6295,
       "has_connector": false,
@@ -2738,11 +2738,11 @@
       "P_C2",
       "P_C3",
       "P_CN",
-      "P_CU5",
+      "P_C5",
       "P_C6",
       "P_C7",
       "P_C8",
-      "P_CD",
+      "P_CDU",
       "P_CT"
     ],
     "D": [
@@ -2754,7 +2754,7 @@
       "P_D6",
       "P_D7",
       "P_D8",
-      "P_CD"
+      "P_CDU"
     ],
     "E": [
       "P_ABCDE",
@@ -2813,7 +2813,8 @@
       "P_J9",
       "P_J10",
       "P_J11",
-      "P_IJ13"
+      "P_J13",
+      "P_IJ3"
     ],
     "K": [
       "P_BK",
@@ -2835,7 +2836,7 @@
       "P_L4"
     ],
     "M": [
-      "P_MN",
+      "P_MNX",
       "P_M2",
       "P_HKM",
       "P_LM",
@@ -2852,10 +2853,10 @@
       "P_N3",
       "P_DN",
       "P_CN",
-      "P_N6",
+      "P_NU6",
       "P_KN",
-      "P_NX8",
-      "P_MN"
+      "P_N8",
+      "P_MNX"
     ],
     "P": [
       "P_AP",
@@ -2903,8 +2904,7 @@
       "P_V7",
       "P_V8",
       "P_V9",
-      "P_UV10",
-      "P_VW11"
+      "P_UV10"
     ],
     "W": [
       "P_W1",
@@ -2913,7 +2913,7 @@
       "P_W4",
       "P_W5",
       "P_UW6",
-      "P_VW11",
+      "P_W11",
       "P_W12",
       "P_W9"
     ],
@@ -2926,7 +2926,7 @@
       "P_Z3",
       "P_Z4",
       "P_Z5",
-      "P_Z7",
+      "P_XZ7",
       "P_Z8"
     ],
     "I": [
@@ -2938,10 +2938,9 @@
       "P_I122",
       "P_I6",
       "P_I5",
-      "P_I3",
+      "P_IJ3",
       "P_I4",
-      "P_I1",
-      "P_IJ13"
+      "P_I1"
     ],
     "O": [
       "P_O1",
@@ -2968,22 +2967,24 @@
       "P_U5",
       "P_U6",
       "P_U7",
+      "P_CDU",
       "P_U8",
       "P_KU92",
-      "P_CU5"
+      "P_NU6"
     ],
     "X": [
       "P_KX7",
-      "P_NX8",
       "P_X1",
       "P_X4",
       "P_X5",
+      "P_MNX",
       "P_X6",
-      "P_XY7"
+      "P_XY6",
+      "P_XZ7"
     ],
     "Y": [
-      "P_XY7",
-      "P_Y6",
+      "P_Y7",
+      "P_XY6",
       "P_YZ11",
       "P_MY10"
     ]
@@ -3224,19 +3225,19 @@
       },
       {
         "x_var": "P_CN",
-        "y_var": "P_CU5",
+        "y_var": "P_C5",
         "dx": 2,
         "dy": 0
       },
       {
-        "x_var": "P_CU5",
-        "y_var": "P_CU5",
+        "x_var": "P_C5",
+        "y_var": "P_C5",
         "dx": 0,
         "dy": 0
       },
       {
         "x_var": "P_C6",
-        "y_var": "P_CU5",
+        "y_var": "P_C5",
         "dx": 0,
         "dy": 0
       },
@@ -3271,8 +3272,14 @@
         "dy": 0
       },
       {
-        "x_var": "P_CD",
-        "y_var": "P_CD",
+        "x_var": "P_C8",
+        "y_var": "P_CDU",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_CDU",
+        "y_var": "P_CDU",
         "dx": 0,
         "dy": 0
       },
@@ -3364,13 +3371,13 @@
       },
       {
         "x_var": "P_D8",
-        "y_var": "P_CD",
+        "y_var": "P_CDU",
         "dx": 0,
         "dy": 2
       },
       {
-        "x_var": "P_CD",
-        "y_var": "P_CD",
+        "x_var": "P_CDU",
+        "y_var": "P_CDU",
         "dx": 0,
         "dy": 2
       }
@@ -3805,8 +3812,20 @@
         "dy": 0
       },
       {
-        "x_var": "P_IJ13",
-        "y_var": "P_IJ13",
+        "x_var": "P_J13",
+        "y_var": "P_J13",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_IJ3",
+        "y_var": "P_J13",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_IJ3",
+        "y_var": "P_IJ3",
         "dx": 0,
         "dy": 0
       }
@@ -3949,8 +3968,8 @@
     ],
     "M": [
       {
-        "x_var": "P_MN",
-        "y_var": "P_MN",
+        "x_var": "P_MNX",
+        "y_var": "P_MNX",
         "dx": 0,
         "dy": 0
       },
@@ -4078,19 +4097,19 @@
       },
       {
         "x_var": "P_CN",
-        "y_var": "P_N6",
+        "y_var": "P_NU6",
         "dx": 0,
         "dy": 0
       },
       {
-        "x_var": "P_N6",
-        "y_var": "P_N6",
+        "x_var": "P_NU6",
+        "y_var": "P_NU6",
         "dx": 0,
         "dy": 0
       },
       {
         "x_var": "P_KN",
-        "y_var": "P_N6",
+        "y_var": "P_NU6",
         "dx": -2,
         "dy": 0
       },
@@ -4102,25 +4121,25 @@
       },
       {
         "x_var": "P_KN",
-        "y_var": "P_NX8",
+        "y_var": "P_N8",
         "dx": -2,
         "dy": 0
       },
       {
-        "x_var": "P_NX8",
-        "y_var": "P_NX8",
+        "x_var": "P_N8",
+        "y_var": "P_N8",
         "dx": 0,
         "dy": 0
       },
       {
-        "x_var": "P_MN",
-        "y_var": "P_NX8",
+        "x_var": "P_MNX",
+        "y_var": "P_N8",
         "dx": 0,
         "dy": 0
       },
       {
-        "x_var": "P_MN",
-        "y_var": "P_MN",
+        "x_var": "P_MNX",
+        "y_var": "P_MNX",
         "dx": 0,
         "dy": 0
       }
@@ -4505,12 +4524,6 @@
         "y_var": "P_UV10",
         "dx": 0,
         "dy": 0
-      },
-      {
-        "x_var": "P_VW11",
-        "y_var": "P_VW11",
-        "dx": 0,
-        "dy": 0
       }
     ],
     "W": [
@@ -4587,8 +4600,8 @@
         "dy": 0
       },
       {
-        "x_var": "P_VW11",
-        "y_var": "P_VW11",
+        "x_var": "P_W11",
+        "y_var": "P_W11",
         "dx": 0,
         "dy": 0
       },
@@ -4667,8 +4680,8 @@
         "dy": 0
       },
       {
-        "x_var": "P_Z7",
-        "y_var": "P_Z7",
+        "x_var": "P_XZ7",
+        "y_var": "P_XZ7",
         "dx": 0,
         "dy": 0
       },
@@ -4736,13 +4749,13 @@
       },
       {
         "x_var": "P_I5",
-        "y_var": "P_I3",
+        "y_var": "P_IJ3",
         "dx": 0,
         "dy": 0
       },
       {
-        "x_var": "P_I3",
-        "y_var": "P_I3",
+        "x_var": "P_IJ3",
+        "y_var": "P_IJ3",
         "dx": 0,
         "dy": 0
       },
@@ -4755,24 +4768,6 @@
       {
         "x_var": "P_I1",
         "y_var": "P_I1",
-        "dx": 0,
-        "dy": 0
-      },
-      {
-        "x_var": "P_I1",
-        "y_var": "P_I1",
-        "dx": 0,
-        "dy": -3
-      },
-      {
-        "x_var": "P_IJ13",
-        "y_var": "P_I1",
-        "dx": 0,
-        "dy": -3
-      },
-      {
-        "x_var": "P_IJ13",
-        "y_var": "P_IJ13",
         "dx": 0,
         "dy": 0
       }
@@ -4945,8 +4940,8 @@
         "dy": 0
       },
       {
-        "x_var": "P_U7",
-        "y_var": "P_U8",
+        "x_var": "P_CDU",
+        "y_var": "P_CDU",
         "dx": 0,
         "dy": 0
       },
@@ -4963,8 +4958,14 @@
         "dy": 0
       },
       {
-        "x_var": "P_CU5",
-        "y_var": "P_CU5",
+        "x_var": "P_KU92",
+        "y_var": "P_NU6",
+        "dx": 0,
+        "dy": 0
+      },
+      {
+        "x_var": "P_NU6",
+        "y_var": "P_NU6",
         "dx": 0,
         "dy": 0
       }
@@ -4977,14 +4978,8 @@
         "dy": 0
       },
       {
-        "x_var": "P_NX8",
-        "y_var": "P_NX8",
-        "dx": 0,
-        "dy": 0
-      },
-      {
-        "x_var": "P_X1",
-        "y_var": "P_NX8",
+        "x_var": "P_KX7",
+        "y_var": "P_X1",
         "dx": 0,
         "dy": 0
       },
@@ -5007,8 +5002,8 @@
         "dy": 0
       },
       {
-        "x_var": "P_X5",
-        "y_var": "P_X6",
+        "x_var": "P_MNX",
+        "y_var": "P_MNX",
         "dx": 0,
         "dy": 0
       },
@@ -5019,34 +5014,34 @@
         "dy": 0
       },
       {
-        "x_var": "P_XY7",
-        "y_var": "P_X6",
+        "x_var": "P_XY6",
+        "y_var": "P_XY6",
         "dx": 0,
         "dy": 0
       },
       {
-        "x_var": "P_XY7",
-        "y_var": "P_XY7",
+        "x_var": "P_XZ7",
+        "y_var": "P_XZ7",
         "dx": 0,
         "dy": 0
       }
     ],
     "Y": [
       {
-        "x_var": "P_XY7",
-        "y_var": "P_XY7",
+        "x_var": "P_Y7",
+        "y_var": "P_Y7",
         "dx": 0,
         "dy": 0
       },
       {
-        "x_var": "P_Y6",
-        "y_var": "P_XY7",
+        "x_var": "P_XY6",
+        "y_var": "P_Y7",
         "dx": 0,
         "dy": 0
       },
       {
-        "x_var": "P_Y6",
-        "y_var": "P_Y6",
+        "x_var": "P_XY6",
+        "y_var": "P_XY6",
         "dx": 0,
         "dy": 0
       },
@@ -5162,12 +5157,12 @@
     },
     {
       "first_var": "P_K5",
-      "second_var": "P_N6",
+      "second_var": "P_NU6",
       "axis": "y"
     },
     {
       "first_var": "P_M2",
-      "second_var": "P_MN",
+      "second_var": "P_MNX",
       "axis": "x"
     },
     {
@@ -23787,7 +23782,7 @@
       "start_key": "P_C6",
       "end_key": "P_D6",
       "start_label": "Neamegapolis",
-      "end_label": "D₆",
+      "end_label": "D\u2086",
       "length": 794.33,
       "cost": 9.66,
       "path": [
@@ -23880,7 +23875,7 @@
     {
       "start_key": "P_P2",
       "end_key": "coord:-326,-904",
-      "start_label": "P₂",
+      "start_label": "P\u2082",
       "end_label": "Node node_239",
       "length": 916.81,
       "cost": 10.24,
@@ -23974,7 +23969,7 @@
     {
       "start_key": "P_N6",
       "end_key": "coord:-187,2974",
-      "start_label": "N₆",
+      "start_label": "N\u2086",
       "end_label": "Node node_590",
       "length": 1015.19,
       "cost": 12.49,
@@ -24004,7 +23999,7 @@
     {
       "start_key": "P_D6",
       "end_key": "coord:-1308,2829",
-      "start_label": "D₆",
+      "start_label": "D\u2086",
       "end_label": "Node node_490",
       "length": 1210.16,
       "cost": 14.41,
@@ -24026,7 +24021,7 @@
     {
       "start_key": "P_P2",
       "end_key": "coord:-495,246",
-      "start_label": "P₂",
+      "start_label": "P\u2082",
       "end_label": "Node node_268_268",
       "length": 1071.89,
       "cost": 15.53,
@@ -24098,7 +24093,7 @@
     {
       "start_key": "P_B5",
       "end_key": "coord:1350,168",
-      "start_label": "B₅",
+      "start_label": "B\u2085",
       "end_label": "Node node_79",
       "length": 1844.27,
       "cost": 29.07,
