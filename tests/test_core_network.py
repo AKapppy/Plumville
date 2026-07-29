@@ -3,8 +3,10 @@ from __future__ import annotations
 from datetime import datetime
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
+from unittest import mock
 
 import legacy_core as base
 from plumville.core import network
@@ -49,12 +51,14 @@ class CoreNetworkTests(unittest.TestCase):
                 {
                     "var": "P_A",
                     "has_connector": 1,
+                    "abbr": " BKP ",
                     "station_entry_x": "10",
                     "station_entry_y": 20.5,
                     "chime_directions": ["west", "north", "west", "bad"],
                 },
                 {
                     "var": "P_B",
+                    "abbr": "   ",
                     "station_entry_x": "bad",
                     "station_entry_y": 30,
                     "chime_directions": "north",
@@ -75,6 +79,7 @@ class CoreNetworkTests(unittest.TestCase):
                 "var": "P_A",
                 "has_connector": True,
                 "is_connected": False,
+                "abbr": "BKP",
                 "station_entry_x": 10,
                 "station_entry_y": 20,
                 "chime_directions": ["north", "west"],
@@ -316,6 +321,345 @@ class CoreNetworkTests(unittest.TestCase):
             [{"first_var": "P_A", "second_var": "P_B", "axis": "x"}],
         )
         self.assertFalse(base._normalize_alignment_reminders(payload))  # type: ignore[arg-type]
+
+    def test_alignment_editor_preview_describes_included_stations(self) -> None:
+        previous_stops_by_var = base.STOPS_BY_VAR
+        previous_line_stop_vars = base.LINE_STOP_VARS
+        previous_stops = base.METRO_STOPS
+        try:
+            alpha = base.MetroStop("P_A", "Alpha", 0, 0)
+            beta = base.MetroStop("P_B", "Beta", 10, 50)
+            gamma = base.MetroStop("P_C", "Gamma", 20, 50)
+            base.STOPS_BY_VAR = {
+                alpha.var: alpha,
+                beta.var: beta,
+                gamma.var: gamma,
+            }
+            base.LINE_STOP_VARS = {"A": (alpha.var, beta.var, gamma.var)}
+            base.METRO_STOPS = (alpha, beta, gamma)
+
+            preview = base._alignment_editor_preview_text(alpha.var, gamma.var, "y")
+
+            self.assertIn("Match Y (horizontal)", preview)
+            self.assertIn("Alpha, Beta, Gamma", preview)
+            self.assertIn("Needs an alignment ellipse.", preview)
+        finally:
+            base.STOPS_BY_VAR = previous_stops_by_var
+            base.LINE_STOP_VARS = previous_line_stop_vars
+            base.METRO_STOPS = previous_stops
+
+    def test_default_turn_direction_label_uses_compass_directions(self) -> None:
+        self.assertEqual(
+            base._default_turn_direction_label((0, 0), (10, -10), ((10, 0),)),
+            "East-South",
+        )
+        self.assertEqual(
+            base._default_turn_direction_label((0, 0), (-10, 10), ((0, 10),)),
+            "North-West",
+        )
+
+    def test_set_alignment_reminder_replaces_existing_record_atomically(self) -> None:
+        payload = {
+            "stops": [
+                {"var": "P_A", "lbl": "Alpha", "x": 0, "y": 0},
+                {"var": "P_B", "lbl": "Beta", "x": 10, "y": 50},
+                {"var": "P_C", "lbl": "Gamma", "x": 30, "y": 50},
+            ],
+            "alignment_reminders": [
+                {"first_var": "P_A", "second_var": "P_B", "axis": "x"},
+            ],
+        }
+
+        with (
+            mock.patch.object(base, "_load_network_payload", return_value=payload),
+            mock.patch.object(base, "_write_network_payload") as write_payload,
+            mock.patch.object(base, "_apply_network_payload") as apply_payload,
+        ):
+            base.set_alignment_reminder(
+                "P_A",
+                "P_C",
+                "y",
+                previous_first_station="P_A",
+                previous_second_station="P_B",
+                previous_axis="x",
+            )
+
+        self.assertEqual(
+            payload["alignment_reminders"],
+            [{"first_var": "P_A", "second_var": "P_C", "axis": "y"}],
+        )
+        write_payload.assert_called_once_with(payload)
+        apply_payload.assert_called_once_with(payload)
+
+    def test_set_alignment_reminder_drops_matching_record_when_pair_is_already_aligned(self) -> None:
+        payload = {
+            "stops": [
+                {"var": "P_A", "lbl": "Alpha", "x": 0, "y": 0},
+                {"var": "P_B", "lbl": "Beta", "x": 0, "y": 50},
+            ],
+            "alignment_reminders": [
+                {"first_var": "P_A", "second_var": "P_B", "axis": "x"},
+            ],
+        }
+
+        with (
+            mock.patch.object(base, "_load_network_payload", return_value=payload),
+            mock.patch.object(base, "_write_network_payload"),
+            mock.patch.object(base, "_apply_network_payload"),
+        ):
+            base.set_alignment_reminder(
+                "P_A",
+                "P_B",
+                "x",
+                previous_first_station="P_A",
+                previous_second_station="P_B",
+                previous_axis="x",
+            )
+
+        self.assertEqual(payload["alignment_reminders"], [])
+
+    def test_set_metro_line_segment_custom_points_replaces_segment_specs(self) -> None:
+        payload = {
+            "stops": [
+                {"var": "P_A", "lbl": "Alpha", "x": 0, "y": 0},
+                {"var": "P_B", "lbl": "Beta", "x": 10, "y": 10},
+            ],
+            "line_stop_vars": {"A": ["P_A", "P_B"]},
+            "line_path_specs": {
+                "A": [
+                    {"x_var": "P_A", "y_var": "P_A", "dx": 0, "dy": 0},
+                    {"x_var": "P_B", "y_var": "P_B", "dx": 0, "dy": 0},
+                ]
+            },
+            "alignment_reminders": [{"first_var": "P_A", "second_var": "P_B", "axis": "x"}],
+        }
+        previous_stops_by_var = base.STOPS_BY_VAR
+        try:
+            alpha = base.MetroStop("P_A", "Alpha", 0, 0)
+            beta = base.MetroStop("P_B", "Beta", 10, 10)
+            base.STOPS_BY_VAR = {alpha.var: alpha, beta.var: beta}
+            with (
+                mock.patch.object(base, "_load_network_payload", return_value=payload),
+                mock.patch.object(base, "_write_network_payload"),
+                mock.patch.object(base, "_apply_network_payload"),
+            ):
+                base.set_metro_line_segment_custom_points("A", "P_A", "P_B", [(0, 5), (10, 5)])
+        finally:
+            base.STOPS_BY_VAR = previous_stops_by_var
+
+        self.assertEqual(
+            payload["line_path_specs"]["A"],
+            [
+                {"x_var": "P_A", "y_var": "P_A", "dx": 0, "dy": 0},
+                {"x_var": "P_A", "y_var": "P_A", "dx": 0, "dy": -5},
+                {"x_var": "P_A", "y_var": "P_A", "dx": 10, "dy": -5},
+                {"x_var": "P_B", "y_var": "P_B", "dx": 0, "dy": 0},
+            ],
+        )
+        self.assertEqual(payload["alignment_reminders"], [])
+
+    def test_reset_all_metro_line_segments_direct_collapses_extra_specs(self) -> None:
+        payload = {
+            "stops": [
+                {"var": "P_A", "lbl": "Alpha", "x": 0, "y": 0},
+                {"var": "P_B", "lbl": "Beta", "x": 10, "y": 10},
+                {"var": "P_C", "lbl": "Gamma", "x": 20, "y": 10},
+            ],
+            "line_stop_vars": {"A": ["P_A", "P_B", "P_C"]},
+            "line_path_specs": {
+                "A": [
+                    {"x_var": "P_A", "y_var": "P_A", "dx": 0, "dy": 0},
+                    {"x_var": "P_A", "y_var": "P_B", "dx": 0, "dy": 0},
+                    {"x_var": "P_B", "y_var": "P_B", "dx": 0, "dy": 0},
+                    {"x_var": "P_C", "y_var": "P_B", "dx": 0, "dy": 0},
+                    {"x_var": "P_C", "y_var": "P_C", "dx": 0, "dy": 0},
+                ]
+            },
+            "alignment_reminders": [],
+        }
+        previous_stops_by_var = base.STOPS_BY_VAR
+        try:
+            alpha = base.MetroStop("P_A", "Alpha", 0, 0)
+            beta = base.MetroStop("P_B", "Beta", 10, 10)
+            gamma = base.MetroStop("P_C", "Gamma", 20, 10)
+            base.STOPS_BY_VAR = {alpha.var: alpha, beta.var: beta, gamma.var: gamma}
+            with (
+                mock.patch.object(base, "_load_network_payload", return_value=payload),
+                mock.patch.object(base, "_write_network_payload"),
+                mock.patch.object(base, "_apply_network_payload"),
+            ):
+                base.reset_all_metro_line_segments_direct()
+        finally:
+            base.STOPS_BY_VAR = previous_stops_by_var
+
+        self.assertEqual(
+            payload["line_path_specs"]["A"],
+            [
+                {"x_var": "P_A", "y_var": "P_A", "dx": 0, "dy": 0},
+                {"x_var": "P_B", "y_var": "P_B", "dx": 0, "dy": 0},
+                {"x_var": "P_C", "y_var": "P_C", "dx": 0, "dy": 0},
+            ],
+        )
+        self.assertEqual(
+            payload["alignment_reminders"],
+            [{"first_var": "P_A", "second_var": "P_B", "axis": "x"}],
+        )
+
+    def test_set_metro_line_segment_endpoint_coordinates_updates_anchors_only(self) -> None:
+        payload = {
+            "stops": [
+                {"var": "P_A", "lbl": "Alpha", "x": 0, "y": 0},
+                {"var": "P_B", "lbl": "Beta", "x": 10, "y": 10},
+            ],
+            "line_stop_vars": {"A": ["P_A", "P_B"]},
+            "line_path_specs": {
+                "A": [
+                    {"x_var": "P_A", "y_var": "P_A", "dx": 0, "dy": 0},
+                    {"x_var": "P_A", "y_var": "P_A", "dx": 4, "dy": -2},
+                    {"x_var": "P_B", "y_var": "P_B", "dx": 0, "dy": 0},
+                ]
+            },
+            "alignment_reminders": [],
+        }
+        previous_stops_by_var = base.STOPS_BY_VAR
+        try:
+            alpha = base.MetroStop("P_A", "Alpha", 0, 0)
+            beta = base.MetroStop("P_B", "Beta", 10, 10)
+            base.STOPS_BY_VAR = {alpha.var: alpha, beta.var: beta}
+            with (
+                mock.patch.object(base, "_load_network_payload", return_value=payload),
+                mock.patch.object(base, "_write_network_payload"),
+                mock.patch.object(base, "_apply_network_payload"),
+            ):
+                base.set_metro_line_segment_endpoint_coordinates(
+                    "A",
+                    "P_A",
+                    "P_B",
+                    start_coordinates=(1, 2),
+                    end_coordinates=(9, 8),
+                )
+        finally:
+            base.STOPS_BY_VAR = previous_stops_by_var
+
+        self.assertEqual(
+            payload["line_path_specs"]["A"],
+            [
+                {"x_var": "P_A", "y_var": "P_A", "dx": 1, "dy": -2},
+                {"x_var": "P_A", "y_var": "P_A", "dx": 4, "dy": -2},
+                {"x_var": "P_B", "y_var": "P_B", "dx": -1, "dy": 2},
+            ],
+        )
+
+    def test_metro_segment_coordinate_list_formatter_is_shared_by_editors(self) -> None:
+        self.assertEqual(base._format_coordinate_list(()), "No intermediate coordinates.")
+        self.assertEqual(base._format_coordinate_list(((1, 2), (3, 4))), "(1, 2) -> (3, 4)")
+
+    def test_metro_segment_endpoint_editor_reaches_save_button_without_display(self) -> None:
+        class FakeWidget:
+            def __init__(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
+            def pack(self, *_args: object, **_kwargs: object) -> None:
+                pass
+
+            def title(self, _value: str) -> None:
+                pass
+
+            def configure(self, **_kwargs: object) -> None:
+                pass
+
+            def transient(self, _root: object) -> None:
+                pass
+
+            def grab_set(self) -> None:
+                pass
+
+            def protocol(self, _name: str, _callback: object) -> None:
+                pass
+
+            def winfo_exists(self) -> bool:
+                return True
+
+            def destroy(self) -> None:
+                pass
+
+        class FakeStringVar:
+            def __init__(self, *_args: object, value: str = "", **_kwargs: object) -> None:
+                self.value = value
+
+            def get(self) -> str:
+                return self.value
+
+            def set(self, value: str) -> None:
+                self.value = value
+
+            def trace_add(self, _mode: str, _callback: object) -> str:
+                return "trace"
+
+        class FakeButton(FakeWidget):
+            def __init__(self, text: str, command: object) -> None:
+                super().__init__()
+                self.text = text
+                self.command = command
+
+        class FakeViewer:
+            def __init__(self) -> None:
+                self.root = object()
+                self.buttons: list[FakeButton] = []
+                self.preview_points: tuple[tuple[int, int], ...] | None = None
+
+            def _center_toplevel(self, _dialog: object, *, width: int, height: int) -> None:
+                self.center_size = (width, height)
+
+            def _clear_metro_segment_preview(self) -> None:
+                self.preview_points = None
+
+            def _set_metro_segment_preview(self, points: tuple[tuple[int, int], ...]) -> None:
+                self.preview_points = points
+
+            def _make_sidebar_button(
+                self,
+                _parent: object,
+                *,
+                text: str,
+                command: object,
+            ) -> FakeButton:
+                button = FakeButton(text, command)
+                self.buttons.append(button)
+                return button
+
+        previous_tk = base.tk
+        previous_stops_by_var = base.STOPS_BY_VAR
+        viewer = FakeViewer()
+        try:
+            base.tk = SimpleNamespace(
+                Toplevel=FakeWidget,
+                Frame=FakeWidget,
+                Label=FakeWidget,
+                Entry=FakeWidget,
+                StringVar=FakeStringVar,
+            )
+            alpha = base.MetroStop("P_A", "Alpha", 0, 0)
+            beta = base.MetroStop("P_B", "Beta", 10, 10)
+            base.STOPS_BY_VAR = {alpha.var: alpha, beta.var: beta}
+            segment = base.MetroLineSegment(
+                "A",
+                "P_A",
+                "P_B",
+                (
+                    base.LinePathPointSpec("P_A", "P_A"),
+                    base.LinePathPointSpec("P_A", "P_A", 4, -2),
+                    base.LinePathPointSpec("P_B", "P_B"),
+                ),
+            )
+
+            base.MetroMapViewer._edit_metro_segment_endpoints(viewer, segment)  # type: ignore[arg-type]
+        finally:
+            base.tk = previous_tk
+            base.STOPS_BY_VAR = previous_stops_by_var
+
+        self.assertIn("Save Endpoints", [button.text for button in viewer.buttons])
+        self.assertEqual(viewer.preview_points, ((0, 0), (4, -2), (10, -10)))
 
     def test_payload_projection_helpers_build_runtime_mappings(self) -> None:
         payload = {

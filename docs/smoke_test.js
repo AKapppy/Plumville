@@ -26,6 +26,10 @@ function pngDimensions(buffer) {
   };
 }
 
+function isPublicPlaceholderLabel(label) {
+  return /^[A-Z0-9_{}]+$/.test(String(label || '').trim());
+}
+
 assert(indexHtml.includes('id="metroCanvas"'), 'Viewer canvas is missing from index.html.');
 assert(indexHtml.includes('id="fitMapButton"'), 'Fit rendered map button is missing from index.html.');
 assert(indexHtml.includes('id="mapZoomInButton"'), 'In-map zoom-in control is missing from index.html.');
@@ -45,6 +49,10 @@ assert(indexHtml.includes('id="routeButton"'), 'Directions route button is missi
 assert(indexHtml.includes('<details class="collapsible-section" open>'), 'Directions should start expanded in the public viewer.');
 assert(indexHtml.includes('id="stationSuggestions"'), 'Directions station suggestions are missing from index.html.');
 assert(indexHtml.includes('Station label or code'), 'Directions should clarify station-only route inputs.');
+assert(appJs.includes('function isPlaceholderStop'), 'app.js is missing station placeholder classification.');
+assert(appJs.includes('Named stations'), 'Blank station suggestions no longer label named stations.');
+assert(appJs.includes('Unnamed stations'), 'Blank station suggestions no longer label unnamed stations.');
+assert(appJs.includes('Number(isPlaceholderStop(first))'), 'Station suggestions no longer sort named stations first.');
 assert(stylesCss.includes('max-height: none;'), 'Directions text panel should not trap route text in a nested scroll area.');
 assert(stylesCss.includes('#routeSteps') && stylesCss.includes('white-space: pre-wrap'), 'Directions steps should wrap and expand with their text.');
 assert(indexHtml.includes('id="showSuggestedWalkingPathsInput"'), 'Suggested walking path view toggle is missing from index.html.');
@@ -88,13 +96,23 @@ assert(!appJs.includes('interchange(s)'), 'Route summaries still use awkward int
 assert(!appJs.includes('No route exists for those endpoints'), 'Public route failure still uses technical endpoint wording.');
 assert(appJs.includes('function placeStationLabels'), 'app.js is missing automatic station label placement.');
 assert(!appJs.includes('stopRouteInputPropagation'), 'Route inputs still intercept native pointer/click events.');
-assert(!indexHtml.includes('Checklist'), 'Maintenance checklist is visible in the public viewer.');
-assert(!indexHtml.includes('showAlignmentInput'), 'Alignment maintenance overlay control is visible in the public viewer.');
-assert(!indexHtml.includes('showFrontierInput'), 'Frontier maintenance overlay control is visible in the public viewer.');
+assert(indexHtml.includes('id="publicChecklistSummary"'), 'Public checklist summary is missing from index.html.');
+assert(indexHtml.includes('id="publicPrioritySummary"'), 'Public priority summary is missing from index.html.');
+assert(indexHtml.includes('id="publicPriorityList"'), 'Public priority list container is missing from index.html.');
+assert(indexHtml.includes('showCityLimitsInput'), 'City limits toggle is missing from the public viewer.');
+assert(indexHtml.includes('showAlignmentInput'), 'Alignment ellipses toggle is missing from the public viewer.');
+assert(indexHtml.includes('showFrontierInput'), 'Frontier highlights toggle is missing from the public viewer.');
 assert(!indexHtml.includes('useFlyingInput'), 'Flying route control is visible in the public viewer.');
 assert(!indexHtml.includes('readOnlyNotice'), 'Read-only/admin notice is visible in the public viewer.');
-assert(!appJs.includes('function drawAlignmentReminders'), 'Alignment maintenance renderer is bundled in the public viewer.');
-assert(!appJs.includes('function drawFrontierHighlights'), 'Frontier maintenance renderer is bundled in the public viewer.');
+assert(appJs.includes('function drawCityLimits'), 'City limits renderer is missing from the public viewer.');
+assert(appJs.includes('function drawAlignmentReminders'), 'Alignment ellipses renderer is missing from the public viewer.');
+assert(appJs.includes('function drawFrontierHighlights'), 'Frontier highlights renderer is missing from the public viewer.');
+assert(appJs.includes('function refreshPublicChecklistSummary'), 'Public checklist summary logic is missing from app.js.');
+assert(appJs.includes('function refreshPublicPriorityList'), 'Public priority list logic is missing from app.js.');
+assert(appJs.includes('function stationChecklistHtml'), 'Read-only station checklist popup rendering is missing from app.js.');
+assert(!appJs.includes('<p class="section-label">Chimes</p>'), 'Station popup still includes the old chimes section.');
+assert(stylesCss.includes('.station-checklist'), 'Station checklist popup styling is missing.');
+assert(stylesCss.includes('.priority-list'), 'Public priority-list styling is missing.');
 for (const forbiddenPattern of [
   /\/Users\//,
   /Library\/Application Support/,
@@ -110,6 +128,38 @@ assert(network.line_stop_vars && Object.keys(network.line_stop_vars).length > 0,
 assert(Array.isArray(network.suggested_walking_segments), 'metro_network.json has no suggested walking segment data.');
 assert(network.suggested_walking_segments.length > 0, 'Suggested walking segment data is empty.');
 assert(!fs.existsSync(path.join(repoRoot, 'metro_network.json')), 'Duplicate root metro_network.json should not exist; docs/metro_network.json is canonical.');
+
+const sortedSuggestionStops = [...network.stops].sort((first, second) => (
+  Number(isPublicPlaceholderLabel(first.lbl))
+    - Number(isPublicPlaceholderLabel(second.lbl))
+  || String(first.lbl).localeCompare(
+    String(second.lbl),
+    undefined,
+    { numeric: true },
+  )
+));
+const firstUnnamedSuggestion = sortedSuggestionStops.findIndex(
+  (stop) => isPublicPlaceholderLabel(stop.lbl),
+);
+assert(firstUnnamedSuggestion > 0, 'Blank suggestions need named stations before unnamed stations.');
+assert(
+  sortedSuggestionStops.slice(0, firstUnnamedSuggestion).every(
+    (stop) => !isPublicPlaceholderLabel(stop.lbl),
+  ),
+  'A placeholder station appears in the Named stations group.',
+);
+assert(
+  sortedSuggestionStops.slice(firstUnnamedSuggestion).every(
+    (stop) => isPublicPlaceholderLabel(stop.lbl),
+  ),
+  'A named station appears in the Unnamed stations group.',
+);
+const hlStop = network.stops.find((stop) => stop.var === 'P_HL' || stop.lbl === 'HL');
+assert(hlStop && isPublicPlaceholderLabel(hlStop.lbl), 'HL should appear as an unnamed station.');
+const f6Stop = network.stops.find((stop) => stop.var === 'P_F6' || stop.lbl === 'F6');
+if (f6Stop) {
+  assert(isPublicPlaceholderLabel(f6Stop.lbl), 'F6 should appear as an unnamed station when exported.');
+}
 
 const dimensions = pngDimensions(terrainPng);
 assert(dimensions.width === terrainMetadata.width, `PNG width ${dimensions.width} does not match metadata width ${terrainMetadata.width}.`);

@@ -21,6 +21,11 @@ class _FakeVar:
 
 
 class PriorityFilterTest(unittest.TestCase):
+    def test_placeholder_all_caps_labels_are_treated_as_unnamed(self) -> None:
+        self.assertFalse(base._stop_has_name(base.MetroStop("P_ABCDE", "HL", 0, 0)))
+        self.assertFalse(base._stop_has_name(base.MetroStop("P_ABCDE", "TMP2", 0, 0)))
+        self.assertTrue(base._stop_has_name(base.MetroStop("P_ABCDE", "Harbor Landing", 0, 0)))
+
     def test_selected_need_filters_entries_and_highlights_same_stations(self) -> None:
         entries = [(stop.var, stop.lbl) for stop in base.METRO_STOPS]
         counts = {}
@@ -69,6 +74,34 @@ class PriorityFilterTest(unittest.TestCase):
 
         self.assertEqual([stop_var for stop_var, _text in entries], [stop.var])
         self.assertIn("needs", entries[0][1])
+
+    def test_priority_list_excludes_unnamed_started_station_without_frontier(self) -> None:
+        stop = base.MetroStop("P_TEST", "TEST", 0, 0, has_full_station=True)
+
+        with (
+            mock.patch.object(base, "METRO_STOPS", (stop,)),
+            mock.patch.object(base, "STOPS_BY_VAR", {stop.var: stop}),
+            mock.patch.object(base, "STOP_LINE_NAMES", {stop.var: ()}),
+            mock.patch.object(base, "LINE_STOP_VARS", {}),
+            mock.patch.object(base, "_route_costs_from_endpoint_key", return_value={}),
+        ):
+            entries = base._priority_list_entries("P_ABCDE")
+
+        self.assertEqual(entries, [])
+
+    def test_priority_list_excludes_placeholder_label_without_frontier(self) -> None:
+        stop = base.MetroStop("P_TEST", "TMP2", 0, 0, has_full_station=True)
+
+        with (
+            mock.patch.object(base, "METRO_STOPS", (stop,)),
+            mock.patch.object(base, "STOPS_BY_VAR", {stop.var: stop}),
+            mock.patch.object(base, "STOP_LINE_NAMES", {stop.var: ()}),
+            mock.patch.object(base, "LINE_STOP_VARS", {}),
+            mock.patch.object(base, "_route_costs_from_endpoint_key", return_value={}),
+        ):
+            entries = base._priority_list_entries("P_ABCDE")
+
+        self.assertEqual(entries, [])
 
     def test_priority_list_includes_next_station_on_started_line(self) -> None:
         frontier = base.MetroStop("P_FRONTIER", "Frontier", 0, 0, is_connected=True)

@@ -1,262 +1,1328 @@
-PLUMVILLE DEVELOPMENT NOTES AND ROADMAP
+PLUMVILLE MASTER CHECKLIST AND DEVELOPMENT NOTES
 
-Last revised: 2026-07-27
+Last synchronized with GitHub main: 2026-07-28
 
-PURPOSE
+======================================================================
+ACTIVE CHECKLIST — READ AND UPDATE THIS FIRST
+======================================================================
 
-This is the authoritative Codex-ready roadmap for Plumville.
-
-Mandatory after every implementation run:
-- Update this checklist.
-- Update file_priority.txt.
-- Keep active, blocked, ready-to-test, and deferred items above completed work.
-- Move completed and verified work to the final COMPLETED ITEMS section.
-- Do not mark implementation complete before the relevant QA passes.
-- Record web, mobile, desktop, and automated verification separately.
-- Re-output notes.txt and file_priority.txt after every implementation run.
-
-STATUS LEGEND
+STATUS RULES
 
 [ ] Not started
-[progress] Partially implemented
-[ready-web] Ready for desktop-browser verification
-[ready-mobile] Ready for mobile verification
-[desktop-pending] Waiting for desktop application pull and testing
-[verify] Implemented but not yet verified
-[blocked] Blocked
-[x] Implemented and verified
-[deferred] Intentionally postponed
+[~] In progress during the current Codex run
+[x] Completed by Codex and supported by passing automated checks
+[verify] Implemented or apparently present, but still needs user verification
+[blocked] Cannot continue without a concrete dependency or user decision
+[hold] Intentionally paused
+[deferred] Deliberately postponed
 [info] Reference information
 
-======================================================================
-CURRENT IMPLEMENTATION STATUS
-======================================================================
+Codex may mark implementation and automated-test items [x].
 
-[verify] Public docs Run 04 is prepared but not yet fully verified.
+Codex must not mark USER VERIFICATION items [x]. Those remain [ ] until the
+user reports the result. When the user reports a result, update the item to
+[x], [blocked], or [~] as appropriate.
 
-Run 04 affects:
-- docs/app.js
-- docs/styles.css
-- docs/index.html
+----------------------------------------------------------------------
+0. REQUIRED CODEX WORKFLOW
+----------------------------------------------------------------------
 
-Run 04 v3 includes:
-- Mobile map forced above the controls
-- Sticky mobile map
-- Native pinch zoom and pinch-pan
-- Defensive resize/orientation handling
-- Midpoint/visible-midpoint line shields
-- Abbreviation-first label placement
-- Named/unnamed suggestion grouping
-- Cache-busting asset references
+[ ] Read AGENTS.md completely.
+[ ] Read this notes.txt completely.
+[ ] Read file_priority.txt completely.
+[ ] Read CODEX_TASK.md completely.
+[ ] Treat the current checkout as the source of truth.
+[ ] Do not apply or depend on old generated updater scripts.
+[ ] Record the current branch and `git status --short`.
+[ ] Preserve all user changes already in the worktree.
+[ ] Do not run `git reset --hard`, `git clean`, or destructive checkout commands.
+[ ] Do not commit.
+[ ] Do not push.
+[x] Record Python, Node, and npm versions.
+[x] Run baseline automated checks before editing.
+[x] Reproduce the actual desktop error or traceback before fixing it.
+[x] Mark the active task [~] before making code changes.
+[ ] Keep the run to one coherent implementation slice.
+[x] Add or update tests for every behavior that can be tested automatically.
+[x] Run the relevant automated checks after editing.
+[ ] Update this checklist after the run.
+[ ] Update file_priority.txt after the run.
+[ ] Move only genuinely completed items to COMPLETED AND VERIFIED WORK.
+[ ] Leave interactive user checks unchecked.
+[ ] Give the user a numbered list of manual checks after every run.
+[ ] Report exact commands and exact pass/fail/skip results.
+[ ] Report every changed file.
+[ ] Report known risks and unresolved issues.
+[ ] Confirm that no commit or push was performed.
 
-Run 04 sidebar addendum includes:
-- Collapsed-by-default Lines disclosure
-- Circle-only line controls
-- No visible line checkboxes
-- No redundant text beside line circles
-- Saturated visible state
-- Dimmed/desaturated hidden state
-- Accessible pressed-state buttons
-- Preserved routing and share-link behavior
+----------------------------------------------------------------------
+1. DESKTOP STABILIZATION RUN D01 — CURRENT HIGHEST PRIORITY
+----------------------------------------------------------------------
 
-[info] Failed updater attempts:
-- Run 04 v1 failed before writing files because an exact block did not match.
-- Run 04 v2 failed before writing files because blank lines broke the indentation matcher.
-- Run 04 v3 corrects those matcher problems.
-- No production docs file was changed by the failed attempts.
+CURRENT REPOSITORY REALITY
 
-======================================================================
-RUN 04 ACTIVE VERIFICATION ITEMS
-======================================================================
+[info] The latest GitHub main already contains desktop_improvements.py.
+[info] ui_extensions.py already imports desktop_improvements and calls
+       desktop_improvements.apply().
+[info] The earlier generated updater did not complete cleanly, so the current
+       pushed implementation must be audited as code that may be partial or
+       broken. Do not assume it works merely because the files exist.
+[info] The first task is stabilization, not another blind implementation pass.
 
-MOBILE MAP ORDER
+BASELINE AND FAILURE REPRODUCTION
 
-[ready-mobile] Render the mobile map above the controls.
-[ready-mobile] Keep the map sticky while controls scroll.
-[ready-mobile] Prevent duplicate or empty map space at the bottom.
-[ready-mobile] Preserve top-first map order in portrait and landscape.
-[ready-mobile] Keep safe-area spacing present but restrained.
+[x] Run Python syntax checks on the current desktop-related modules.
+[blocked] Run the current automated test suite before editing.
+[blocked] Run the Tk sidebar smoke test when a display is available.
+[blocked] Launch `python3 plumville_app.py`.
+[x] Capture the complete traceback or incorrect behavior.
+[x] Identify whether the failure occurs during import, extension application,
+    sidebar construction, redraw, route planning, world-map status updates,
+    or user interaction.
+[x] Identify the smallest responsible code path.
+[x] Record the root cause in this file under RUN HISTORY.
 
-TOUCH GESTURES
+EXTENSION APPLICATION AND STARTUP
 
-[ready-mobile] Add two-finger pinch zoom.
-[ready-mobile] Add pinch-pan around the gesture midpoint.
-[ready-mobile] Preserve one-finger panning.
-[ready-mobile] Preserve one-finger station selection.
-[ready-mobile] Prevent accidental selection after a pinch.
-[ready-mobile] Preserve +, −, and Fit controls.
+[x] Audit the complete extension application order in ui_extensions.py.
+[x] Confirm every `.apply()` function is idempotent.
+[x] Confirm MetroMapViewer._build_route_panel is not wrapped recursively.
+[x] Confirm MetroMapViewer._draw_selected_stop_info is not wrapped recursively.
+[x] Confirm MetroMapViewer._refresh_current_route is not wrapped recursively.
+[x] Confirm the sidebar is built exactly once.
+[x] Confirm no section is duplicated.
+[x] Confirm no expected section disappears.
+[verify] Confirm the private desktop app opens without a traceback.
+[x] Confirm closing and reopening the app does not accumulate patches.
 
-RESIZE AND ORIENTATION
+DESKTOP ROUTE AUTO-FIT
 
-[ready-web] Prevent blank canvas after live desktop resize.
-[ready-mobile] Prevent blank canvas after orientation changes.
-[ready-mobile] Refit active routes after viewport changes.
-[ready-web] Preserve map center when appropriate.
-[ready-mobile] Ignore temporary near-zero layout measurements.
-[ready-mobile] Reposition selected popups after resize.
-[ready-mobile] Handle browser-toolbar expansion and collapse.
+[x] Audit the current route auto-fit implementation.
+[x] Auto-fit only after a route is newly calculated or recalculated.
+[x] Auto-fit after Swap.
+[x] Auto-fit after a route-affecting option changes.
+[x] Do not auto-fit on every unrelated redraw.
+[x] Avoid recursive redraw or after_idle loops.
+[x] Include route endpoints and every route path point in fitted bounds.
+[x] Keep comfortable route padding.
+[x] Prevent a very short route from zooming absurdly close.
+[x] Preserve route highlighting.
+[x] Preserve route instructions, distance, and travel time.
+[x] Preserve manual panning after route calculation.
+[x] Add or preserve a persistent Fit Route action.
+[x] Fit Route works after the user pans or zooms away.
+[x] Fit Route before a route exists gives a clear non-destructive message.
+[x] Add automated coverage where practical.
 
-LINE SHIELDS
+PATH DETECTION UI
 
-[ready-web] Place line circles at the midpoint of the visible track segment.
-[ready-web] Use full segment midpoint as fallback.
-[ready-web] Keep circles on the actual polyline through turns.
-[ready-web] Keep station diamonds visually primary.
-[ready-web] Separate Alexandropol’s N and E circles from its diamond.
-[ready-web] Avoid circle/circle and circle/station overlap where possible.
-[x] Use background-aware light/dark marker outlines.
-[x] Keep line letters upright.
+[x] Audit the current path-detection wrapper behavior.
+[x] Remove Detect Village Paths from the normal station popup.
+[x] Remove Redetect Village Paths from the normal station popup.
+[x] Preserve existing saved path-detection data.
+[x] Preserve detected path rendering.
+[verify] Preserve ordinary path editing.
+[x] Add or preserve a collapsed Advanced / Experimental section.
+[x] Clearly label path detection unsupported/experimental.
+[x] Require a selected station.
+[x] Require confirmation before running detection.
+[x] Preserve the existing detection workflow after confirmation.
+[x] Do not repair, redesign, or delete path detection in this run.
+[x] Add smoke-test coverage for the normal popup and Advanced section where
+    practical.
 
-LABEL PRIORITY
+COMPLETED WORLDGEN UI
 
-[ready-web] Prefer abbreviations before full names at world/regional zoom.
-[ready-web] Prefer a normal-position abbreviation over a moved full name.
-[ready-web] Use ALX for Alexandropol when the full name would be displaced.
-[ready-web] Restore full names at close zoom.
-[x] Preserve Mt. Phosphagos priority.
-[x] Preserve selected-station and route-endpoint priority.
+[x] Audit the current completed-worldgen UI implementation.
+[x] Determine completion from trustworthy render/cache data.
+[verify] Verify configured render bounds match rendered bounds.
+[x] Verify total coverage rather than trusting a rounded text percentage.
+[x] Hide only generation controls when completion is reliably verified.
+[x] Hide Mode.
+[x] Hide the Auto Fill explanation.
+[x] Hide Start Auto Fill.
+[verify] Keep Show rendered map.
+[verify] Keep status text.
+[verify] Keep World Map Analysis.
+[x] Hide Circle internal voids when completion is verified.
+[verify] Keep Export Block PNG.
+[x] Show a clear completion banner.
+[x] Restore generation controls whenever completion becomes uncertain.
+[x] Restore generation controls if bounds change.
+[x] Do not mutate render data to test this behavior.
+[x] Do not modify worldgen_config.toml as part of this feature.
+[x] Add unit-testable helper coverage for completion-state decisions.
 
-SUGGESTIONS
+D01 AUTOMATED CHECKS
 
-[x] Replace the native/non-scrollable suggestions with a custom scrollable list.
-[x] Support mouse, trackpad, touch, and keyboard interaction.
-[x] Support full names, abbreviations, and internal codes.
-[ready-web] Group blank suggestions into Named stations and Unnamed stations.
-[ready-web] Sort named stations alphabetically.
-[ready-web] Sort unnamed stations alphabetically/numerically.
-[ready-web] Keep group headings out of filtered results.
+[x] `python3 -m py_compile desktop_improvements.py ui_extensions.py`
+[x] `python3 -m unittest discover -s tests`
+[x] `npm run test:paths`
+[x] `npm test`
+[blocked] `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk`
+[x] Report a Tk smoke skip honestly if no display is available.
+[x] `git diff --check`
+[x] Review `git diff --stat`.
+[x] Review the full diff for every changed file.
 
-SHOW/HIDE LINE CONTROLS
+D01 USER VERIFICATION — CODEX MUST LEAVE THESE UNCHECKED
 
-[ready-web] Add a collapsed-by-default Lines disclosure.
-[ready-web] Remove visible checkboxes.
-[ready-web] Remove redundant text outside line circles.
-[ready-web] Use circle-only pressed-state buttons.
-[ready-web] Use saturated-on styling.
-[ready-web] Use dimmed/desaturated-off styling.
-[ready-web] Preserve active-route replanning after toggling a line.
-[ready-web] Preserve shared visible-line URL state.
-[ready-mobile] Keep line buttons finger-friendly.
-[ready-web] Preserve keyboard and screen-reader accessibility.
+[x] The private desktop app opens without a traceback.
+[x] The map and sidebar render.
+[x] Search still works.
+[x] A long route calculates and automatically fits.
+[x] A short route does not zoom excessively.
+[x] Swap recalculates and refits.
+[x] Fit Route returns to the active route after manual panning.
+[x] Fit Route before a route exists shows a clear message.
+[x] The normal station popup has no path-detection button.
+[x] Advanced / Experimental defaults collapsed.
+[x] Advanced path detection warns before opening.
+[x] Existing detected paths and saved detection state remain intact.
+[x] At verified 100% worldgen completion, generation controls are hidden.
+[x] World-map display, status, analysis, and export remain available.
+[x] Existing editing functions still work.
+[x] No user data is lost.
+[x] Closing and reopening the app remains stable.
 
-POPUPS
+----------------------------------------------------------------------
+2. PUBLIC VIEWER — DESKTOP-BROWSER-ONLY FOLLOW-UP
+----------------------------------------------------------------------
 
-[x] Improve popup clamping near viewport edges.
-[x] Keep bottom-edge popups onscreen.
-[x] Keep right-edge popups onscreen.
-[ready-mobile] Reposition popups correctly after orientation changes.
+[info] Phone/mobile-specific public development is on hold.
+[info] The latest docs/app.js already contains resizeFrame,
+       resizeSettleTimer, syncViewportNow(), and resizeCanvas().
+[info] The latest docs/styles.css already contains a desktop-width
+       `@media (min-width: 861px)` viewport-height block.
+[info] Audit the latest implementation before changing it.
 
-ROUTING
+[blocked] Reproduce the reported blank-canvas-after-live-resize issue using
+         localhost at desktop-browser widths.
+[x] Expose optional city-limit, alignment, and frontier overlays in the public
+    viewer without changing phone layout or admin-only editing behavior.
+[ ] Change public resize code only if the problem is reproducible or a concrete
+    defect is demonstrated.
+[ ] Preserve a manually panned center after resize.
+[ ] Refit an active route after resize.
+[ ] Keep markers, labels, hit targets, and terrain aligned.
+[x] Add or update a deterministic smoke/unit test when possible.
+[x] Confirm blank station suggestions separate Named stations and
+         Unnamed stations correctly.
+[verify] Confirm default/code-style labels such as F6 and HL are Unnamed.
+[ ] Do not change phone layout, safe areas, sticky behavior, or orientation
+    behavior in this workstream.
 
-[x] Public route auto-fit.
-[x] Contextual Fit behavior.
-[x] Short-route zoom protection.
-[x] Swap and line-visibility replanning.
-[x] Shared-route restoration and auto-fit.
-[x] Abbreviation route resolution.
-[ready-mobile] Refit an active route after rotation and viewport changes.
+PUBLIC DESKTOP-BROWSER USER CHECKS — LEAVE UNCHECKED
 
-======================================================================
-NEXT IMPLEMENTATION AFTER RUN 04 VERIFICATION
-======================================================================
+[ ] Resize the browser narrower without refreshing; map stays visible.
+[ ] Resize the browser wider without refreshing; map stays visible.
+[ ] Resize browser height; map stays visible.
+[ ] Active route remains visible after resizing.
+[ ] Station hit targets remain aligned.
+[ ] Blank suggestions show Named stations before Unnamed stations.
+[ ] F6 appears in Unnamed stations.
+[ ] HL appears in Unnamed stations.
+[ ] Full-name, abbreviation, and coordinate search still work.
+[ ] Browser console has no new errors.
 
-[ ] Re-rank docs/app.js, docs/styles.css, and docs/index.html after QA.
-[ ] Move verified Run 04 items to COMPLETED ITEMS.
-[ ] Keep failed or visually imperfect Run 04 items active.
-[ ] Decide the next public slice:
-    - Mobile bottom navigation and sheet
-    - Public construction dashboard foundation
-    - Additional semantic-zoom refinement
-[ ] Do not begin a new large public feature until Run 04 regressions are resolved.
+PUBLIC READ-ONLY STATION WORK
 
-======================================================================
-BROADER PROJECT CHECKLIST
-======================================================================
+[x] Add a public read-only checklist summary with Named, Façades, Stations,
+    Station Entrances, Connected, and Chimes.
+[x] Add a public priority list for named stations and frontier stations only.
+[x] Keep the public priority list read-only.
+[x] Add a public station-popup checklist button when railway checklist work is
+    incomplete.
+[x] Show read-only station checklist details for façade, station, walking
+    paths, and connected.
+[x] Remove the separate chimes section from the public station popup.
+[ ] Confirm public priority entries feel correct after real browser use.
+[ ] Confirm the public station checklist button appears only when railway
+    checklist work is incomplete.
 
-DATA ARCHITECTURE
+METRO LINE PATH RESET AND TURN EDITING
 
-[ ] Make data/ the canonical tracked application-data folder.
-[ ] Move editable metro data to data/metro_network.json.
-[ ] Generate sanitized public data at docs/data/metro_network.json.
-[ ] Add a shared path module.
-[ ] Migrate desktop readers and writers.
-[ ] Add drift detection.
-[ ] Keep public exports sanitized.
+[x] Reset all shared metro line path specs to direct consecutive-stop paths.
+[x] Preserve shared metro stop anchor points while resetting line paths.
+[x] Add a desktop metro turn dialog that lists the two default turns and their
+    coordinates.
+[x] Preview the selected desktop metro turn on the map before saving.
+[x] Label desktop default metro turns with compass directions instead of
+    numbered defaults.
+[x] Allow desktop custom metro turn coordinates with multiple turn points.
+[x] Add a desktop metro segment endpoint editor for start/end anchor offsets.
+[x] Preview desktop metro endpoint edits on the map before saving.
+[x] Keep desktop metro turn edits writing through the shared network JSON.
+[ ] Confirm the desktop turn dialog is comfortable for real multi-turn edits.
+[ ] Confirm endpoint offsets behave well on real junction segments.
 
-STATION ABBREVIATIONS
+----------------------------------------------------------------------
+3. NEXT DESKTOP PHASES — START ONLY AFTER D01 IS STABLE
+----------------------------------------------------------------------
 
-[x] Correct data/station_abbreviations.json.
-[x] Correct IWH, SLI, TRI, EVL, and MCL.
-[x] Add abbreviations to public network records.
-[x] Public abbreviation search.
-[x] Public abbreviation route resolution.
-[x] Public abbreviation display.
-[x] Public semantic-zoom abbreviation fallback.
-[ ] Add desktop abbreviation editing.
-[ ] Add duplicate warnings in desktop.
-[ ] Preserve abbreviations through desktop history and rename workflows.
-[ ] Add canonical public-export support after data migration.
+DESKTOP MODE SHELL
 
-DESKTOP APPLICATION
+[x] Add a clear top-level mode model.
+[x] Add All mode.
+[x] Add Explore mode.
+[x] Start desktop sidebar sections collapsed by default.
+[x] Add Directions mode.
+[x] Add Construction mode.
+[x] Add Edit mode.
+[x] Add World mode.
+[x] Add Advanced mode.
+[x] Preserve every existing function while reorganizing presentation.
+[x] Avoid building all modes in one uncontrolled rewrite.
+[x] Add one mode slice per implementation run.
 
-[ ] Desktop route auto-fit.
-[ ] Desktop Fit Route action.
-[ ] Hide completed worldgen controls.
-[ ] Hide path detection from normal UI.
-[ ] Add Explore, Directions, Construction, Edit, World, and Advanced modes.
-[ ] Add docked station inspector.
-[ ] Restyle station editing dialogs.
-[ ] Add desktop abbreviation fields and live preview.
+DESKTOP MODE SHELL USER CHECKS — LEAVE UNCHECKED
+
+[ ] Mode selector appears above Search.
+[ ] All is selected by default.
+[ ] All collapsible sidebar sections start collapsed.
+[ ] Selecting Directions opens the Directions section and hides unrelated ones.
+[ ] Selecting Construction opens Railways while keeping its supporting sections visible.
+[ ] Selecting Edit opens Pathing while keeping edit-supporting sections visible.
+[ ] Selecting World opens World Map while keeping world-supporting sections visible.
+[ ] Selecting Advanced opens Advanced / Experimental while keeping world-supporting sections visible.
+[ ] Existing Search, Directions, editing, and World controls remain usable.
+
+DOCKED INSPECTOR
+
+[ ] Add a right-side docked inspector.
+[ ] Add Overview.
+[ ] Add Construction.
+[ ] Add Lines.
+[ ] Add Signs.
+[ ] Add Actions.
+[ ] Keep map interactions usable when the inspector is open.
+[ ] Preserve compact-window behavior.
+
+ALIGNMENT ELLIPSE EDITING
+
+[x] Add a desktop station-popup workflow to add alignment ellipses.
+[x] Add a desktop station-popup workflow to edit alignment ellipses.
+[x] Add a desktop station-popup workflow to remove alignment ellipses.
+[x] Persist desktop alignment edits through the shared network JSON file.
+[x] Keep included-station behavior derived from the selected endpoints.
+[x] Add automated coverage for alignment preview and reminder replacement.
+[ ] Preserve alignment editing behavior through interactive desktop use.
+[ ] Confirm updated alignment ellipses appear in the public viewer after data refresh.
+
+DESKTOP ABBREVIATIONS
+
+[x] Add `abbr` to the desktop station model.
+[x] Load and preserve existing public abbreviations.
+[x] Search abbreviations in the private desktop app.
+[x] Display abbreviations in station details.
+[ ] Edit abbreviations in station dialogs.
+[ ] Validate 2–5 alphanumeric characters.
+[ ] Preserve user capitalization.
+[ ] Warn on duplicates.
+[ ] Never silently overwrite a duplicate.
+[ ] Preserve abbreviations through rename, history, undo, and export.
+
+DIALOG AND MMCP REFINEMENT
+
+[x] Define reusable desktop MMCP tokens.
+[verify] Restyle station dialogs.
+[verify] Restyle line dialogs.
+[verify] Use circular line badges.
+[verify] Use diamond station markers.
+[x] Keep station-popup line actions compact with a Manage-row chooser.
+[ ] Preserve keyboard navigation and accessibility.
+[ ] Avoid visual-only rewrites that break data behavior.
 
 CONSTRUCTION
 
-[ ] Shared construction calculations.
-[ ] Sanitized public construction contract.
-[ ] Public construction dashboard.
-[ ] Desktop construction administration view.
-[ ] Shareable public construction tasks.
+[ ] Add shared construction calculations.
+[ ] Add a private construction administration view.
+[ ] Define a sanitized public construction contract.
+[ ] Add a public desktop-browser construction dashboard later.
+[ ] Do not begin public phone construction UI while mobile work is on hold.
 
-STRUCTURAL CLEANUP
+----------------------------------------------------------------------
+4. DATA ARCHITECTURE — NOT PART OF D01
+----------------------------------------------------------------------
 
-[ ] Remove obsolete no-op shim calls after caller verification.
-[ ] Update README.
+[ ] Make `data/` the canonical editable application-data folder.
+[ ] Move editable metro data to `data/metro_network.json`.
+[ ] Generate sanitized public data under `docs/data/`.
+[ ] Add a shared path module.
+[ ] Migrate desktop readers and writers safely.
+[ ] Add canonical/public parity validation.
+[ ] Preserve backward compatibility during migration.
+[ ] Keep public exports sanitized.
+[ ] Do not move files blindly without tracing every reader and writer.
+
+----------------------------------------------------------------------
+5. STRUCTURAL CLEANUP — DO NOT MIX INTO D01
+----------------------------------------------------------------------
+
+[ ] Update README architecture description.
 [ ] Update file-classification documentation.
+[ ] Remove obsolete no-op shim calls only after caller verification.
 [ ] Continue tested extraction from legacy_core.py.
 [ ] Extract network mutation logic.
 [ ] Move station dialogs into a desktop module.
-[ ] Consider local ignored worldgen config plus tracked example config.
-
-PERFORMANCE
-
+[ ] Consider tracked example config plus ignored local config.
 [ ] Measure before optimizing.
-[ ] Measure web render, pan, zoom, labels, route calculation, and route fit.
-[ ] Measure desktop startup, redraw, editing, save, and history.
 [ ] Cache only demonstrated bottlenecks.
 
-======================================================================
-DEFERRED
-======================================================================
+----------------------------------------------------------------------
+6. HOLD AND DEFERRED WORK
+----------------------------------------------------------------------
 
+[hold] Phone portrait-to-landscape Fit centering.
+[hold] New phone/mobile navigation.
+[hold] Phone/mobile bottom sheet.
+[hold] Phone safe-area refinements.
+[hold] Additional phone touch-layout work.
 [deferred] Stable station IDs separate from line-membership vars.
 [deferred] Path-detection repair or retirement decision.
-[deferred] Water, river, and coastline detection.
+[deferred] Water, river, and coastline work.
 
 ======================================================================
-COMPLETED ITEMS
+DETAILED PROJECT CONTEXT
+======================================================================
+
+PROJECT
+
+Plumville is a Minecraft Bedrock metro and world-planning project.
+
+The repository currently has three interacting tracks:
+
+1. Private Tk desktop application
+   - Main launch path: `plumville_app.py` -> `metro_stops.py`
+   - Core legacy application: `legacy_core.py`
+   - Extension orchestration: `ui_extensions.py`
+   - Private authoring, routing, editing, world-map control, and exports
+
+2. Public browser viewer
+   - Folder: `docs/`
+   - GitHub Pages read-only viewer
+   - Current data file: `docs/metro_network.json`
+   - Public changes can be tested at desktop width with localhost
+   - Phone-specific work requires a push and is currently on hold
+
+3. World-generation backend
+   - Package: `worldgen/`
+   - Docker/Bedrock orchestration, chunk loading, rendering, and cache state
+   - Large runtime data must remain ignored and private
+
+CURRENT DATA REALITY
+
+- `docs/metro_network.json` is currently shared by desktop and public code.
+- A future canonical/public split is planned but not part of D01.
+- Do not relocate the metro dataset during desktop stabilization.
+- Do not expose private fields in public output.
+
+CURRENT EXTENSION ORDER
+
+`metro_stops.py` calls `ui_extensions.apply()` once.
+
+The latest ui_extensions.py currently applies:
+
+- worldgen_speedups
+- metro_station_extensions
+- poi_extensions
+- its own route-panel wrapper
+- path_rendering
+- path_detection
+- world_map_overrides
+- desktop_improvements
+
+This order is high risk because several modules monkey-patch methods on
+MetroMapViewer. D01 must verify the order and idempotence instead of assuming
+the wrappers compose safely.
+
+CURRENT DESKTOP DRAFT
+
+The latest main already contains `desktop_improvements.py`. It includes draft
+implementations for:
+
+- route auto-fit
+- Fit Route
+- completed-worldgen control hiding
+- removal of path detection from the normal popup
+- an Advanced / Experimental section
+
+The user reports that the prior generated update had errors and never ran as
+intended. Therefore:
+
+- inspect the current checked-in implementation;
+- reproduce actual failures;
+- fix the current code in place;
+- do not apply the old updater;
+- do not replace the draft merely because it came from an earlier attempt;
+- keep good parts and correct the broken architecture.
+
+PATH DETECTION POLICY
+
+- Preserve saved data.
+- Preserve rendering.
+- Preserve the existing workflow behind an experimental warning.
+- Hide it from normal station controls.
+- Do not repair or expand the detector in D01.
+
+WORLDGEN COMPLETION POLICY
+
+- Completed means trustworthy full coverage, not merely a displayed “100%”
+  string.
+- Hide only active generation controls.
+- Keep visibility, status, analysis, validation, and export.
+- Reappear if the render/cache/config no longer proves completion.
+- Never alter real worldgen data solely to test UI behavior.
+
+PUBLIC MOBILE HOLD
+
+No new phone-specific behavior should be implemented until the user can push
+and test a published build again.
+
+Allowed public work during the hold:
+
+- desktop-browser localhost fixes;
+- automated public validation;
+- regressions that can be reproduced without phone testing.
+
+Not allowed during the hold:
+
+- new mobile navigation;
+- safe-area changes;
+- sticky-map redesign;
+- bottom-sheet work;
+- orientation-specific tweaks based only on guesses.
+
+DESIGN LANGUAGE
+
+Minecraft Control Panel / MMCP:
+
+- dark charcoal surfaces;
+- crisp rectangles and very small radii;
+- restrained Minecraft-inspired borders and texture;
+- modern readable body text;
+- pixel/mono accents for headings and badges;
+- emerald for ready/active;
+- gold for warnings or landmarks;
+- redstone for errors;
+- diamond blue for focus/selection;
+- circle means line;
+- diamond means station;
+- larger or double diamond means junction;
+- Mt. Phosphagos remains a gold-outlined landmark.
+
+STATION ABBREVIATIONS
+
+Authoritative corrected examples:
+
+- Isle of Whales = IWH
+- Slimin = SLI
+- Triarchidia = TRI
+- Everly = EVL
+- Michael = MCL
+
+Rules:
+
+- 2–5 characters
+- alphanumeric
+- uppercase default
+- preserve explicit user capitalization
+- duplicates warn
+- never silently overwrite
+
+======================================================================
+CODEX RUN PROTOCOL
+======================================================================
+
+Every run must follow this order:
+
+1. Read instructions and current checklist.
+2. Inspect current repository state.
+3. Run baseline tests.
+4. Reproduce the actual issue.
+5. Mark one coherent slice [~].
+6. Implement the smallest complete fix.
+7. Add or update tests.
+8. Run targeted checks.
+9. Run broader checks.
+10. Inspect the diff.
+11. Update notes.txt.
+12. Update file_priority.txt.
+13. Leave user verification unchecked.
+14. Report results and a numbered user-check list.
+15. Stop before beginning the next major slice.
+
+Do not report success when a command was skipped or failed.
+
+Do not infer that an interactive feature works merely because syntax checks
+pass.
+
+Do not hide failures by weakening tests.
+
+======================================================================
+RUN HISTORY
+======================================================================
+
+2026-07-29 — Desktop Abbreviation Load/Search/Display Pass
+
+- Scope: add shared abbreviation awareness to the private desktop app without
+  starting the abbreviation-editing workflow yet.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Baseline checks before editing: desktop-related Python compile passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed.
+- Implementation: `legacy_core.py` now adds `abbr` to the desktop `MetroStop`
+  model, loads and trims it from the shared network payload, resolves search
+  and route identifiers through abbreviations, updates desktop search status
+  text to mention abbreviations, and shows abbreviations in selected-station
+  details and titles. `plumville/core/network.py` now normalizes stored stop
+  abbreviations so blank values are removed and real values are trimmed. The
+  desktop popup header styling in `desktop_improvements.py` now reuses the
+  shared abbreviation-aware station display name.
+- Regression coverage: `tests/test_core_network.py` now covers abbreviation
+  normalization in stop metadata, and `tests/test_desktop_improvements.py` now
+  covers abbreviation-aware station display naming, search ranking, and stop
+  resolution.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements tests.test_core_network`
+  passed; full `python3 -m unittest discover -s tests` passed; `npm run
+  test:paths` passed; `npm test` passed; `git diff --check` passed.
+- User verification still required: confirm desktop search accepts
+  abbreviations in both Search and Directions, and confirm selected-station
+  popups show abbreviations clearly without crowding the header.
+
+2026-07-29 — Desktop Remaining Mode Focus Pass
+
+- Scope: turn the remaining desktop modes into focused workspaces by giving
+  Construction, Edit, World, and Advanced clear default section focus.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Baseline checks before editing: desktop-related Python compile passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed.
+- Implementation: `desktop_improvements.py` now makes `Construction` auto-open
+  `Railways`, `Edit` auto-open `Pathing`, `World` auto-open `World Map`, and
+  `Advanced` auto-open `Advanced / Experimental`, while still keeping each
+  mode's supporting sections visible and preserving the `All` default as fully
+  collapsed.
+- Regression coverage: `tests/test_desktop_improvements.py` now verifies the
+  visible and expanded section state for Construction, Edit, World, and
+  Advanced in addition to the earlier `Directions` coverage.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements` passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed; `git diff --check` passed.
+- User verification still required: confirm each non-`All` desktop mode opens
+  its intended primary section automatically, confirm the supporting sections
+  remain visible, and confirm switching among the modes remains stable.
+
+2026-07-29 — Desktop Directions Mode Focus
+
+- Scope: make the desktop `Directions` mode behave like an intentional focused
+  mode instead of only changing the label and visible section list.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Baseline checks before editing: desktop-related Python compile passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed.
+- Implementation: `desktop_improvements.py` now lets the styled collapsible
+  sidebar sections accept programmatic expanded/collapsed control, records each
+  section body in the captured sidebar metadata, and makes `Directions` mode
+  auto-open the `Directions` section while keeping unrelated sections hidden.
+  Startup still defaults to `All`, with every section collapsed.
+- Regression coverage: `tests/test_desktop_improvements.py` now verifies that
+  `Directions` mode keeps the `Directions` and `Show/Hide` cards visible,
+  opens the `Directions` card, and hides unrelated sections.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements` passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed; `git diff --check` passed.
+- User verification still required: confirm `Directions` mode now opens the
+  route-planning section automatically, confirm `All` still starts fully
+  collapsed, and confirm switching back and forth feels stable.
+
+2026-07-29 — Desktop Popup Lines Chooser And Marker Polish
+
+- Scope: keep the selected-station popup compact by moving line actions behind
+  a single `Manage`-row chooser, then tighten marker/badge sizing and dialog
+  fit-to-text behavior toward the current web viewer.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Implementation: `desktop_improvements.py` now replaces the popup's separate
+  line-action row with a single `Lines` action under `Manage`, opens a compact
+  chooser for add/remove/switch, prompts removal through the station's current
+  line list, enlarges desktop station diamonds with web-style dark/inner
+  borders, adjusts line badges to a 25px circular treatment, and relaxes the
+  shared dialog centering minimums so titles fit without oversized empty space.
+- Regression coverage: `tests/test_desktop_improvements.py` now covers the new
+  pure helper that decides which line actions are available for the selected
+  station. Live Tk verification is still blocked here because `tkinter.Tk()`
+  aborts in this execution environment.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements tests.test_priority_filter`
+  passed; full `python3 -m unittest discover -s tests` passed; `git diff --check`
+  passed.
+- User verification still required: confirm the popup now keeps line actions
+  under `Manage > Lines`, confirm `Remove` opens a list of the station's lines,
+  confirm station names remain visible, confirm dialog titles fit cleanly, and
+  confirm desktop diamonds and line circles now read closer to the web viewer.
+
+2026-07-29 — Desktop Popup Action Sections And Dialog Width Refinement
+
+- Scope: restructure the selected-station popup actions into titled one-line
+  sections and loosen dialog fit-to-text sizing enough to keep titles visible
+  without reintroducing large empty space.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Implementation: `desktop_improvements.py` now replaces the raw popup action
+  rows with `Edit`, `Manage`, and `Lines` sections, keeps the buttons on the
+  right side of each section label, hides the old free-form action rows, and
+  uses the existing add/switch/remove line workflows where available. The
+  patched dialog-centering helpers now add modest width/height padding and a
+  title-based minimum so centered dialogs do not squeeze their headings.
+- Regression coverage: existing focused desktop tests stayed green after the
+  popup-section and sizing changes; this slice did not add live-Tk UI tests
+  because the execution environment still aborts on `tkinter.Tk()`.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements tests.test_priority_filter`
+  passed; `git diff --check` passed.
+- User verification still required: confirm the popup now shows the requested
+  section layout, confirm the title is visible, and confirm centered dialogs
+  keep their headings visible while staying close to content size.
+
+2026-07-29 — Desktop Priority Naming Rule Refinement
+
+- Scope: treat line/index-style all-caps station labels as unnamed so they stay
+  off the priority list unless they are frontier stations.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Implementation: `legacy_core.py` now treats short single-token all-caps /
+  digit placeholder labels such as `HL` and `TMP2` as unnamed at the shared
+  `_stop_has_name()` helper, so the existing priority-list filtering excludes
+  them unless they are included through frontier logic.
+- Regression coverage: `tests/test_priority_filter.py` now covers placeholder
+  label detection and confirms those placeholder labels stay out of the
+  non-frontier priority list.
+- Checks after editing: targeted
+  `python3 -m unittest tests.test_priority_filter tests.test_desktop_improvements`
+  passed; full Python unittest discovery passed; `git diff --check` passed.
+- User verification still required: confirm placeholder-style station labels no
+  longer appear in the desktop priority list unless they are frontier stations.
+
+2026-07-29 — Desktop Popup Name And Fit Refinement
+
+- Scope: restore the selected-station popup title text, reduce popup height by
+  spreading action buttons more horizontally, and make centered dialogs size
+  closer to their requested content.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Implementation: `desktop_improvements.py` now renders a fresh visible popup
+  title label in the custom header row, arranges popup action buttons in three
+  columns with tighter gaps, and makes the patched dialog-centering helpers use
+  requested widget size instead of preserving oversized window dimensions.
+- Regression coverage: existing focused desktop tests stayed green after the
+  popup/header and centering adjustments; this slice did not add new live-Tk
+  UI tests because the execution environment still aborts on `tkinter.Tk()`.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements tests.test_priority_filter`
+  passed; `git diff --check` passed. Broader Python and npm suites were not
+  rerun in this follow-up slice.
+- User verification still required: confirm station names are visible again in
+  the popup header, confirm popup buttons no longer make the popup too tall,
+  and confirm centered dialogs feel more fit-to-text without clipping content.
+
+2026-07-29 — Desktop Web Parity Follow-Up: Shared Dialog Chrome
+
+- Scope: push more of the desktop station/line workflows toward the current web
+  viewer look by styling dialog chrome through shared centering hooks instead of
+  rewriting each dialog flow.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Implementation: `desktop_improvements.py` now styles dialog widget trees at
+  the shared `_center_dialog()` and `_center_toplevel()` hooks, so line
+  summaries, add-station flows, alignment editors, turn editors, and other
+  centered dialogs pick up the web-derived background, panel, field, menu,
+  listbox, scrollbar, and radio-button treatment automatically.
+- Regression coverage: existing focused desktop tests remained green after the
+  shared dialog-chrome hook was added; this slice did not add a new live-Tk
+  dialog test because the execution environment still aborts on `tkinter.Tk()`.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements tests.test_priority_filter`
+  passed; full Python unittest discovery passed; `npm run test:paths` passed;
+  `npm test` passed; `git diff --check` passed. Tk smoke and direct app launch
+  still abort with exit code 134 in this execution environment.
+- User verification still required: confirm the line summary, add-station, and
+  other centered dialogs now feel closer to the web viewer without losing
+  readability, keyboard use, or control reachability.
+
+2026-07-29 — Desktop Web Parity Follow-Up: Popup, Markers, Priority, Modes
+
+- Scope: refine the new desktop web-parity styling so the station popup fits
+  better, station/line markers better match the web viewer, the priority list
+  explicitly keeps the named/frontier filter, and the mode selector affects the
+  sidebar.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Implementation: `desktop_improvements.py` now packs the selected-station
+  title and line badges on a shared header row with right-justified line
+  circles, wraps popup action buttons into multiple rows, repositions the popup
+  after decoration so it stays on-screen, overlays diamond station markers on
+  the desktop map after redraw, reapplies the named/frontier priority filter on
+  the desktop refresh path, and makes the desktop mode selector show/hide major
+  sidebar sections by mode.
+- Regression coverage: `tests/test_desktop_improvements.py` now covers
+  mode-change visibility triggering, diamond marker geometry, and the named /
+  frontier priority-entry helper in addition to the existing popup-decoration
+  checks.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements tests.test_priority_filter`
+  passed; full Python unittest discovery passed; `npm run test:paths` passed;
+  `npm test` passed; `git diff --check` passed. Tk smoke and direct app launch
+  still abort with exit code 134 in this execution environment.
+- User verification still required: confirm the popup header keeps the name and
+  line circles on one row, confirm popup action buttons stay visible on-screen,
+  confirm station diamonds now read correctly on the desktop map, confirm the
+  priority list excludes unnamed non-frontier stations, and confirm each mode
+  actually changes the visible sidebar sections in a useful way.
+
+2026-07-29 — Desktop MMCP Visual Pass 01 / Web Parity Pass
+
+- Scope: move the desktop styling closer to the current web viewer while
+  preserving route, editing, and worldgen behavior.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Baseline checks before editing: desktop-related Python compile passed; full
+  Python unittest discovery passed; `npm run test:paths` passed; `npm test`
+  passed; Tk smoke and direct app launch both aborted with exit code 134 in
+  this execution environment before live desktop verification was possible.
+- Implementation: `desktop_improvements.py` now defines reusable web-derived
+  desktop palette tokens, syncs shared `legacy_core.py` sidebar/dialog colors
+  to the web viewer palette, restyles collapsible sections, inputs, buttons,
+  and text panels toward the current web control style, and decorates the
+  selected-station popup with web-style line badges plus diamond station
+  markers.
+- Regression coverage: `tests/test_desktop_improvements.py` now covers the
+  web-style action palette tiers, double-diamond junction markers, and the
+  selected-station popup decoration hook.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements` passed; full Python
+  unittest discovery passed; `npm run test:paths` passed; `npm test` passed;
+  `git diff --check` passed. Tk smoke and direct app launch still abort with
+  exit code 134 here.
+- User verification still required: confirm the desktop now feels visually
+  close to the current web viewer, confirm line badges/diamond markers read
+  clearly, and confirm keyboard-driven dialog interaction still feels normal.
+
+2026-07-28 — Desktop Metro Segment Endpoint Save Access Fix
+
+- Scope: repair the recently added desktop metro segment endpoint editor so
+  its save action is reachable after the dialog opens.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Versions in this environment: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: desktop-related Python compile passed; full
+  Python unittest discovery passed; `npm run test:paths` passed; `npm test`
+  passed; Tk smoke and direct app launch both aborted with exit code 134 before
+  producing app-level output.
+- Reproduction/root cause: the endpoint editor invoked
+  `format_coordinate_list()` from its immediate preview refresh, but that
+  formatter was scoped only inside the turn-editor method. Dialog construction
+  failed during preview setup, before the `Save Endpoints` button could be
+  reached.
+- Fix: `legacy_core.py` now exposes `_format_coordinate_list()` as a shared
+  pure helper and both the turn editor and endpoint editor call it.
+- Regression coverage: `tests/test_core_network.py` now checks the shared
+  formatter and uses a fake-Tk viewer to open the endpoint editor far enough to
+  prove preview setup completes and `Save Endpoints` is created without a live
+  display.
+- Checks after editing: targeted Python compile passed; targeted endpoint/core
+  tests passed; full Python unittest discovery passed; `npm run test:paths`
+  passed; `npm test` passed; `git diff --check` passed. Tk smoke and direct app
+  launch still abort with exit code 134 in this execution environment.
+- User verification still required: confirm the real desktop endpoint editor
+  opens, shows a live preview, and saves endpoint offsets on an actual junction
+  segment.
+
+2026-07-28 — Desktop Metro Segment Preview Refinement
+
+- Scope: extend the new desktop metro segment editor with live map previews,
+  compass-style default turn labels, and a segment endpoint editor for start
+  and end anchor offsets.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Versions in this environment: Python 3.12.2; Node v22.19.0; npm 10.9.3.
+- Desktop refinement: the previous turn editor required saving before the map
+  changed, used numbered default-turn labels, and offered no way to offset the
+  selected segment endpoints without editing data by hand.
+- Fix: `legacy_core.py` now adds a reusable metro-segment preview overlay, uses
+  compass-style labels such as `East-South` for default turn choices, previews
+  both turn and endpoint edits live on the map, and adds an `Edit Endpoints`
+  action on selected metro segments that preserves interior turn points while
+  updating the start/end anchors.
+- Regression coverage: `tests/test_core_network.py` now covers compass-label
+  generation and metro segment endpoint-anchor writes.
+- Checks in this environment: targeted Python compile passed; targeted core
+  tests passed; broader desktop-related Python compile passed; full Python
+  unittest discovery passed; `git diff --check` passed; Tk smoke was not rerun
+  because this execution environment still lacks a usable display.
+- User verification still required: confirm the live preview feels clear in the
+  desktop app and confirm endpoint offsets work well on real junction cases.
+
+2026-07-28 — Public Station Work Panels And Direct Metro Paths
+
+- Scope: add public read-only checklist/priority views and station checklist
+  drilldowns, then reset all shared metro line paths to direct segments while
+  replacing the desktop metro Add Turn shortcut with a chooser dialog for
+  default or custom turn paths.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Versions in this environment: Python 3.12.2; Node v22.19.0; npm 10.9.3.
+- Shared priority audit: desktop priority entries could still surface unnamed
+  in-progress stops because the list only required started work, not a named
+  label or frontier relevance.
+- Shared fix: `legacy_core.py` now filters priority entries to named stations
+  or frontier stations, adds custom metro-segment path helpers, adds a desktop
+  turn editor dialog with both default turn options and custom coordinate
+  input, and exposes a direct-path reset helper used to remove all current
+  metro turns from the shared network file.
+- Public fix: `docs/index.html`, `docs/app.js`, and `docs/styles.css` now add
+  read-only Checklist and Priority List panels, keep the priority list limited
+  to named/frontier stations, replace the public popup chimes block with a
+  read-only station checklist button and detail list, and keep all public
+  station-checklist state view-only.
+- Data update: `docs/metro_network.json` was rewritten through
+  `reset_all_metro_line_segments_direct()` so every metro line segment now
+  uses direct consecutive-stop path specs.
+- Regression coverage: Python tests now cover unnamed priority exclusion,
+  custom metro segment path writes, and the direct-path reset helper; public
+  docs smoke coverage now requires the new checklist/priority UI and popup
+  behavior.
+- Checks in this environment: desktop-related Python compile passed; targeted
+  Python tests passed; full Python unittest discovery passed; path tests
+  passed; public npm tests passed; `node --check docs/app.js` passed; Tk smoke
+  was not rerun because this execution environment still lacks a usable
+  display.
+- User verification still required: confirm the public priority/checklist UI in
+  a browser and confirm the desktop turn editor feels good for real turn
+  edits.
+
+2026-07-28 — Desktop Alignment Ellipse Manager
+
+- Scope: add a desktop-only workflow to add, edit, and remove alignment
+  ellipses while continuing to save through the shared network JSON used by
+  the public viewer.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Versions in this environment: Python 3.12.2; Node v22.19.0; npm 10.9.3.
+- Desktop audit: the data layer already supported alignment reminder add,
+  remove, and normalization behavior, but the private station popup had no UI
+  to manage reminders or preview which stations an ellipse would include.
+- Fix: `legacy_core.py` now adds a station-popup Manage Alignments action, a
+  desktop dialog for add/edit/remove/clear flows, a preview helper that shows
+  the resolved axis and included stations, and an atomic
+  `set_alignment_reminder()` path so replacement edits do not drop the old
+  reminder before the new one validates.
+- Regression coverage: `tests/test_core_network.py` now covers alignment
+  preview text, atomic replacement edits, and the aligned-pair removal case.
+- Checks in this environment: desktop-related Python compile passed; targeted
+  unit tests passed; full Python unittest discovery passed; path tests passed;
+  public npm tests passed; `git diff --check` passed; Tk smoke was not rerun
+  because this execution environment still lacks a usable display.
+- User verification still required: confirm the desktop dialog can edit real
+  alignment ellipses comfortably, and confirm refreshed public data reflects
+  the changed ellipses as expected.
+
+2026-07-28 — Public Viewer Overlay Toggles
+
+- Scope: allow web users to show and hide city limits, alignment ellipses, and
+  frontier highlights without changing phone/mobile layout behavior.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Versions in this environment: Python 3.12.2; Node v22.19.0; npm 10.9.3.
+- Public audit: `docs/metro_network.json` already includes city-limit node
+  keys and alignment reminders, but the public viewer hid these overlays and
+  the public smoke test explicitly forbade their controls and renderers.
+- Fix: `docs/index.html` now exposes View toggles for City limits, Alignment
+  ellipses, and Frontier highlights. `docs/app.js` now hydrates the required
+  path-node/alignment/frontier data, draws the three overlays only when their
+  toggles are enabled, and keeps frontier highlights consistent with visible
+  line filters.
+- Regression coverage: `docs/smoke_test.js` now requires the new public
+  controls and renderers while preserving the existing public-safety checks and
+  docs asset validation.
+- Checks in this environment: Python compile passed; full Python unittest
+  discovery passed; path tests passed; `node --check docs/app.js` passed;
+  public npm tests passed; `git diff --check` passed; Tk smoke still aborted
+  with exit 134 before normal output.
+- User verification still required: confirm the new overlay toggles appear in
+  the public viewer, default off, and correctly show/hide the intended layers.
+
+2026-07-28 — Desktop Stabilization Run D01-F
+
+- Scope: cross-machine world-map bounds mismatch with the same synced PNG.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Versions in this environment: Python 3.12.2; Node v22.19.0; npm 10.9.3.
+- Reproduced root cause in repository data: `docs/assets/blackport_topdown.render.json`
+  contains the newer bounds `x -8000..9000, z -5000..7000`, while
+  `worldgen_data/cache/render_cache.json` still contains older bounds
+  `x -6844..7964, z -3580..5724`.
+- Desktop root cause: `_current_world_map_render_underlay()` always trusted the
+  local render-cache metadata first and then paired it with whichever image was
+  available. A machine with a stale local cache JSON but a newer synced docs
+  PNG therefore drew the correct image inside the old rectangle.
+- Fix: `legacy_core.py` now chooses the newest available world-map metadata
+  source among the docs metadata, primary cache metadata, and legacy cache
+  metadata, then derives image candidates from that chosen source so metadata
+  and image stay coherent.
+- Regression coverage: `tests/test_world_map_render_source_selection.py`
+  verifies that newer docs metadata beats stale cache metadata and that docs
+  metadata prefers the docs image first.
+- Checks in this environment: Python compile passed; focused world-map tests
+  passed; full Python unittest discovery passed; path tests passed; public npm
+  tests passed; `git diff --check` passed; Tk smoke still aborted with exit
+  134 before normal output.
+- User verification still required: confirm the other computer now shows the
+  terrain/map underlay using the newer expanded bounds instead of the old
+  cropped rectangle.
+
+2026-07-28 — Desktop Stabilization Run D01-E
+
+- Scope: startup compatibility fix for the user-reported desktop traceback on a
+  second computer.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Versions in this environment: Python 3.12.2; Node v22.19.0; npm 10.9.3.
+- Reported traceback root cause: the other computer reached
+  `legacy_core.py:_route_steps_display_line_count()` and failed because that Tk
+  build rejects `tk.Text.count(..., return_ints=True)` with
+  `TypeError: unexpected keyword argument 'return_ints'`.
+- Fix: `_route_steps_display_line_count()` now retries `Text.count()` without
+  the `return_ints` keyword when Tk raises `TypeError`, while preserving the
+  existing `TclError` fallback and string/tuple result handling.
+- Regression coverage: `tests/test_desktop_improvements.py` now verifies that a
+  `Text.count()` implementation which rejects `return_ints` still returns the
+  correct display-line count after the compatibility retry.
+- Checks in this environment: targeted desktop tests passed; full Python
+  unittest discovery passed; path tests passed; public npm tests passed;
+  `git diff --check` passed; Tk smoke still aborted with exit 134 before
+  producing normal output, so interactive Tk launch remains unverified here.
+- User verification still required: confirm the other computer now opens the
+  private desktop app past startup and renders the sidebar normally.
+
+2026-07-28 — Desktop Stabilization Run D01-A
+
+- Scope: baseline audit and startup/extension stability only.
+- Initial branch/status: `main`; `notes.txt` and `file_priority.txt` were
+  already modified, and `AGENTS.md`, `CODEX_PROMPT.txt`, `CODEX_TASK.md`, and
+  `QA_REPORT_TEMPLATE.txt` were already untracked.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline reproduction: `python3 plumville_app.py` exited 134 with no normal
+  traceback. With `PYTHONFAULTHANDLER=1`, the fatal abort occurred in
+  `tkinter.Tk()` during `MetroMapViewer.__init__` at `legacy_core.py:5997`,
+  reached from `plumville_app.py -> metro_stops.py -> legacy_core.py`.
+- Failure classification: the private app did not reach extension
+  application failure, sidebar construction, redraw, route planning,
+  world-map status updates, or user interaction in this environment.
+- Extension root cause fixed: `ui_extensions.py` and
+  `desktop_improvements.py` relied on module-local applied/original-method
+  state. A module reload or retry after extensions were already installed
+  could lose the final wrapper chain or leave desktop wrapper globals unset.
+- Fix: store captured original methods and applied sentinels on
+  `MetroMapViewer`, capture the ui route-panel original at apply time, and
+  rehydrate module globals when apply is called after the class has already
+  been patched.
+- Regression coverage: `tests/test_entrypoints_and_public_output.py` now
+  verifies that reapplying after reloading `ui_extensions` and
+  `desktop_improvements` preserves the active desktop wrapper chain and
+  captured originals.
+- Remaining blockers: full Python unittest discovery still fails in
+  `tests/test_station_signage.py` with two signage label expectation
+  mismatches; Tk smoke and the private app still abort at `tkinter.Tk()` in
+  this execution environment.
+
+2026-07-28 — Desktop Stabilization Run D01-B
+
+- Scope: route auto-fit and Fit Route behavior only.
+- Initial branch/status: `main`; D01-A files remained modified and
+  instruction/template files remained untracked.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline remained unchanged: Python compile passed; full unittest discovery
+  failed only in the known station-signage assertions; path tests and public
+  npm tests passed; Tk smoke and private app launch still aborted at
+  `tkinter.Tk()` in this environment.
+- Root route-fit issue: the draft desktop wrapper scheduled an auto-fit after
+  every successful `_refresh_current_route()`. Since `redraw()` can refresh a
+  dirty route for reasons other than a fresh route action, this could refit
+  after unrelated redraws and fight manual panning.
+- Fix: `_refresh_current_route()` now only preserves the original refresh
+  behavior. Auto-fit scheduling moved to explicit route-affecting actions:
+  `_plan_route()` and `_on_route_options_changed()`. Swap is covered because
+  the existing Swap handler calls `_plan_route()`.
+- Route bounds were split into `_route_fit_bounds_for_points()` so short-route
+  span protection, endpoint/path-point inclusion, and padding behavior can be
+  tested without Tk.
+- Regression coverage: `tests/test_desktop_improvements.py` covers short route
+  bounds, route endpoints and path points, no auto-fit on bare refresh,
+  route-submit auto-fit, Swap auto-fit, option-change auto-fit, pending-fit
+  cancellation, and the no-route Fit Route message. The extension reload test
+  now also tracks `_plan_route()` and `_on_route_options_changed()`.
+- Remaining manual checks: route highlight rendering, route instructions, and
+  the visible user experience of long/short route fitting need local desktop
+  verification.
+
+2026-07-28 — Desktop Stabilization Run D01-C/D
+
+- Scope: path-detection relocation and completed-worldgen UI only.
+- Initial branch/status: `main`; D01-A/B files remained modified and
+  instruction/template files remained untracked.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline remained unchanged: Python compile passed; full unittest discovery
+  failed only in the known station-signage assertions; path tests and public
+  npm tests passed; Tk smoke and private app launch still aborted at
+  `tkinter.Tk()` in this environment.
+- D01-C audit: the current desktop wrapper already bypassed
+  `path_detection`'s popup button wrapper by restoring the normal selected
+  station popup draw path and exposing path detection from an Advanced /
+  Experimental section.
+- D01-C coverage: tests verify Advanced / Experimental is collapsed, labels
+  path detection as unsupported, requires a selected station, requires
+  confirmation, preserves the existing `detect_paths_for_stop()` workflow after
+  confirmation, and calls the normal popup draw path without the detection
+  wrapper.
+- D01-D fix: completion verification is now split into
+  `_worldgen_completion_payload_is_verified()`. Completion requires actual
+  render-underlay payload, exact `colored_pixels == total_pixels`,
+  `unfinished_point_count == 0`, and payload bounds matching configured target
+  bounds. Missing unfinished counts or rounded/near-complete payloads are not
+  trusted.
+- D01-D coverage: tests verify full completion, reject rounded/uncertain
+  completion, hide generation records only when verified, show the completion
+  banner, and restore controls when completion becomes uncertain.
+- No path-detection state, render cache, Bedrock data, local configuration, or
+  `worldgen_config.toml` was modified.
+- Remaining manual checks: normal station popup contents, Advanced warning
+  interaction, ordinary path editing, completed-worldgen visible controls, and
+  world-map display/status/analysis/export need local desktop verification.
+
+2026-07-28 — Station Signage Test Unblock
+
+- Scope: unblock the remaining full unittest failures before moving beyond
+  D01.
+- Root cause: `docs/metro_network.json` had drifted from the tracked
+  `metro_lines.txt` and the architecture audit. Amortay was stored as
+  `P_C5`/Line C only even though it is the documented C/U junction
+  `P_CU5`; Peapod was stored as a C/D/U junction even though the line notes
+  and signage example make it C/D only.
+- Fix: renamed Amortay to `P_CU5`, renamed Peapod to `P_CD`, moved U-line
+  membership/path-spec ownership from Peapod to Amortay, and updated
+  `priority_list.csv` so tracked priority IDs and line summaries match the
+  corrected network data.
+- Regression result: `tests.test_station_signage` now passes, and
+  `python3 -m unittest discover -s tests` now passes all 163 tests.
+- No private runtime data, path-detection state, worldgen cache/output, or
+  local configuration was modified.
+
+2026-07-28 — Public Viewer Desktop Smoke Coverage
+
+- Scope: move to the public desktop-browser follow-up without changing
+  phone/mobile behavior.
+- Reproduction result: a localhost docs server started successfully, but
+  browser automation was blocked in this execution environment. The bundled
+  Playwright browser is not installed, and system Chrome aborts under
+  automation before page load. The reported desktop live-resize blank canvas
+  was not reproduced here.
+- Audit result: `docs/app.js` already schedules resize through
+  `scheduleViewportSync()`, runs `syncViewportNow()`, preserves center when
+  no route is active, and refits an active route during viewport sync.
+  `docs/styles.css` has a valid desktop-width viewport-height media block.
+- Test coverage: strengthened `docs/smoke_test.js` so blank station
+  suggestions must retain Named/Unnamed grouping and placeholder labels such
+  as `HL` classify as unnamed. `F6` is not present in the current public
+  network export; if it is exported later, the smoke test will require it to
+  classify as unnamed too.
+- No public resize code, phone/mobile-specific behavior, private runtime data,
+  path-detection state, worldgen cache/output, or local configuration was
+  modified.
+
+2026-07-29 — Desktop Mode Shell Default-All Adjustment
+
+- Scope: add an `All` desktop mode above the existing mode list and make it the
+  default/fallback desktop mode.
+- Initial branch/status: `main`; the worktree already contained modified
+  desktop/public files and untracked instruction/template files from prior
+  runs.
+- Implementation: `desktop_improvements.py` now prepends an `All` mode to the
+  desktop mode model, defaults the desktop mode state to `All`, falls back to
+  `All` on invalid labels, and treats `All` as the union of the major desktop
+  sidebar sections.
+- Regression coverage: `tests/test_desktop_improvements.py` now expects the
+  updated mode ordering, `All` as the default state, and `All` as the invalid
+  label fallback.
+- Checks after editing: desktop-related Python compile passed; targeted
+  `python3 -m unittest tests.test_desktop_improvements` passed; full
+  `python3 -m unittest discover -s tests` passed; `git diff --check` passed.
+- User verification still required: confirm `All` appears first in the desktop
+  mode selector, confirm it is selected on startup, and confirm it shows the
+  full major desktop sidebar set.
+
+2026-07-28 — Desktop Mode Shell Slice 01
+
+- Scope: start the next desktop phase with a small top-level mode model and
+  initial desktop mode shell only.
+- Implementation: added a tested `DesktopMode` model in
+  `desktop_improvements.py` with Explore, Directions, Construction, Edit,
+  World, and Advanced labels. The sidebar now starts with a Mode selector
+  before the existing Search section. A later Wednesday, July 29, 2026
+  follow-up added `All` above those labels and made it the default.
+- Behavior: the mode selector records the current mode key and updates the
+  mode status text, but this slice does not hide,
+  move, or disable existing sections. Existing workflows remain visible while
+  later slices attach real presentation changes to the mode model.
+- Refinement: all desktop collapsible sidebar sections now start collapsed,
+  including sections that earlier wrappers requested as expanded.
+- Tests: added focused fake-viewer coverage for mode ordering, default mode
+  state, invalid-label fallback, option-menu selection, and collapsed initial
+  section state. Full unittest discovery now passes 168 tests.
+- Deferred: Directions, Construction, Edit, World, and Advanced presentation
+  slices remain unstarted. The docked inspector, abbreviation editing, and
+  construction dashboard were not started.
+- No private runtime data, path-detection state, worldgen cache/output, or
+  local configuration was modified.
+
+2026-07-28 — Line C Path Spec Import Fix
+
+- Scope: fix the import-time `ValueError` reported from
+  `python3 plumville_app.py`.
+- Root cause: the Amortay/Peapod station data correction kept Line C stop
+  membership correct, but accidentally removed the original C-line path-spec
+  points for Neamegapolis, Pinto Peak, and Prumpvatn. Validation failed
+  because Line C path specs no longer mentioned `P_C6`, `P_C7`, and `P_C8`.
+- Fix: restored the original Line C intermediate path-spec sequence between
+  Amortay and Peapod while preserving the corrected junction IDs
+  `P_CU5` and `P_CD`.
+- Regression result: `legacy_core` imports successfully, Line C has no missing
+  path-spec stops, `tests.test_station_signage` now includes this data
+  contract, and full unittest discovery now passes 169 tests.
+- Launch result in this execution environment: the app proceeds past network
+  import/validation and reaches the existing fatal `tkinter.Tk()` abort.
+- No private runtime data, path-detection state, worldgen cache/output, or
+  local configuration was modified.
+
+======================================================================
+STANDARD TEST COMMANDS
+======================================================================
+
+Repository state:
+
+    git status --short
+    git diff --check
+    git diff --stat
+
+Python syntax:
+
+    python3 -m py_compile \
+      ui_extensions.py \
+      desktop_improvements.py \
+      path_detection.py \
+      metro_station_extensions.py
+
+Python tests:
+
+    python3 -m unittest discover -s tests
+    npm run test:paths
+
+Public viewer:
+
+    node --check docs/app.js
+    npm test
+
+Tk smoke:
+
+    PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk
+
+Private app:
+
+    python3 plumville_app.py
+
+Local public preview:
+
+    python3 -m http.server 8000 --directory docs
+
+When a command is unavailable or skipped, report the exact reason.
+
+======================================================================
+REQUIRED END-OF-RUN REPORT
+======================================================================
+
+Codex must end every implementation run with:
+
+RUN
+- Name and scope
+
+CHECKLIST
+- Items changed from [ ] to [~], [x], [verify], [blocked], or [hold]
+
+FILES
+- Every changed file
+- One sentence describing each change
+
+TESTS
+- Exact command
+- PASS / FAIL / SKIP
+- Essential output or failure
+
+USER CHECKS
+- A numbered list
+- Exact actions
+- Expected result
+- Keep corresponding checklist boxes unchecked
+
+KNOWN ISSUES
+- Remaining defects
+- Risks
+- Deferred decisions
+
+GIT
+- `git status --short`
+- Confirmation that no commit or push occurred
+
+======================================================================
+COMPLETED AND VERIFIED WORK
 ======================================================================
 
 [x] Corrected authoritative station abbreviation mapping.
-[x] Added all mapped abbreviations to public metro data.
-[x] Public abbreviation search and routing.
+[x] Public abbreviation search and route resolution.
+[x] Public abbreviation display in popups and tooltips.
 [x] Public route auto-fit and contextual Fit.
 [x] Short-route fit protection.
 [x] First MMCP public styling pass.
 [x] Larger public station diamonds.
 [x] Diamond-first junction and terminal symbols.
 [x] Mt. Phosphagos landmark treatment.
-[x] Public semantic zoom and abbreviation fallback.
+[x] Public semantic zoom.
 [x] Custom scrollable public station suggestions.
 [x] Viewport-safe public popups.
-[x] Background-aware line-circle outlines.
-[x] Shared route restoration and auto-fit.
-[x] Public network JSON integrity verified.
+[x] Background-aware public line-circle outlines.
+[x] Mid-segment public line-circle placement.
+[x] Collapsed circle-only public line controls.
+[x] Shared public route restoration and auto-fit.
+[x] Public network JSON integrity.

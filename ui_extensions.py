@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+from typing import Callable
 
 import desktop_improvements
 import legacy_core as base
@@ -12,10 +13,10 @@ import world_map_overrides
 import worldgen_speedups
 
 
-_ORIGINAL_BUILD_ROUTE_PANEL = (
-    base.MetroMapViewer._build_route_panel
-)
+_ORIGINAL_BUILD_ROUTE_PANEL: Callable[..., None] | None = None
 _APPLIED = False
+_APPLIED_ATTR = "_plumville_ui_extensions_applied"
+_ORIGINAL_BUILD_ATTR = "_plumville_ui_original_build_route_panel"
 
 
 def _append_pathing_extensions(
@@ -116,6 +117,7 @@ def _append_world_map_extensions(
 def _patched_build_route_panel(
     self: "base.MetroMapViewer",
 ) -> None:
+    assert _ORIGINAL_BUILD_ROUTE_PANEL is not None
     if not hasattr(
         self,
         "show_suggested_walking_paths_var",
@@ -187,12 +189,30 @@ def _patched_build_route_panel(
 
 def apply() -> None:
     global _APPLIED
+    global _ORIGINAL_BUILD_ROUTE_PANEL
+
     if _APPLIED:
+        return
+    if getattr(base.MetroMapViewer, _APPLIED_ATTR, False):
+        _ORIGINAL_BUILD_ROUTE_PANEL = getattr(
+            base.MetroMapViewer,
+            _ORIGINAL_BUILD_ATTR,
+            None,
+        )
+        _APPLIED = True
         return
 
     worldgen_speedups.apply()
     metro_station_extensions.apply()
     poi_extensions.apply()
+    _ORIGINAL_BUILD_ROUTE_PANEL = (
+        base.MetroMapViewer._build_route_panel
+    )
+    setattr(
+        base.MetroMapViewer,
+        _ORIGINAL_BUILD_ATTR,
+        _ORIGINAL_BUILD_ROUTE_PANEL,
+    )
     base.MetroMapViewer._build_route_panel = (
         _patched_build_route_panel
     )
@@ -200,4 +220,5 @@ def apply() -> None:
     path_detection.apply()
     world_map_overrides.apply()
     desktop_improvements.apply()
+    setattr(base.MetroMapViewer, _APPLIED_ATTR, True)
     _APPLIED = True

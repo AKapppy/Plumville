@@ -26,6 +26,22 @@ class StationSignageTest(unittest.TestCase):
         )
         self.assertEqual(right_labels, ["Ridgewater", "Blackport (ABDE)"])
 
+    def test_corrected_line_c_junctions_remain_in_path_specs(self) -> None:
+        mentioned_vars = {
+            point.x_var
+            for point in base.LINE_PATH_SPECS["C"]
+        } | {
+            point.y_var
+            for point in base.LINE_PATH_SPECS["C"]
+        }
+
+        self.assertEqual(base.STOP_LINE_NAMES["P_CU5"], ("C", "U"))
+        self.assertEqual(base.STOP_LINE_NAMES["P_CD"], ("C", "D"))
+        self.assertFalse(set(base.LINE_STOP_VARS["C"]) - mentioned_vars)
+        self.assertIn("P_C6", mentioned_vars)
+        self.assertIn("P_C7", mentioned_vars)
+        self.assertIn("P_C8", mentioned_vars)
+
     def test_direction_lists_can_be_flipped(self) -> None:
         left_stop_vars, right_stop_vars = base._station_signage_direction_stop_vars(
             "P_C3",

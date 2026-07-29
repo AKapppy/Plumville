@@ -13,6 +13,9 @@ const swapRouteButton = document.querySelector('#swapRouteButton');
 const clearRouteButton = document.querySelector('#clearRouteButton');
 const routeSummary = document.querySelector('#routeSummary');
 const routeSteps = document.querySelector('#routeSteps');
+const publicChecklistSummary = document.querySelector('#publicChecklistSummary');
+const publicPrioritySummary = document.querySelector('#publicPrioritySummary');
+const publicPriorityList = document.querySelector('#publicPriorityList');
 const stationSuggestions = document.querySelector('#stationSuggestions');
 const mapStage = document.querySelector('.map-stage');
 const sidePanel = document.querySelector('.side-panel');
@@ -27,6 +30,9 @@ const mapFitButton = document.querySelector('#mapFitButton');
 const showWorldMapInput = document.querySelector('#showWorldMapInput');
 const showLabelsInput = document.querySelector('#showLabelsInput');
 const showSuggestedWalkingPathsInput = document.querySelector('#showSuggestedWalkingPathsInput');
+const showCityLimitsInput = document.querySelector('#showCityLimitsInput');
+const showAlignmentInput = document.querySelector('#showAlignmentInput');
+const showFrontierInput = document.querySelector('#showFrontierInput');
 const lineLegend = document.querySelector('#lineLegend');
 
 const CONSTANTS = {
@@ -81,12 +87,30 @@ const CONSTANTS = {
   lineMarkerRadius: 9,
   lineMarkerViewportInset: 14,
   overlayMargin: 8,
+  cityLimitFill: 'rgba(243, 214, 107, 0.22)',
+  cityLimitOutline: '#ffe8a3',
+  cityLimitWidth: 2,
+  cityLimitDash: [8, 4],
+  cityLimitNodeRadius: 3,
+  alignmentReminderOutline: '#d8d8d8',
+  alignmentReminderWidth: 2,
+  alignmentReminderDash: [8, 4],
+  alignmentReminderPadding: 16,
+  alignmentReminderMinSize: 30,
+  frontierHighlightOutline: '#ffd6e6',
+  frontierHighlightOutlineWidth: 12,
+  frontierHighlightWidth: 8,
+  priorityDistanceWeight: 1000,
+  priorityJunctionWeight: 200,
 };
 
 const state = {
   data: null,
   stopsByVar: new Map(),
   stopLines: new Map(),
+  pathNodesByKey: new Map(),
+  alignmentReminders: [],
+  frontierSegments: [],
   lineSegments: [],
   visibleLines: new Set(),
   selectedStop: null,
@@ -98,6 +122,7 @@ const state = {
   preferredRouteInput: null,
   currentRoute: null,
   routeRequest: null,
+  showSelectedStopChecklist: false,
   terrain: {
     image: null,
     loaded: false,
@@ -270,6 +295,9 @@ function hydrateNetwork(data) {
   state.data = data;
   state.stopsByVar = new Map(data.stops.map((stop) => [stop.var, stop]));
   state.stopLines = new Map(data.stops.map((stop) => [stop.var, []]));
+  state.pathNodesByKey = new Map(
+    (data.path_nodes || []).map((node) => [String(node.id || ''), node]),
+  );
   state.visibleLines = new Set(Object.keys(data.line_stop_vars).sort());
   state.lineSegments = [];
 
@@ -279,6 +307,8 @@ function hydrateNetwork(data) {
     }
     state.lineSegments.push(...segmentsForLine(lineName, stopVars, data.line_path_specs[lineName] || []));
   }
+  state.alignmentReminders = buildAlignmentReminderDrawEntries(data);
+  state.frontierSegments = buildFrontierHighlightSegments();
 
   const allPoints = [
     ...data.stops.map(stationPlotPoint),
@@ -292,6 +322,8 @@ function hydrateNetwork(data) {
   populateStationSuggestions();
   populateLineLegend();
   summaryText.textContent = networkSummary();
+  refreshPublicChecklistSummary();
+  refreshPublicPriorityList();
 }
 
 function populateLineLegend() {
@@ -352,6 +384,7 @@ function populateLineLegend() {
         planRoute();
       } else {
         replaceShareParams(currentShareParams());
+        refreshPublicPriorityList();
         render();
       }
     });
@@ -374,6 +407,273 @@ function lineLegendStatusText(lineName) {
     parts.push(`${checklistGapCount} checklist gap${checklistGapCount === 1 ? '' : 's'}`);
   }
   return `Line ${lineName}: ${parts.join(', ')}`;
+}
+
+function formatChecklistRatio(label, completed, total) {
+  if (!total) {
+    return null;
+  }
+  return `${label}: ${completed}/${total}`;
+}
+
+function refreshPublicChecklistSummary() {
+  if (!publicChecklistSummary || !state.data) {
+    return;
+  }
+  const stops = state.data.stops || [];
+  const connectedStops = stops.filter((stop) => stop.is_connected);
+  const lines = [
+    formatChecklistRatio('Named', stops.filter((stop) => stopHasName(stop)).length, stops.length),
+    formatChecklistRatio('Façades', stops.filter((stop) => stop.has_connector).length, stops.length),
+    formatChecklistRatio('Stations', stops.filter((stop) => stop.has_full_station).length, stops.length),
+    formatChecklistRatio('Station entrances', stops.filter((stop) => hasStationEntry(stop)).length, stops.length),
+    formatChecklistRatio('Connected', connectedStops.length, stops.length),
+    formatChecklistRatio('Chimes', connectedStops.filter((stop) => (stop.chime_directions || []).length > 0).length, connectedStops.length),
+  ].filter(Boolean);
+  publicChecklistSummary.textContent = lines.join('\n');
+}
+
+function hasStationEntry(stop) {
+  return Number.isFinite(Number(stop?.station_entry_x))
+    && Number.isFinite(Number(stop?.station_entry_y));
+}
+
+function activeAlignmentReminderCount(stopVar) {
+  return state.alignmentReminders.filter((reminder) => (
+    !reminder.isAligned && reminder.includedStopVars.includes(stopVar)
+  )).length;
+}
+
+function priorityMissingStationTasks(stop) {
+  const tasks = [];
+  if (!stopHasName(stop)) tasks.push('name');
+  if (!stop.has_connector) tasks.push('facade');
+  if (!stop.has_full_station) tasks.push('station');
+  if (!hasStationEntry(stop)) tasks.push('station entrance');
+  if (!stop.has_walking_paths) tasks.push('walking paths');
+  if (!stop.city_limit_node_keys?.length) tasks.push('city limits');
+  if (!stop.is_connected && activeAlignmentReminderCount(stop.var) > 0) tasks.push('alignment');
+  if (!stop.is_connected) tasks.push('connected');
+  if (stop.is_connected && !stop.has_finished_railway) tasks.push('finished railway');
+  if (stop.is_connected && !(stop.chime_directions || []).length) tasks.push('chimes');
+  return tasks;
+}
+
+function priorityTaskPhrase(taskName) {
+  return ({
+    name: 'naming',
+    facade: 'facades',
+    station: 'stations',
+    'station entrance': 'station entrances',
+    'walking paths': 'walking paths',
+    'city limits': 'city limits',
+    alignment: 'alignment',
+    connected: 'connections',
+    'finished railway': 'finished railway',
+    chimes: 'chimes',
+  })[taskName] || taskName;
+}
+
+function joinPriorityTasks(tasks) {
+  const phrases = tasks.map(priorityTaskPhrase);
+  if (phrases.length <= 1) {
+    return phrases[0] || '';
+  }
+  if (phrases.length === 2) {
+    return `${phrases[0]} and ${phrases[1]}`;
+  }
+  return `${phrases.slice(0, -1).join(', ')}, and ${phrases[phrases.length - 1]}`;
+}
+
+function priorityStopHasProgress(stop) {
+  return Boolean(
+    stopHasName(stop)
+    || stop.has_connector
+    || stop.has_full_station
+    || hasStationEntry(stop)
+    || stop.has_walking_paths
+    || stop.city_limit_node_keys?.length
+    || stop.is_connected
+    || stop.has_finished_railway
+    || (stop.chime_directions || []).length
+  );
+}
+
+function priorityJunctionCount(stop) {
+  const count = linesForStop(stop).length;
+  return count > 1 ? count : 0;
+}
+
+function coordKeyPoint(key) {
+  if (typeof key !== 'string') {
+    return null;
+  }
+  if (key.startsWith('coord:')) {
+    const [xText, yText] = key.slice('coord:'.length).split(',');
+    const x = Number(xText);
+    const y = Number(yText);
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y: -y };
+    }
+    return null;
+  }
+  const pathNode = state.pathNodesByKey.get(key);
+  if (!pathNode) {
+    return null;
+  }
+  const x = Number(pathNode.x);
+  const y = Number(pathNode.y);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return null;
+  }
+  return { x, y: -y };
+}
+
+function cityLimitPlotPoints(stop) {
+  const keys = Array.isArray(stop?.city_limit_node_keys)
+    ? stop.city_limit_node_keys
+    : [];
+  return keys.map((key) => coordKeyPoint(key)).filter(Boolean);
+}
+
+function sharedLineNamesForStops(firstVar, secondVar) {
+  const firstLines = state.stopLines.get(firstVar) || [];
+  const secondLines = new Set(state.stopLines.get(secondVar) || []);
+  return firstLines.filter((lineName) => secondLines.has(lineName));
+}
+
+function lineSegmentStopVars(lineName, firstVar, secondVar) {
+  const stopVars = state.data?.line_stop_vars?.[lineName] || [];
+  const firstIndex = stopVars.indexOf(firstVar);
+  const secondIndex = stopVars.indexOf(secondVar);
+  if (firstIndex === -1 || secondIndex === -1) {
+    return [];
+  }
+  return stopVars.slice(
+    Math.min(firstIndex, secondIndex),
+    Math.max(firstIndex, secondIndex) + 1,
+  );
+}
+
+function alignmentReminderIncludedStopVars(reminder) {
+  const orderedStopVars = [];
+  const seenStopVars = new Set();
+  for (const lineName of sharedLineNamesForStops(
+    reminder.first_var,
+    reminder.second_var,
+  )) {
+    for (const stopVar of lineSegmentStopVars(
+      lineName,
+      reminder.first_var,
+      reminder.second_var,
+    )) {
+      if (seenStopVars.has(stopVar)) {
+        continue;
+      }
+      seenStopVars.add(stopVar);
+      orderedStopVars.push(stopVar);
+    }
+  }
+  return orderedStopVars.length
+    ? orderedStopVars
+    : [reminder.first_var, reminder.second_var];
+}
+
+function buildAlignmentReminderDrawEntries(data) {
+  const reminders = Array.isArray(data?.alignment_reminders)
+    ? data.alignment_reminders
+    : [];
+  return reminders
+    .map((reminder) => {
+      const includedStops = alignmentReminderIncludedStopVars(reminder)
+        .map((stopVar) => state.stopsByVar.get(stopVar))
+        .filter(Boolean);
+      if (includedStops.length < 2) {
+        return null;
+      }
+      const axis = reminder.axis === 'x' ? 'x' : 'y';
+      const firstStop = state.stopsByVar.get(reminder.first_var);
+      const secondStop = state.stopsByVar.get(reminder.second_var);
+      const isAligned = axis === 'x'
+        ? Number(firstStop?.x) === Number(secondStop?.x)
+        : Number(firstStop?.y) === Number(secondStop?.y);
+      return {
+        axis,
+        firstVar: reminder.first_var,
+        secondVar: reminder.second_var,
+        includedStopVars: includedStops.map((stop) => stop.var),
+        includedStops,
+        isAligned,
+      };
+    })
+    .filter(Boolean);
+}
+
+function alignmentReminderCanvasBounds(reminder) {
+  const canvasPoints = reminder.includedStops.map((stop) => (
+    plotToCanvas(stationPlotPoint(stop))
+  ));
+  if (!canvasPoints.length) {
+    return null;
+  }
+  const xs = canvasPoints.map((point) => point.x);
+  const ys = canvasPoints.map((point) => point.y);
+  const padding = Math.max(
+    CONSTANTS.alignmentReminderPadding,
+    Math.round(
+      CONSTANTS.alignmentReminderPadding * state.camera.zoom,
+    ),
+  );
+  let left = Math.min(...xs) - padding;
+  let right = Math.max(...xs) + padding;
+  let top = Math.min(...ys) - padding;
+  let bottom = Math.max(...ys) + padding;
+  if ((right - left) < CONSTANTS.alignmentReminderMinSize) {
+    const centerX = (left + right) / 2;
+    const halfWidth = CONSTANTS.alignmentReminderMinSize / 2;
+    left = centerX - halfWidth;
+    right = centerX + halfWidth;
+  }
+  if ((bottom - top) < CONSTANTS.alignmentReminderMinSize) {
+    const centerY = (top + bottom) / 2;
+    const halfHeight = CONSTANTS.alignmentReminderMinSize / 2;
+    top = centerY - halfHeight;
+    bottom = centerY + halfHeight;
+  }
+  return { left, right, top, bottom };
+}
+
+function buildFrontierHighlightSegments() {
+  const seen = new Set();
+  return state.lineSegments
+    .filter((segment) => {
+      const start = state.stopsByVar.get(segment.startVar);
+      const end = state.stopsByVar.get(segment.endVar);
+      if (!start || !end) {
+        return false;
+      }
+      if (Boolean(start.is_connected) === Boolean(end.is_connected)) {
+        return false;
+      }
+      const key = [
+        segment.lineName,
+        ...[segment.startVar, segment.endVar].sort(),
+      ].join('|');
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .sort((first, second) => (
+      first.lineName.localeCompare(
+        second.lineName,
+        undefined,
+        { numeric: true },
+      )
+      || first.startVar.localeCompare(second.startVar)
+      || first.endVar.localeCompare(second.endVar)
+    ));
 }
 
 function populateStationSuggestions() {
@@ -908,6 +1208,9 @@ function bindEvents() {
     showWorldMapInput,
     showLabelsInput,
     showSuggestedWalkingPathsInput,
+    showCityLimitsInput,
+    showAlignmentInput,
+    showFrontierInput,
   ]) {
     input.addEventListener('change', requestRender);
   }
@@ -1315,10 +1618,13 @@ function render() {
   ctx.fillRect(0, 0, rect.width, rect.height);
 
   drawTerrainUnderlay();
+  drawCityLimits();
   drawZeroAxes();
   drawMetroLines();
+  drawFrontierHighlights();
   drawExtraEdges();
   drawSuggestedWalkingPaths();
+  drawAlignmentReminders();
   drawCurrentRoute();
   drawSearchPoint();
   drawStations();
@@ -1666,6 +1972,60 @@ function drawMetroLines() {
   ctx.restore();
 }
 
+function drawCityLimits() {
+  if (!showCityLimitsInput?.checked) {
+    return;
+  }
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const stop of state.data.stops || []) {
+    const points = cityLimitPlotPoints(stop);
+    if (!points.length) {
+      continue;
+    }
+    const canvasPoints = points.map(plotToCanvas);
+    ctx.fillStyle = CONSTANTS.cityLimitFill;
+    ctx.strokeStyle = CONSTANTS.cityLimitOutline;
+    ctx.lineWidth = CONSTANTS.cityLimitWidth;
+    ctx.setLineDash(CONSTANTS.cityLimitDash);
+    if (canvasPoints.length >= 3) {
+      ctx.beginPath();
+      ctx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
+      for (const point of canvasPoints.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    } else if (canvasPoints.length >= 2) {
+      ctx.beginPath();
+      ctx.moveTo(canvasPoints[0].x, canvasPoints[0].y);
+      for (const point of canvasPoints.slice(1)) {
+        ctx.lineTo(point.x, point.y);
+      }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    ctx.fillStyle = CONSTANTS.cityLimitOutline;
+    ctx.strokeStyle = CONSTANTS.backgroundColor;
+    ctx.lineWidth = 1;
+    for (const point of canvasPoints) {
+      ctx.beginPath();
+      ctx.arc(
+        point.x,
+        point.y,
+        CONSTANTS.cityLimitNodeRadius,
+        0,
+        Math.PI * 2,
+      );
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
 function drawExtraEdges() {
   const edges = state.data.extra_edges || [];
   if (!edges.length) {
@@ -1706,6 +2066,56 @@ function drawSuggestedWalkingPaths() {
     if (points.length >= 2) {
       drawPlotPolyline(points);
     }
+  }
+  ctx.restore();
+}
+
+function drawAlignmentReminders() {
+  if (!showAlignmentInput?.checked) {
+    return;
+  }
+  ctx.save();
+  ctx.strokeStyle = CONSTANTS.alignmentReminderOutline;
+  ctx.lineWidth = CONSTANTS.alignmentReminderWidth;
+  ctx.setLineDash(CONSTANTS.alignmentReminderDash);
+  for (const reminder of state.alignmentReminders) {
+    const bounds = alignmentReminderCanvasBounds(reminder);
+    if (!bounds) {
+      continue;
+    }
+    ctx.beginPath();
+    ctx.ellipse(
+      (bounds.left + bounds.right) / 2,
+      (bounds.top + bounds.bottom) / 2,
+      Math.max(1, (bounds.right - bounds.left) / 2),
+      Math.max(1, (bounds.bottom - bounds.top) / 2),
+      0,
+      0,
+      Math.PI * 2,
+    );
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawFrontierHighlights() {
+  if (!showFrontierInput?.checked) {
+    return;
+  }
+  ctx.save();
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([]);
+  for (const segment of state.frontierSegments) {
+    if (!state.visibleLines.has(segment.lineName)) {
+      continue;
+    }
+    ctx.strokeStyle = CONSTANTS.frontierHighlightOutline;
+    ctx.lineWidth = CONSTANTS.frontierHighlightOutlineWidth;
+    drawPlotPolyline(segment.points);
+    ctx.strokeStyle = colorForLine(segment.lineName);
+    ctx.lineWidth = CONSTANTS.frontierHighlightWidth;
+    drawPlotPolyline(segment.points);
   }
   ctx.restore();
 }
@@ -2687,6 +3097,7 @@ function selectStop(stop, options = {}) {
   state.selectedStop = stop;
   state.selectedPathEdge = null;
   state.selectedSearchPoint = null;
+  state.showSelectedStopChecklist = false;
   if (options.pan) {
     centerOnPlotPoint(stationPlotPoint(stop));
   }
@@ -2701,6 +3112,7 @@ function selectPathEdge(edge) {
   state.selectedStop = null;
   state.selectedPathEdge = edge;
   state.selectedSearchPoint = null;
+  state.showSelectedStopChecklist = false;
   updateInfoPopup();
   render();
 }
@@ -2710,6 +3122,7 @@ function selectSearchPoint(result, options = {}) {
   state.selectedPathEdge = null;
   state.selectedSearchPoint = result;
   state.searchPointResult = result;
+  state.showSelectedStopChecklist = false;
   if (options.pan) {
     centerOnPlotPoint(result.point);
   }
@@ -2721,6 +3134,7 @@ function clearSelection() {
   state.selectedStop = null;
   state.selectedPathEdge = null;
   state.selectedSearchPoint = null;
+  state.showSelectedStopChecklist = false;
   state.searchMatches = [];
   state.searchPointResult = null;
   searchInput.value = '';
@@ -2751,22 +3165,49 @@ function updateInfoPopup() {
   const statusText = stop.is_connected ? 'Open' : 'Planned';
   const railwayText = stop.has_finished_railway ? 'Railway checklist complete' : 'Railway checklist incomplete';
   const lineBadgeText = lineBadgesHtml(linesForStop(stop));
-  const chimeText = stop.is_connected && stop.chime_directions?.length
-    ? `<p class="section-label">Chimes</p><p>${stop.chime_directions.map(capitalize).join(', ')}</p>`
-    : '';
   const abbreviation = stationAbbreviation(stop);
   const abbreviationHtml = abbreviation
     ? `<span class="station-abbr">${escapeHtml(abbreviation)}</span>`
+    : '';
+  const checklistButtonHtml = stop.has_finished_railway
+    ? ''
+    : '<button id="showStationChecklistButton" type="button">View checklist</button>';
+  const checklistHtml = state.showSelectedStopChecklist
+    ? stationChecklistHtml(stop)
     : '';
   infoPopup.innerHTML = `
     <h2>${escapeHtml(displayLabel(stop.lbl))} ${abbreviationHtml}</h2>
     <p>Coords: (${stop.x}, ${stop.y})<br>Status: ${statusText}<br>${railwayText}</p>
     <p class="section-label">Lines</p>
     <div class="line-badges">${lineBadgeText}</div>
-    ${chimeText}
+    <div class="popup-actions">${checklistButtonHtml}</div>
+    ${checklistHtml}
   `;
+  const checklistButton = infoPopup.querySelector('#showStationChecklistButton');
+  if (checklistButton) {
+    checklistButton.addEventListener('click', () => {
+      state.showSelectedStopChecklist = !state.showSelectedStopChecklist;
+      updateInfoPopup();
+    });
+  }
   infoPopup.hidden = false;
   positionInfoPopup();
+}
+
+function stationChecklistHtml(stop) {
+  const items = [
+    ['Facade', stop.has_connector],
+    ['Station', stop.has_full_station],
+    ['Walking paths', stop.has_walking_paths],
+    ['Connected', stop.is_connected],
+  ];
+  const rows = items.map(([label, complete]) => (
+    `<li><strong>${escapeHtml(label)}</strong><span>${complete ? 'Complete' : 'Missing'}</span></li>`
+  )).join('');
+  return `
+    <p class="section-label">Station Checklist</p>
+    <ul class="station-checklist">${rows}</ul>
+  `;
 }
 
 function lineBadgesHtml(lineNames) {
@@ -2841,6 +3282,7 @@ function positionInfoPopup() {
 }
 
 function hidePopup() {
+  state.showSelectedStopChecklist = false;
   infoPopup.hidden = true;
 }
 
@@ -3112,6 +3554,7 @@ function planRoute(options = {}) {
     state.routeRequest = null;
     routeSummary.textContent = 'Choose two stations.';
     routeSteps.textContent = 'Could not find one of those stations. Use Search for coordinates like x, y.';
+    refreshPublicPriorityList();
     render();
     return;
   }
@@ -3129,6 +3572,7 @@ function planRoute(options = {}) {
     routeSteps.textContent = routeInstructions(route);
     fitCurrentRoute({ render: false });
   }
+  refreshPublicPriorityList();
   render();
 }
 
@@ -3163,6 +3607,7 @@ function clearRoute() {
   routeEndInput.value = '';
   routeSummary.textContent = 'Choose two stations.';
   routeSteps.textContent = 'Enter or select two stations, then press Route.';
+  refreshPublicPriorityList();
   replaceShareParams(lineShareParams());
   render();
 }
@@ -3428,6 +3873,288 @@ function routeConstructionWarningLines(route) {
     lines.push(`Note: the ${formatLineList(checklistLines)} ${lineWord} open track with unfinished station checklist work.`);
   }
   return lines;
+}
+
+function routeCostsFromStop(startVar) {
+  const graph = buildRouteGraph();
+  const startNodes = graphNodesForStop(graph, startVar);
+  if (!startNodes.length) {
+    return new Map();
+  }
+
+  const costs = new Map();
+  const queue = [];
+  for (const node of startNodes) {
+    const key = nodeKey(node);
+    costs.set(key, [0, 0]);
+    queue.push({ node, distance: 0, transfers: 0 });
+  }
+
+  while (queue.length) {
+    queue.sort((first, second) => first.distance - second.distance || first.transfers - second.transfers);
+    const current = queue.shift();
+    const currentKey = nodeKey(current.node);
+    const bestCost = costs.get(currentKey);
+    if (!bestCost || bestCost[0] !== current.distance || bestCost[1] !== current.transfers) {
+      continue;
+    }
+
+    for (const edge of graph.get(currentKey) || []) {
+      const nextKey = nodeKey(edge.end);
+      const nextCost = [current.distance + edge.distance, current.transfers + edge.transferCount];
+      const previousCost = costs.get(nextKey) || [Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER];
+      if (nextCost[0] < previousCost[0] || (nextCost[0] === previousCost[0] && nextCost[1] < previousCost[1])) {
+        costs.set(nextKey, nextCost);
+        queue.push({ node: edge.end, distance: nextCost[0], transfers: nextCost[1] });
+      }
+    }
+  }
+
+  const stopCosts = new Map();
+  for (const stop of state.data.stops) {
+    const candidates = graphNodesForStop(graph, stop.var)
+      .map((node) => costs.get(nodeKey(node)))
+      .filter(Boolean);
+    if (!candidates.length) {
+      continue;
+    }
+    const bestCandidate = candidates.reduce((best, candidate) => (
+      candidate[0] < best[0] || (candidate[0] === best[0] && candidate[1] < best[1])
+        ? candidate
+        : best
+    ));
+    stopCosts.set(stop.var, bestCandidate);
+  }
+  return stopCosts;
+}
+
+function lineDistanceBetweenStops(lineName, firstVar, secondVar) {
+  const stopVars = state.data?.line_stop_vars?.[lineName] || [];
+  const firstIndex = stopVars.indexOf(firstVar);
+  const secondIndex = stopVars.indexOf(secondVar);
+  if (firstIndex === -1 || secondIndex === -1) {
+    return Number.MAX_SAFE_INTEGER;
+  }
+  const startIndex = Math.min(firstIndex, secondIndex);
+  const endIndex = Math.max(firstIndex, secondIndex);
+  let totalDistance = 0;
+  for (let index = startIndex; index < endIndex; index += 1) {
+    const segment = state.lineSegments.find((candidate) => (
+      candidate.lineName === lineName
+      && candidate.startVar === stopVars[index]
+      && candidate.endVar === stopVars[index + 1]
+    ));
+    if (!segment) {
+      return Number.MAX_SAFE_INTEGER;
+    }
+    totalDistance += Math.round(polylineDistance(segment.points));
+  }
+  return totalDistance;
+}
+
+function unconnectedLinePriorityCandidateWithFrontier(stop, lineName) {
+  const stopVars = state.data?.line_stop_vars?.[lineName] || [];
+  const stopIndex = stopVars.indexOf(stop.var);
+  if (stopIndex === -1) {
+    return null;
+  }
+  const leftIndex = [...Array(stopIndex).keys()]
+    .reverse()
+    .find((index) => state.stopsByVar.get(stopVars[index])?.is_connected);
+  const rightIndex = [...Array(Math.max(0, stopVars.length - stopIndex - 1)).keys()]
+    .map((offset) => stopIndex + 1 + offset)
+    .find((index) => state.stopsByVar.get(stopVars[index])?.is_connected);
+  const leftIsAdjacent = Number.isInteger(leftIndex) && (stopIndex - leftIndex) === 1;
+  const rightIsAdjacent = Number.isInteger(rightIndex) && (rightIndex - stopIndex) === 1;
+  if (!leftIsAdjacent && !rightIsAdjacent) {
+    return null;
+  }
+
+  if (Number.isInteger(leftIndex) && Number.isInteger(rightIndex)) {
+    const leftVar = stopVars[leftIndex];
+    const rightVar = stopVars[rightIndex];
+    const gapSize = rightIndex - leftIndex - 1;
+    const leftSteps = stopIndex - leftIndex;
+    const rightSteps = rightIndex - stopIndex;
+    const frontierVar = leftSteps <= rightSteps ? leftVar : rightVar;
+    const frontierSteps = leftSteps <= rightSteps ? leftSteps : rightSteps;
+    return {
+      sortKey: [0, gapSize, frontierSteps, lineDistanceBetweenStops(lineName, frontierVar, stop.var)],
+      frontierVar,
+    };
+  }
+
+  const frontierIndex = Number.isInteger(leftIndex) ? leftIndex : rightIndex;
+  const frontierVar = stopVars[frontierIndex];
+  return {
+    sortKey: [1, 1000000, Math.abs(stopIndex - frontierIndex), lineDistanceBetweenStops(lineName, frontierVar, stop.var)],
+    frontierVar,
+  };
+}
+
+function priorityRouteSummary(routeDistance, transferCount) {
+  return `route ${formatDistanceAndTime(routeDistance)}, ${formatInterchangeCount(transferCount)}`;
+}
+
+function priorityListEntries(originVar) {
+  const routeCosts = routeCostsFromStop(originVar);
+  const entries = [];
+  for (const stop of state.data.stops) {
+    const missingTasks = priorityMissingStationTasks(stop);
+    const hasProgress = priorityStopHasProgress(stop);
+    const junctionCount = priorityJunctionCount(stop);
+    const alignmentCount = activeAlignmentReminderCount(stop.var);
+
+    let distanceValue = null;
+    let routeDistance = 0;
+    let transferCount = 0;
+    let routeRank = 0;
+    let nextOnLine = false;
+
+    if (stop.is_connected) {
+      const routeCost = routeCosts.get(stop.var);
+      if (!routeCost) {
+        routeRank = 2;
+      } else {
+        [routeDistance, transferCount] = routeCost;
+      }
+    } else {
+      let bestCandidate = null;
+      for (const lineName of linesForStop(stop)) {
+        const candidate = unconnectedLinePriorityCandidateWithFrontier(stop, lineName);
+        if (!candidate) {
+          continue;
+        }
+        const frontierCost = routeCosts.get(candidate.frontierVar);
+        if (!frontierCost) {
+          continue;
+        }
+        const [frontierDistance, frontierTransfers] = frontierCost;
+        const scoredCandidate = {
+          frontierDistance,
+          frontierTransfers,
+          sortKey: [...candidate.sortKey, frontierDistance, frontierTransfers, lineName.toLowerCase()],
+        };
+        if (!bestCandidate || compareSortKeys(scoredCandidate.sortKey, bestCandidate.sortKey) < 0) {
+          bestCandidate = scoredCandidate;
+        }
+      }
+      if (bestCandidate) {
+        distanceValue = bestCandidate.frontierDistance;
+        routeDistance = bestCandidate.frontierDistance;
+        transferCount = bestCandidate.frontierTransfers;
+        nextOnLine = true;
+        routeRank = 1;
+      } else {
+        routeRank = 3;
+      }
+    }
+
+    if (!(nextOnLine || stopHasName(stop))) {
+      continue;
+    }
+    if (!(nextOnLine || (missingTasks.length && hasProgress))) {
+      continue;
+    }
+
+    const fragments = [];
+    if (distanceValue !== null) {
+      fragments.push(formatDistanceAndTime(distanceValue));
+    }
+    if (junctionCount > 1) {
+      fragments.push(`${junctionCount}-line junction`);
+    }
+    if (missingTasks.length) {
+      fragments.push(`needs ${joinPriorityTasks(missingTasks)}`);
+    }
+    if (!fragments.length) {
+      continue;
+    }
+
+    const complexityScore = (
+      (distanceValue !== null ? CONSTANTS.priorityDistanceWeight : 0)
+      + (junctionCount > 1 ? CONSTANTS.priorityJunctionWeight : 0)
+      + missingTasks.length
+    );
+    entries.push({
+      stopVar: stop.var,
+      sortKey: [
+        complexityScore,
+        fragments.length,
+        routeRank,
+        routeDistance,
+        transferCount,
+        junctionCount,
+        alignmentCount,
+        String(stop.lbl).toLowerCase(),
+      ],
+      text: `${displayLabel(stop.lbl)}: ${fragments.join(', ')}`,
+      routeSummary: routeDistance || transferCount
+        ? priorityRouteSummary(routeDistance, transferCount)
+        : '',
+    });
+  }
+
+  entries.sort((first, second) => compareSortKeys(first.sortKey, second.sortKey));
+  return entries;
+}
+
+function compareSortKeys(first, second) {
+  for (let index = 0; index < Math.max(first.length, second.length); index += 1) {
+    const left = first[index];
+    const right = second[index];
+    if (left === right) {
+      continue;
+    }
+    return left < right ? -1 : 1;
+  }
+  return 0;
+}
+
+function priorityOriginStopVar() {
+  if (state.currentRoute?.startVar) {
+    return state.currentRoute.startVar;
+  }
+  return state.stopsByVar.has(CONSTANTS.blackportVar)
+    ? CONSTANTS.blackportVar
+    : state.data?.stops?.[0]?.var;
+}
+
+function refreshPublicPriorityList() {
+  if (!publicPrioritySummary || !publicPriorityList || !state.data) {
+    return;
+  }
+  const originVar = priorityOriginStopVar();
+  if (!originVar) {
+    publicPrioritySummary.textContent = 'Priority list unavailable.';
+    publicPriorityList.replaceChildren();
+    return;
+  }
+  const originStop = state.stopsByVar.get(originVar);
+  const entries = priorityListEntries(originVar);
+  publicPrioritySummary.textContent = `From ${displayLabel(originStop?.lbl || originVar)}. Named stations with started work and frontier stations only.`;
+  publicPriorityList.replaceChildren();
+  if (!entries.length) {
+    const empty = document.createElement('p');
+    empty.className = 'priority-empty';
+    empty.textContent = 'No reachable priority entries.';
+    publicPriorityList.append(empty);
+    return;
+  }
+  for (const entry of entries) {
+    const stop = state.stopsByVar.get(entry.stopVar);
+    if (!stop) {
+      continue;
+    }
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'priority-entry';
+    button.innerHTML = `<strong>${escapeHtml(displayLabel(stop.lbl))}</strong><span>${escapeHtml(entry.text)}</span>`;
+    button.addEventListener('click', () => {
+      selectStop(stop, { pan: true });
+    });
+    publicPriorityList.append(button);
+  }
 }
 
 function formatLineList(lineNames) {
@@ -3793,6 +4520,10 @@ function resolveStop(value) {
 
 function stationAbbreviation(stop) {
   return String(stop?.abbr || '').trim();
+}
+
+function stopHasName(stop) {
+  return !isPlaceholderStop(stop);
 }
 
 function isPlaceholderStop(stop) {

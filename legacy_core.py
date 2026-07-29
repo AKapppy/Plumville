@@ -247,6 +247,7 @@ FileStatKey = tuple[str, int, int]
 class StopRecord(TypedDict):
     var: str
     lbl: str
+    abbr: NotRequired[str]
     x: int
     y: int
     has_connector: bool
@@ -378,6 +379,7 @@ class MetroStop:
     station_entry_x: int | None = None
     station_entry_y: int | None = None
     city_limit_node_keys: tuple[str, ...] = ()
+    abbr: str = ""
 
     @property
     def coordinates(self) -> tuple[int, int]:
@@ -999,6 +1001,23 @@ def _parse_coordinate_text(text: str) -> tuple[int, int] | None:
     return network.parse_coordinate_text(text)
 
 
+def _parse_coordinate_sequence_text(text: str) -> tuple[tuple[int, int], ...] | None:
+    normalized_text = text.strip()
+    if not normalized_text:
+        return ()
+
+    coordinates: list[tuple[int, int]] = []
+    for part in re.split(r'[|\n;]+', normalized_text):
+        coordinate_text = part.strip()
+        if not coordinate_text:
+            continue
+        coordinates_value = _parse_coordinate_text(coordinate_text)
+        if coordinates_value is None:
+            return None
+        coordinates.append(coordinates_value)
+    return tuple(coordinates)
+
+
 def _resolve_stop_var_runtime(identifier: str) -> str | None:
     normalized_identifier = identifier.strip()
     if not normalized_identifier:
@@ -1023,6 +1042,7 @@ def _resolve_stop_var_runtime(identifier: str) -> str | None:
         if normalized_query in {
             _normalize_stop_identity(stop.lbl),
             _normalize_stop_identity(_display_label(stop.lbl)),
+            _normalize_stop_identity(_stop_abbreviation(stop)),
             _normalize_stop_identity(stop.var.removeprefix('P_')),
         }
     ]
@@ -1245,7 +1265,20 @@ def _normalize_stop_identity(text: str) -> str:
     return core_text.normalize_stop_identity(text)
 
 
+def _looks_like_placeholder_stop_label(text: str) -> bool:
+    stripped = str(text).strip()
+    if not stripped or " " in stripped:
+        return False
+    if len(stripped) > 6:
+        return False
+    if not re.fullmatch(r"[A-Z0-9]+", stripped):
+        return False
+    return any(char.isalpha() for char in stripped)
+
+
 def _stop_has_name(stop: MetroStop) -> bool:
+    if _looks_like_placeholder_stop_label(stop.lbl):
+        return False
     return _normalize_stop_identity(stop.lbl) != _normalize_stop_identity(stop.var.removeprefix('P_'))
 
 
@@ -1569,6 +1602,98 @@ def _turn_path_specs(from_var: str, to_var: str, *, variant: int) -> list[LinePa
     ]
 
 
+def _path_spec_record_for_coordinates(anchor_var: str, coordinates: tuple[int, int]) -> LinePathSpecRecord:
+    anchor_stop = STOPS_BY_VAR[anchor_var]
+    x, y = coordinates
+    return {
+        'x_var': anchor_var,
+        'y_var': anchor_var,
+        'dx': x - anchor_stop.x,
+        'dy': anchor_stop.y - y,
+    }
+
+
+def _normalize_segment_via_coordinates(
+    start_coordinates: tuple[int, int],
+    end_coordinates: tuple[int, int],
+    coordinates: Sequence[tuple[int, int]],
+) -> tuple[tuple[int, int], ...]:
+    normalized: list[tuple[int, int]] = []
+    previous_coordinates = start_coordinates
+    for coordinate in coordinates:
+        normalized_coordinate = (int(coordinate[0]), int(coordinate[1]))
+        if normalized_coordinate in {start_coordinates, end_coordinates}:
+            continue
+        if normalized_coordinate == previous_coordinates:
+            continue
+        normalized.append(normalized_coordinate)
+        previous_coordinates = normalized_coordinate
+    return tuple(normalized)
+
+
+def _direction_label_between_coordinates(
+    start_coordinates: tuple[int, int],
+    end_coordinates: tuple[int, int],
+) -> str | None:
+    start_x, start_y = start_coordinates
+    end_x, end_y = end_coordinates
+    delta_x = end_x - start_x
+    delta_y = end_y - start_y
+    if delta_x == 0 and delta_y == 0:
+        return None
+    if abs(delta_x) >= abs(delta_y) and delta_x != 0:
+        return 'East' if delta_x > 0 else 'West'
+    if delta_y != 0:
+        return 'North' if delta_y > 0 else 'South'
+    return None
+
+
+def _default_turn_direction_label(
+    start_coordinates: tuple[int, int],
+    end_coordinates: tuple[int, int],
+    via_coordinates: Sequence[tuple[int, int]],
+) -> str:
+    path_coordinates = [start_coordinates, *via_coordinates, end_coordinates]
+    direction_labels: list[str] = []
+    for first_coordinates, second_coordinates in zip(path_coordinates, path_coordinates[1:]):
+        direction_label = _direction_label_between_coordinates(first_coordinates, second_coordinates)
+        if direction_label is None or (direction_labels and direction_labels[-1] == direction_label):
+            continue
+        direction_labels.append(direction_label)
+    return '-'.join(direction_labels) if direction_labels else 'Direct'
+
+
+def _format_coordinate_list(coordinates: Sequence[tuple[int, int]]) -> str:
+    if not coordinates:
+        return 'No intermediate coordinates.'
+    return ' -> '.join(f'({x}, {y})' for x, y in coordinates)
+
+
+def _custom_metro_segment_path_specs(
+    start_anchor_spec: LinePathSpecRecord,
+    end_anchor_spec: LinePathSpecRecord,
+    *,
+    start_var: str,
+    via_coordinates: Sequence[tuple[int, int]],
+) -> list[LinePathSpecRecord]:
+    new_specs: list[LinePathSpecRecord] = [_copy_path_spec_record(start_anchor_spec)]
+    for coordinate in via_coordinates:
+        new_specs.append(_path_spec_record_for_coordinates(start_var, coordinate))
+    new_specs.append(_copy_path_spec_record(end_anchor_spec))
+    return new_specs
+
+
+def _segment_preview_plot_points(
+    start_coordinates: tuple[int, int],
+    end_coordinates: tuple[int, int],
+    via_coordinates: Sequence[tuple[int, int]] = (),
+) -> tuple[tuple[int, int], ...]:
+    return tuple(
+        (coordinates[0], -coordinates[1])
+        for coordinates in (start_coordinates, *via_coordinates, end_coordinates)
+    )
+
+
 def _metro_segment_path_specs(
     start_anchor_spec: LinePathSpecRecord,
     end_anchor_spec: LinePathSpecRecord,
@@ -1642,6 +1767,68 @@ def _alignment_reminder_debug_label(reminder: AlignmentReminder) -> str:
         for stop_var in reminder.included_stop_vars
     )
     return f'{reminder.axis}: {included_labels}'
+
+
+def _alignment_axis_label(axis: AlignmentAxis) -> str:
+    return 'Match X (vertical)' if axis == 'x' else 'Match Y (horizontal)'
+
+
+def _alignment_editor_preview_text(
+    first_var: str | None,
+    second_var: str | None,
+    axis: AlignmentAxisInput = 'auto',
+) -> str:
+    if not first_var or not second_var:
+        return 'Pick two stations to preview the alignment ellipse.'
+    if first_var not in STOPS_BY_VAR or second_var not in STOPS_BY_VAR:
+        return 'Pick two valid stations to preview the alignment ellipse.'
+    if first_var == second_var:
+        return 'Pick two different stations.'
+
+    first_stop = STOPS_BY_VAR[first_var]
+    second_stop = STOPS_BY_VAR[second_var]
+    resolved_axis = (
+        _infer_alignment_axis_from_coordinates(
+            first_stop.x,
+            first_stop.y,
+            second_stop.x,
+            second_stop.y,
+        )
+        if axis == 'auto'
+        else axis
+    )
+    reminder = AlignmentReminder(first_var, second_var, cast(AlignmentAxis, resolved_axis))
+    included_labels = ', '.join(
+        _display_label(STOPS_BY_VAR[stop_var].lbl)
+        for stop_var in reminder.included_stop_vars
+    )
+    status_text = (
+        'Already aligned; saving will remove any matching ellipse.'
+        if reminder.is_aligned
+        else 'Needs an alignment ellipse.'
+    )
+    return (
+        f'Axis: {_alignment_axis_label(reminder.axis)}. '
+        f'Included stations: {included_labels}. '
+        f'{status_text}'
+    )
+
+
+def _default_alignment_partner_stop_var(stop_var: str) -> str | None:
+    for line_name in STOP_LINE_NAMES.get(stop_var, ()):
+        stop_vars = LINE_STOP_VARS.get(line_name, ())
+        if stop_var not in stop_vars:
+            continue
+        stop_index = stop_vars.index(stop_var)
+        if stop_index > 0:
+            return stop_vars[stop_index - 1]
+        if stop_index < len(stop_vars) - 1:
+            return stop_vars[stop_index + 1]
+
+    for candidate in METRO_STOPS:
+        if candidate.var != stop_var:
+            return candidate.var
+    return None
 
 
 def _alignment_reminder_bounds(
@@ -1780,6 +1967,18 @@ def _station_fill(stop: MetroStop) -> str:
 
 def _display_label(lbl: str) -> str:
     return core_text.display_label(lbl)
+
+
+def _stop_abbreviation(stop: MetroStop) -> str:
+    return str(stop.abbr).strip()
+
+
+def _station_display_name(stop: MetroStop) -> str:
+    abbreviation = _stop_abbreviation(stop)
+    label = _display_label(stop.lbl)
+    if not abbreviation:
+        return label
+    return f"{label} ({abbreviation})"
 
 
 def _is_placeholder_station_label(lbl: str) -> bool:
@@ -2851,6 +3050,81 @@ def _world_map_image_is_native_block_resolution(payload: dict[str, object], imag
     return native_size is not None and image.size == native_size
 
 
+def _world_map_docs_render_metadata_path(docs_render_image_path: Path) -> Path:
+    return docs_render_image_path.with_suffix('.render.json')
+
+
+def _world_map_render_metadata_candidate_paths(
+    repo_root: Path,
+    mode_paths: Any,
+) -> list[Path]:
+    candidates = [
+        _world_map_docs_render_metadata_path(mode_paths.docs_render_image_path),
+        mode_paths.render_cache_path,
+        repo_root / 'worldgen_data' / 'cache' / mode_paths.render_cache_path.name,
+    ]
+    resolved_candidates: list[Path] = []
+    seen_paths: set[Path] = set()
+    for candidate in candidates:
+        try:
+            resolved_candidate = candidate.resolve()
+        except OSError:
+            resolved_candidate = candidate
+        if resolved_candidate in seen_paths:
+            continue
+        seen_paths.add(resolved_candidate)
+        resolved_candidates.append(candidate)
+    return resolved_candidates
+
+
+def _world_map_preferred_render_metadata_path(
+    repo_root: Path,
+    mode_paths: Any,
+) -> tuple[Path, FileStatKey] | None:
+    preferred: tuple[Path, FileStatKey] | None = None
+    for candidate in _world_map_render_metadata_candidate_paths(
+        repo_root,
+        mode_paths,
+    ):
+        candidate_stat = _file_stat_key(candidate)
+        if candidate_stat is None:
+            continue
+        if preferred is None or candidate_stat[1] > preferred[1][1]:
+            preferred = (candidate, candidate_stat)
+    return preferred
+
+
+def _world_map_image_candidate_paths(
+    repo_root: Path,
+    mode_paths: Any,
+    payload: dict[str, object],
+    metadata_path: Path,
+) -> list[Path]:
+    docs_render_image_path = mode_paths.docs_render_image_path
+    docs_render_metadata_path = _world_map_docs_render_metadata_path(
+        docs_render_image_path
+    )
+
+    image_candidates: list[Path] = []
+    if metadata_path == docs_render_metadata_path:
+        image_candidates.append(docs_render_image_path)
+    else:
+        image_candidates.append(docs_render_image_path)
+        image_candidates.append(mode_paths.render_image_path)
+
+    payload_image_path = payload.get('image_path')
+    if isinstance(payload_image_path, str) and payload_image_path:
+        image_candidates.append(Path(payload_image_path))
+
+    image_candidates.append(
+        repo_root / 'worldgen_output' / mode_paths.render_image_path.name
+    )
+    image_candidates.append(
+        repo_root / 'docs' / 'assets' / mode_paths.render_image_path.name
+    )
+    return image_candidates
+
+
 def _world_map_full_resolution_image_candidates(
     viewer: "MetroMapViewer",
     payload: dict[str, object],
@@ -3585,6 +3859,10 @@ def _priority_junction_count(stop: MetroStop) -> int:
     return len(STOP_LINE_NAMES[stop.var]) if len(STOP_LINE_NAMES[stop.var]) > 1 else 0
 
 
+def _priority_stop_is_named_or_frontier(stop: MetroStop, *, next_on_line: bool) -> bool:
+    return next_on_line or stop.has_name
+
+
 def _station_has_priority_progress(stop: MetroStop) -> bool:
     return any((
         stop.has_name,
@@ -3672,6 +3950,8 @@ def _priority_list_entries(
             else:
                 route_rank = 3
 
+        if not _priority_stop_is_named_or_frontier(stop, next_on_line=next_on_line):
+            continue
         if not (next_on_line or (missing_tasks and has_progress)):
             continue
 
@@ -5915,6 +6195,7 @@ class MetroMapViewer:
         self.selected_metro_segment_key: tuple[str, str, str] | None = None
         self.selected_metro_segment_keys: tuple[tuple[str, str, str], ...] = ()
         self.metro_segment_selection_anchor_key: tuple[str, str, str] | None = None
+        self.metro_segment_preview_plot_points: tuple[tuple[int, int], ...] | None = None
         self.city_limits_edit_stop_var: str | None = None
         self.active_path_edge_id: str | None = None
         self.path_drag_start_endpoint_key: str | None = None
@@ -6003,7 +6284,7 @@ class MetroMapViewer:
         self.search_var = tk.StringVar(master=self.root)
         self.search_status_var = tk.StringVar(
             master=self.root,
-            value='Search stations by village name or station code.',
+            value='Search stations by village name, abbreviation, or station code.',
         )
         self.route_start_var = tk.StringVar(master=self.root)
         self.route_end_var = tk.StringVar(master=self.root)
@@ -7140,6 +7421,16 @@ class MetroMapViewer:
                 'displaylines',
                 return_ints=True,
             )
+        except TypeError:
+            try:
+                count_result = self.route_steps_text.count(
+                    '1.0',
+                    'end',
+                    'update',
+                    'displaylines',
+                )
+            except tk.TclError:
+                count_result = None
         except tk.TclError:
             count_result = None
 
@@ -7857,26 +8148,41 @@ class MetroMapViewer:
         for stop in METRO_STOPS:
             normalized_label = _normalize_stop_identity(stop.lbl)
             normalized_display_label = _normalize_stop_identity(_display_label(stop.lbl))
+            normalized_abbreviation = _normalize_stop_identity(
+                _stop_abbreviation(stop)
+            )
             normalized_var = _normalize_stop_identity(stop.var.removeprefix('P_'))
 
             if normalized_query in (normalized_label, normalized_display_label):
                 rank = (0, len(stop.lbl), stop.lbl.lower())
+            elif normalized_abbreviation and normalized_query == normalized_abbreviation:
+                rank = (1, len(_stop_abbreviation(stop)), stop.lbl.lower())
             elif normalized_query == normalized_var:
-                rank = (1, len(stop.var), stop.lbl.lower())
+                rank = (2, len(stop.var), stop.lbl.lower())
             elif any(
                 candidate.startswith(normalized_query)
-                for candidate in (normalized_label, normalized_display_label)
+                for candidate in (
+                    normalized_label,
+                    normalized_display_label,
+                    normalized_abbreviation,
+                )
+                if candidate
             ):
-                rank = (2, len(stop.lbl), stop.lbl.lower())
+                rank = (3, len(stop.lbl), stop.lbl.lower())
             elif normalized_var.startswith(normalized_query):
-                rank = (3, len(stop.var), stop.lbl.lower())
+                rank = (4, len(stop.var), stop.lbl.lower())
             elif any(
                 normalized_query in candidate
-                for candidate in (normalized_label, normalized_display_label)
+                for candidate in (
+                    normalized_label,
+                    normalized_display_label,
+                    normalized_abbreviation,
+                )
+                if candidate
             ):
-                rank = (4, len(stop.lbl), stop.lbl.lower())
+                rank = (5, len(stop.lbl), stop.lbl.lower())
             elif normalized_query in normalized_var:
-                rank = (5, len(stop.var), stop.lbl.lower())
+                rank = (6, len(stop.var), stop.lbl.lower())
             else:
                 continue
 
@@ -7890,7 +8196,9 @@ class MetroMapViewer:
         self.search_match_stop_vars = []
 
         if not query:
-            self.search_status_var.set('Search stations by village name or station code.')
+            self.search_status_var.set(
+                'Search stations by village name, abbreviation, or station code.'
+            )
             return
 
         matches = self._search_matches(query)
@@ -7951,8 +8259,11 @@ class MetroMapViewer:
 
         self._hide_suggestion_popup()
         stop_var = self.search_match_stop_vars[0]
-        self.search_var.set(STOPS_BY_VAR[stop_var].lbl)
-        self.search_status_var.set(f'Centered on {_display_label(STOPS_BY_VAR[stop_var].lbl)}.')
+        stop = STOPS_BY_VAR[stop_var]
+        self.search_var.set(stop.lbl)
+        self.search_status_var.set(
+            f'Centered on {_station_display_name(stop)}.'
+        )
         self._focus_stop(stop_var)
 
     def _jump_to_selected_search_result(self) -> None:
@@ -8944,6 +9255,45 @@ class MetroMapViewer:
                 joinstyle='round',
             )
 
+    def _set_metro_segment_preview(
+        self,
+        plot_points: Sequence[tuple[int, int]] | None,
+    ) -> None:
+        self.metro_segment_preview_plot_points = None if plot_points is None else tuple(plot_points)
+        self.redraw()
+
+    def _clear_metro_segment_preview(self) -> None:
+        if self.metro_segment_preview_plot_points is None:
+            return
+        self.metro_segment_preview_plot_points = None
+        self.redraw()
+
+    def _draw_metro_segment_preview(self) -> None:
+        if not self.metro_segment_preview_plot_points:
+            return
+        canvas_points: list[float] = []
+        for point in self.metro_segment_preview_plot_points:
+            canvas_x, canvas_y = self.world_to_canvas(point)
+            canvas_points.extend((canvas_x, canvas_y))
+        if len(canvas_points) < 4:
+            return
+        self.canvas.create_line(
+            *canvas_points,
+            fill=ROUTE_HIGHLIGHT_OUTLINE,
+            width=SELECTED_SEGMENT_OUTLINE_WIDTH,
+            capstyle='round',
+            joinstyle='round',
+            dash=(10, 6),
+        )
+        self.canvas.create_line(
+            *canvas_points,
+            fill=PATH_NODE_OUTLINE,
+            width=SELECTED_SEGMENT_WIDTH,
+            capstyle='round',
+            joinstyle='round',
+            dash=(10, 6),
+        )
+
     def _draw_selected_metro_segment_info(self) -> None:
         segment = self._selected_metro_segment()
         if segment is None:
@@ -8999,20 +9349,24 @@ class MetroMapViewer:
 
         actions_row = tk.Frame(frame, bg=INFO_BOX_BACKGROUND)
         actions_row.pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_PAD_Y))
-        if segment.shape_label == 'direct':
-            if segment.can_turn:
-                self._make_info_button(
-                    actions_row,
-                    text='Add Turn',
-                    command=lambda active_segment=segment: self._add_turn_to_metro_segment(active_segment),
-                ).pack(side='left')
-        else:
+        if segment.can_turn:
+            self._make_info_button(
+                actions_row,
+                text='Add Turn' if segment.shape_label == 'direct' else 'Edit Turn',
+                command=lambda active_segment=segment: self._add_turn_to_metro_segment(active_segment),
+            ).pack(side='left')
+        self._make_info_button(
+            actions_row,
+            text='Edit Endpoints',
+            command=lambda active_segment=segment: self._edit_metro_segment_endpoints(active_segment),
+        ).pack(side='left', padx=(INFO_BOX_SECTION_GAP if segment.can_turn else 0, 0))
+        if segment.shape_label != 'direct':
             self._make_info_button(
                 actions_row,
                 text='Direct',
                 command=lambda active_segment=segment: self._make_metro_segment_direct(active_segment),
-            ).pack(side='left')
-            if segment.can_turn:
+            ).pack(side='left', padx=(INFO_BOX_SECTION_GAP if segment.can_turn else 0, 0))
+            if segment.can_turn and segment.turn_variant is not None:
                 self._make_info_button(
                     actions_row,
                     text='Flip Turn',
@@ -9425,6 +9779,9 @@ class MetroMapViewer:
             f'Lines: {lines}',
             f'Progress: {stop.checkpoint_count}/{stop.checkpoint_total}',
         ]
+        abbreviation = _stop_abbreviation(stop)
+        if abbreviation:
+            detail_lines.insert(1, f'Abbr: {abbreviation}')
         if stop.station_entry_coordinates is not None:
             entry_x, entry_y = stop.station_entry_coordinates
             detail_lines.append(f'Station entry: ({entry_x}, {entry_y})')
@@ -9444,7 +9801,7 @@ class MetroMapViewer:
 
         title_label = tk.Label(
             frame,
-            text=_display_label(stop.lbl),
+            text=_station_display_name(stop),
             bg=INFO_BOX_BACKGROUND,
             fg=TEXT_COLOR,
             font=('Helvetica', INFO_TITLE_FONT_SIZE, 'bold'),
@@ -9561,6 +9918,11 @@ class MetroMapViewer:
             button_row,
             text='Station Entry',
             command=self._edit_selected_station_entry,
+        ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
+        self._make_info_button(
+            button_row,
+            text='Manage Alignments',
+            command=self._manage_selected_alignments,
         ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
         city_limit_button_text = (
             'Done City Limits'
@@ -9924,6 +10286,348 @@ class MetroMapViewer:
         self.priority_dirty = True
         self.redraw()
 
+    def _manage_selected_alignments(self) -> None:
+        if self.selected_stop_var is None:
+            return
+
+        from tkinter import messagebox
+
+        stop = STOPS_BY_VAR[self.selected_stop_var]
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f'Alignment Ellipses: {_display_label(stop.lbl)}')
+        dialog.configure(bg=BACKGROUND_COLOR)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        self._center_toplevel(dialog, width=760, height=520)
+
+        container = tk.Frame(dialog, bg=BACKGROUND_COLOR)
+        container.pack(fill='both', expand=True, padx=16, pady=16)
+
+        tk.Label(
+            container,
+            text=f'Alignment ellipses for {_display_label(stop.lbl)}',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', INFO_TITLE_FONT_SIZE, 'bold'),
+            anchor='w',
+            justify='left',
+        ).pack(anchor='w')
+        tk.Label(
+            container,
+            text=(
+                'Choose a reminder to edit or remove it. '
+                'The ellipse includes every station between the chosen endpoints on shared lines.'
+            ),
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=700,
+        ).pack(anchor='w', pady=(6, 12))
+
+        list_frame = tk.Frame(
+            container,
+            bg=INFO_BOX_BACKGROUND,
+            highlightbackground=INFO_BOX_BORDER,
+            highlightthickness=1,
+        )
+        list_frame.pack(fill='both', expand=True)
+        reminder_listbox = tk.Listbox(
+            list_frame,
+            bg=SIDEBAR_INPUT_BACKGROUND,
+            fg=TEXT_COLOR,
+            selectbackground=SIDEBAR_INPUT_ACTIVE_BACKGROUND,
+            selectforeground=TEXT_COLOR,
+            relief='flat',
+            bd=0,
+            highlightthickness=0,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            activestyle='none',
+            exportselection=False,
+        )
+        reminder_listbox.pack(side='left', fill='both', expand=True, padx=8, pady=8)
+        reminder_scrollbar = tk.Scrollbar(list_frame, orient='vertical', command=reminder_listbox.yview)
+        reminder_scrollbar.pack(side='right', fill='y')
+        reminder_listbox.configure(yscrollcommand=reminder_scrollbar.set)
+
+        preview_var = tk.StringVar(master=dialog, value='Select an alignment ellipse to see its included stations.')
+        tk.Label(
+            container,
+            textvariable=preview_var,
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=700,
+        ).pack(anchor='w', pady=(12, 0))
+
+        reminder_entries: list[AlignmentReminder] = []
+
+        def current_reminder() -> AlignmentReminder | None:
+            selection = reminder_listbox.curselection()
+            if not selection:
+                return None
+            index = int(selection[0])
+            if index >= len(reminder_entries):
+                return None
+            return reminder_entries[index]
+
+        def refresh_preview() -> None:
+            reminder = current_reminder()
+            if reminder is None:
+                preview_var.set('Select an alignment ellipse to see its included stations.')
+                return
+            preview_var.set(
+                _alignment_editor_preview_text(
+                    reminder.first_var,
+                    reminder.second_var,
+                    reminder.axis,
+                )
+            )
+
+        def refresh_list(*, selected_index: int | None = None) -> None:
+            reminder_listbox.delete(0, 'end')
+            reminder_entries.clear()
+            reminder_entries.extend(_alignment_reminders_for_stop(stop.var))
+            if not reminder_entries:
+                reminder_listbox.insert('end', 'No alignment ellipses include this station yet.')
+                reminder_listbox.selection_clear(0, 'end')
+                preview_var.set('Select Add to create a new alignment ellipse for this station.')
+                return
+
+            for reminder in reminder_entries:
+                reminder_listbox.insert(
+                    'end',
+                    f'{_alignment_axis_label(reminder.axis)}: {reminder.debug_label.removeprefix(f"{reminder.axis}: ")}',
+                )
+            target_index = 0 if selected_index is None else max(0, min(selected_index, len(reminder_entries) - 1))
+            reminder_listbox.selection_clear(0, 'end')
+            reminder_listbox.selection_set(target_index)
+            reminder_listbox.activate(target_index)
+            reminder_listbox.see(target_index)
+            refresh_preview()
+
+        def edit_reminder(reminder: AlignmentReminder | None = None) -> None:
+            default_second_var = _default_alignment_partner_stop_var(stop.var)
+            editor = tk.Toplevel(dialog)
+            editor.title('Edit Alignment Ellipse' if reminder is not None else 'Add Alignment Ellipse')
+            editor.configure(bg=BACKGROUND_COLOR)
+            editor.transient(dialog)
+            editor.grab_set()
+            self._center_toplevel(editor, width=620, height=320)
+
+            editor_container = tk.Frame(editor, bg=BACKGROUND_COLOR)
+            editor_container.pack(fill='both', expand=True, padx=16, pady=16)
+
+            stop_options = sorted(
+                (
+                    (f'{_display_label(candidate.lbl)} ({candidate.var})', candidate.var)
+                    for candidate in METRO_STOPS
+                ),
+                key=lambda item: (_normalize_stop_identity(item[0]), item[1]),
+            )
+            stop_labels = [label for label, _stop_var in stop_options]
+            stop_var_by_label = {label: stop_var for label, stop_var in stop_options}
+            stop_label_by_var = {stop_var: label for label, stop_var in stop_options}
+            default_second_label = (
+                stop_label_by_var.get(reminder.second_var if reminder is not None else default_second_var or stop.var)
+                or stop_labels[0]
+            )
+
+            first_stop_var = stop.var if reminder is None else reminder.first_var
+            second_stop_var = (
+                default_second_var if reminder is None else reminder.second_var
+            ) or stop.var
+            first_stop_label_var = tk.StringVar(
+                master=editor,
+                value=stop_label_by_var.get(first_stop_var, stop_labels[0]),
+            )
+            second_stop_label_var = tk.StringVar(master=editor, value=default_second_label)
+            axis_label_by_value = {
+                'auto': 'Auto',
+                'x': 'Match X (vertical)',
+                'y': 'Match Y (horizontal)',
+            }
+            axis_value_by_label = {label: value for value, label in axis_label_by_value.items()}
+            axis_label_var = tk.StringVar(
+                master=editor,
+                value=axis_label_by_value[reminder.axis if reminder is not None else 'auto'],
+            )
+            preview_text_var = tk.StringVar(master=editor)
+
+            def editor_row(label_text: str) -> tk.Frame:
+                row = tk.Frame(editor_container, bg=BACKGROUND_COLOR)
+                row.pack(fill='x', pady=(0, 10))
+                tk.Label(
+                    row,
+                    text=label_text,
+                    bg=BACKGROUND_COLOR,
+                    fg=TEXT_COLOR,
+                    font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+                    width=10,
+                    anchor='w',
+                ).pack(side='left')
+                return row
+
+            first_row = editor_row('Start')
+            first_menu = self._make_sidebar_option_menu(first_row, first_stop_label_var)
+            first_menu.pack(side='left', fill='x', expand=True)
+            self._populate_option_menu(first_menu, first_stop_label_var, stop_labels)
+
+            second_row = editor_row('End')
+            second_menu = self._make_sidebar_option_menu(second_row, second_stop_label_var)
+            second_menu.pack(side='left', fill='x', expand=True)
+            self._populate_option_menu(second_menu, second_stop_label_var, stop_labels)
+
+            axis_row = editor_row('Axis')
+            axis_menu = self._make_sidebar_option_menu(axis_row, axis_label_var)
+            axis_menu.pack(side='left', fill='x', expand=True)
+            self._populate_option_menu(axis_menu, axis_label_var, list(axis_value_by_label))
+
+            tk.Label(
+                editor_container,
+                textvariable=preview_text_var,
+                bg=BACKGROUND_COLOR,
+                fg=TEXT_COLOR,
+                font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+                anchor='w',
+                justify='left',
+                wraplength=560,
+            ).pack(anchor='w', pady=(4, 14))
+
+            def refresh_editor_preview(*_args: object) -> None:
+                preview_text_var.set(
+                    _alignment_editor_preview_text(
+                        stop_var_by_label.get(first_stop_label_var.get()),
+                        stop_var_by_label.get(second_stop_label_var.get()),
+                        cast(AlignmentAxisInput, axis_value_by_label.get(axis_label_var.get(), 'auto')),
+                    )
+                )
+
+            def save_alignment() -> None:
+                first_var = stop_var_by_label.get(first_stop_label_var.get())
+                second_var = stop_var_by_label.get(second_stop_label_var.get())
+                axis_value = cast(AlignmentAxisInput, axis_value_by_label.get(axis_label_var.get(), 'auto'))
+                if first_var is None or second_var is None:
+                    messagebox.showerror(
+                        'Invalid Alignment',
+                        'Pick valid stations for both endpoints.',
+                        parent=editor,
+                    )
+                    return
+                try:
+                    set_alignment_reminder(
+                        first_var,
+                        second_var,
+                        axis_value,
+                        previous_first_station=reminder.first_var if reminder is not None else None,
+                        previous_second_station=reminder.second_var if reminder is not None else None,
+                        previous_axis=reminder.axis if reminder is not None else None,
+                    )
+                except ValueError as exc:
+                    messagebox.showerror('Could Not Save Alignment', str(exc), parent=editor)
+                    return
+
+                self.route_controls_dirty = True
+                self.route_dirty = True
+                self.priority_dirty = True
+                self.redraw()
+                refresh_list()
+                self.path_click_status_var.set(
+                    f'Saved alignment ellipse for {_display_label(STOPS_BY_VAR[self.selected_stop_var].lbl)}.'
+                )
+                editor.destroy()
+
+            for variable in (first_stop_label_var, second_stop_label_var, axis_label_var):
+                variable.trace_add('write', refresh_editor_preview)
+            refresh_editor_preview()
+
+            button_row = tk.Frame(editor_container, bg=BACKGROUND_COLOR)
+            button_row.pack(anchor='w')
+            self._make_sidebar_button(
+                button_row,
+                text='Save',
+                command=save_alignment,
+            ).pack(side='left')
+            self._make_sidebar_button(
+                button_row,
+                text='Cancel',
+                command=editor.destroy,
+            ).pack(side='left', padx=(10, 0))
+
+        def remove_current_reminder() -> None:
+            reminder = current_reminder()
+            if reminder is None:
+                return
+            try:
+                remove_alignment_reminder(
+                    reminder.first_var,
+                    reminder.second_var,
+                    axis=reminder.axis,
+                )
+            except ValueError as exc:
+                messagebox.showerror('Could Not Remove Alignment', str(exc), parent=dialog)
+                return
+
+            self.route_controls_dirty = True
+            self.route_dirty = True
+            self.priority_dirty = True
+            self.redraw()
+            refresh_list()
+            self.path_click_status_var.set(
+                f'Removed alignment ellipse for {_display_label(STOPS_BY_VAR[self.selected_stop_var].lbl)}.'
+            )
+
+        def clear_stop_alignments() -> None:
+            try:
+                clear_alignment_reminders_for_stop(stop.var)
+            except ValueError as exc:
+                messagebox.showerror('Could Not Clear Alignments', str(exc), parent=dialog)
+                return
+
+            self.route_controls_dirty = True
+            self.route_dirty = True
+            self.priority_dirty = True
+            self.redraw()
+            refresh_list()
+            self.path_click_status_var.set(
+                f'Cleared alignment ellipses for {_display_label(STOPS_BY_VAR[self.selected_stop_var].lbl)}.'
+            )
+
+        reminder_listbox.bind('<<ListboxSelect>>', lambda _event: refresh_preview())
+
+        button_row = tk.Frame(container, bg=BACKGROUND_COLOR)
+        button_row.pack(anchor='w', pady=(12, 0))
+        self._make_sidebar_button(
+            button_row,
+            text='Add',
+            command=lambda: edit_reminder(),
+        ).pack(side='left')
+        self._make_sidebar_button(
+            button_row,
+            text='Edit',
+            command=lambda: edit_reminder(current_reminder()) if current_reminder() is not None else None,
+        ).pack(side='left', padx=(10, 0))
+        self._make_sidebar_button(
+            button_row,
+            text='Remove',
+            command=remove_current_reminder,
+        ).pack(side='left', padx=(10, 0))
+        self._make_sidebar_button(
+            button_row,
+            text='Clear For Station',
+            command=clear_stop_alignments,
+        ).pack(side='left', padx=(10, 0))
+        self._make_sidebar_button(
+            button_row,
+            text='Close',
+            command=dialog.destroy,
+        ).pack(side='left', padx=(10, 0))
+
+        refresh_list()
+
     def _remove_selected_station_from_line(self, line_name: str) -> None:
         if self.selected_stop_var is None:
             return
@@ -10099,15 +10803,379 @@ class MetroMapViewer:
         self._refresh_after_path_edit()
 
     def _add_turn_to_metro_segment(self, segment: MetroLineSegment) -> None:
+        self._show_metro_turn_dialog(segment)
+
+    def _show_metro_turn_dialog(self, segment: MetroLineSegment) -> None:
         from tkinter import messagebox
 
-        try:
-            add_turn_to_metro_line_segment(segment.line_name, segment.start_var, segment.end_var)
-        except ValueError as exc:
-            messagebox.showerror('Could Not Add Metro Turn', str(exc), parent=self.root)
+        if not segment.can_turn:
+            messagebox.showerror(
+                'Could Not Edit Metro Turn',
+                'This metro segment is already axis-aligned, so it does not need a turn.',
+                parent=self.root,
+            )
             return
 
-        self._refresh_after_path_edit()
+        payload = _load_network_payload()
+        default_options = _default_turn_coordinate_options_for_metro_segment_in_payload(
+            payload,
+            segment.line_name,
+            segment.start_var,
+            segment.end_var,
+        )
+        current_custom_coordinates = tuple((point[0], -point[1]) for point in segment.plot_points[1:-1])
+        current_variant = segment.turn_variant
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f'Line {segment.line_name} Turn Editor')
+        dialog.configure(bg=BACKGROUND_COLOR)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        self._center_toplevel(dialog, width=700, height=420)
+
+        container = tk.Frame(dialog, bg=BACKGROUND_COLOR)
+        container.pack(fill='both', expand=True, padx=16, pady=16)
+
+        def close_dialog() -> None:
+            self._clear_metro_segment_preview()
+            if dialog.winfo_exists():
+                dialog.destroy()
+
+        dialog.protocol('WM_DELETE_WINDOW', close_dialog)
+
+        tk.Label(
+            container,
+            text=f'{_display_label(segment.start_stop.lbl)} to {_display_label(segment.end_stop.lbl)}',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', INFO_TITLE_FONT_SIZE, 'bold'),
+            anchor='w',
+            justify='left',
+        ).pack(anchor='w')
+        tk.Label(
+            container,
+            text='Choose one of the two default corner turns, or enter custom coordinates for a multi-turn path.',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=660,
+        ).pack(anchor='w', pady=(6, 12))
+
+        mode_var = tk.StringVar(
+            master=dialog,
+            value=(
+                'default-1'
+                if current_variant == 1
+                else ('custom' if segment.shape_label == 'custom' else 'default-0')
+            ),
+        )
+        custom_coordinates_var = tk.StringVar(
+            master=dialog,
+            value=' | '.join(f'{x}, {y}' for x, y in current_custom_coordinates)
+            if segment.shape_label == 'custom'
+            else '',
+        )
+        preview_var = tk.StringVar(master=dialog, value='')
+
+        options_frame = tk.Frame(container, bg=BACKGROUND_COLOR)
+        options_frame.pack(fill='x')
+        option_texts = [
+            (
+                'default-0',
+                f'{_default_turn_direction_label(segment.start_stop.coordinates, segment.end_stop.coordinates, default_options[0])}: '
+                f'{_format_coordinate_list(default_options[0])}',
+            ),
+            (
+                'default-1',
+                f'{_default_turn_direction_label(segment.start_stop.coordinates, segment.end_stop.coordinates, default_options[1])}: '
+                f'{_format_coordinate_list(default_options[1])}',
+            ),
+            ('custom', 'Custom coordinates'),
+        ]
+        for option_value, option_text in option_texts:
+            tk.Radiobutton(
+                options_frame,
+                text=option_text,
+                value=option_value,
+                variable=mode_var,
+                bg=BACKGROUND_COLOR,
+                fg=TEXT_COLOR,
+                selectcolor=SIDEBAR_INPUT_BACKGROUND,
+                activebackground=BACKGROUND_COLOR,
+                activeforeground=TEXT_COLOR,
+                anchor='w',
+                justify='left',
+                font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            ).pack(anchor='w', pady=(0, 6))
+
+        tk.Label(
+            container,
+            text='Custom turn coordinates',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE, 'bold'),
+            anchor='w',
+            justify='left',
+        ).pack(anchor='w', pady=(8, 4))
+        custom_entry = tk.Entry(
+            container,
+            textvariable=custom_coordinates_var,
+            bg=SIDEBAR_INPUT_BACKGROUND,
+            fg=TEXT_COLOR,
+            insertbackground=TEXT_COLOR,
+            relief='flat',
+            highlightthickness=1,
+            highlightbackground=INFO_BOX_BORDER,
+            highlightcolor=PATH_NODE_OUTLINE,
+        )
+        custom_entry.pack(fill='x')
+        tk.Label(
+            container,
+            text='Enter one or more x, y coordinates separated by |, ;, or new lines.',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=660,
+        ).pack(anchor='w', pady=(4, 10))
+        tk.Label(
+            container,
+            textvariable=preview_var,
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=660,
+        ).pack(anchor='w')
+
+        def refresh_preview(*_args: object) -> None:
+            mode = mode_var.get()
+            if mode == 'custom':
+                parsed_coordinates = _parse_coordinate_sequence_text(custom_coordinates_var.get())
+                if parsed_coordinates is None:
+                    preview_var.set('Custom preview: enter coordinates as x, y and separate each turn with |, ;, or a new line.')
+                    self._clear_metro_segment_preview()
+                    return
+                normalized_coordinates = _normalize_segment_via_coordinates(
+                    segment.start_stop.coordinates,
+                    segment.end_stop.coordinates,
+                    parsed_coordinates,
+                )
+                preview_var.set(f'Custom preview: {_format_coordinate_list(normalized_coordinates)}')
+                self._set_metro_segment_preview(
+                    _segment_preview_plot_points(
+                        segment.start_stop.coordinates,
+                        segment.end_stop.coordinates,
+                        normalized_coordinates,
+                    )
+                )
+                return
+            variant = 0 if mode == 'default-0' else 1
+            preview_var.set(f'Default preview: {_format_coordinate_list(default_options[variant])}')
+            self._set_metro_segment_preview(
+                _segment_preview_plot_points(
+                    segment.start_stop.coordinates,
+                    segment.end_stop.coordinates,
+                    default_options[variant],
+                )
+            )
+
+        for variable in (mode_var, custom_coordinates_var):
+            variable.trace_add('write', refresh_preview)
+        refresh_preview()
+
+        def save_turn() -> None:
+            try:
+                if mode_var.get() == 'custom':
+                    parsed_coordinates = _parse_coordinate_sequence_text(custom_coordinates_var.get())
+                    if parsed_coordinates is None:
+                        raise ValueError('Enter custom coordinates in the format x, y | x, y.')
+                    set_metro_line_segment_custom_points(
+                        segment.line_name,
+                        segment.start_var,
+                        segment.end_var,
+                        parsed_coordinates,
+                    )
+                else:
+                    variant = 0 if mode_var.get() == 'default-0' else 1
+                    set_metro_line_segment_turn_variant(
+                        segment.line_name,
+                        segment.start_var,
+                        segment.end_var,
+                        variant,
+                    )
+            except ValueError as exc:
+                messagebox.showerror('Could Not Save Metro Turn', str(exc), parent=dialog)
+                return
+
+            close_dialog()
+            self._refresh_after_path_edit()
+
+        button_row = tk.Frame(container, bg=BACKGROUND_COLOR)
+        button_row.pack(anchor='w', pady=(14, 0))
+        self._make_sidebar_button(
+            button_row,
+            text='Save Turn',
+            command=save_turn,
+        ).pack(side='left')
+        self._make_sidebar_button(
+            button_row,
+            text='Cancel',
+            command=close_dialog,
+        ).pack(side='left', padx=(10, 0))
+
+    def _edit_metro_segment_endpoints(self, segment: MetroLineSegment) -> None:
+        from tkinter import messagebox
+
+        dialog = tk.Toplevel(self.root)
+        dialog.title(f'Line {segment.line_name} Endpoint Editor')
+        dialog.configure(bg=BACKGROUND_COLOR)
+        dialog.transient(self.root)
+        dialog.grab_set()
+        self._center_toplevel(dialog, width=660, height=320)
+
+        container = tk.Frame(dialog, bg=BACKGROUND_COLOR)
+        container.pack(fill='both', expand=True, padx=16, pady=16)
+
+        def close_dialog() -> None:
+            self._clear_metro_segment_preview()
+            if dialog.winfo_exists():
+                dialog.destroy()
+
+        dialog.protocol('WM_DELETE_WINDOW', close_dialog)
+
+        tk.Label(
+            container,
+            text=f'{_display_label(segment.start_stop.lbl)} to {_display_label(segment.end_stop.lbl)}',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', INFO_TITLE_FONT_SIZE, 'bold'),
+            anchor='w',
+            justify='left',
+        ).pack(anchor='w')
+        tk.Label(
+            container,
+            text='Edit the actual segment endpoints to offset the line from the station center when needed at junctions or shared approaches.',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=620,
+        ).pack(anchor='w', pady=(6, 12))
+
+        start_coordinates = (segment.plot_points[0][0], -segment.plot_points[0][1])
+        end_coordinates = (segment.plot_points[-1][0], -segment.plot_points[-1][1])
+        start_var = tk.StringVar(master=dialog, value=f'{start_coordinates[0]}, {start_coordinates[1]}')
+        end_var = tk.StringVar(master=dialog, value=f'{end_coordinates[0]}, {end_coordinates[1]}')
+        preview_var = tk.StringVar(master=dialog, value='')
+
+        def endpoint_row(label_text: str, variable: tk.StringVar) -> None:
+            row = tk.Frame(container, bg=BACKGROUND_COLOR)
+            row.pack(fill='x', pady=(0, 10))
+            tk.Label(
+                row,
+                text=label_text,
+                bg=BACKGROUND_COLOR,
+                fg=TEXT_COLOR,
+                font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+                width=10,
+                anchor='w',
+            ).pack(side='left')
+            tk.Entry(
+                row,
+                textvariable=variable,
+                bg=SIDEBAR_INPUT_BACKGROUND,
+                fg=TEXT_COLOR,
+                insertbackground=TEXT_COLOR,
+                relief='flat',
+                highlightthickness=1,
+                highlightbackground=INFO_BOX_BORDER,
+                highlightcolor=PATH_NODE_OUTLINE,
+            ).pack(side='left', fill='x', expand=True)
+
+        endpoint_row('Start', start_var)
+        endpoint_row('End', end_var)
+        tk.Label(
+            container,
+            text='Enter coordinates as x, y. The current turn/custom middle points will stay in place.',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=620,
+        ).pack(anchor='w', pady=(0, 10))
+        tk.Label(
+            container,
+            textvariable=preview_var,
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+            anchor='w',
+            justify='left',
+            wraplength=620,
+        ).pack(anchor='w')
+
+        middle_coordinates = tuple((point[0], -point[1]) for point in segment.plot_points[1:-1])
+
+        def refresh_preview(*_args: object) -> None:
+            parsed_start = _parse_coordinate_text(start_var.get())
+            parsed_end = _parse_coordinate_text(end_var.get())
+            if parsed_start is None or parsed_end is None:
+                preview_var.set('Preview: enter both endpoints as x, y.')
+                self._clear_metro_segment_preview()
+                return
+            preview_var.set(
+                f'Preview: start ({parsed_start[0]}, {parsed_start[1]}) -> '
+                f'{_format_coordinate_list(middle_coordinates)} -> '
+                f'end ({parsed_end[0]}, {parsed_end[1]}).'
+            )
+            self._set_metro_segment_preview(
+                _segment_preview_plot_points(parsed_start, parsed_end, middle_coordinates)
+            )
+
+        for variable in (start_var, end_var):
+            variable.trace_add('write', refresh_preview)
+        refresh_preview()
+
+        def save_endpoints() -> None:
+            parsed_start = _parse_coordinate_text(start_var.get())
+            parsed_end = _parse_coordinate_text(end_var.get())
+            if parsed_start is None or parsed_end is None:
+                messagebox.showerror('Could Not Save Endpoints', 'Enter coordinates in the format x, y.', parent=dialog)
+                return
+            try:
+                set_metro_line_segment_endpoint_coordinates(
+                    segment.line_name,
+                    segment.start_var,
+                    segment.end_var,
+                    start_coordinates=parsed_start,
+                    end_coordinates=parsed_end,
+                )
+            except ValueError as exc:
+                messagebox.showerror('Could Not Save Endpoints', str(exc), parent=dialog)
+                return
+
+            close_dialog()
+            self._refresh_after_path_edit()
+
+        button_row = tk.Frame(container, bg=BACKGROUND_COLOR)
+        button_row.pack(anchor='w', pady=(14, 0))
+        self._make_sidebar_button(
+            button_row,
+            text='Save Endpoints',
+            command=save_endpoints,
+        ).pack(side='left')
+        self._make_sidebar_button(
+            button_row,
+            text='Cancel',
+            command=close_dialog,
+        ).pack(side='left', padx=(10, 0))
 
     def _flip_metro_segment_turn(self, segment: MetroLineSegment) -> None:
         from tkinter import messagebox
@@ -10762,6 +11830,7 @@ class MetroMapViewer:
         self._draw_current_route()
         self._draw_path_nodes()
         self._draw_selected_metro_segment_highlight()
+        self._draw_metro_segment_preview()
         if self.railway_finish_mode_var.get():
             self._draw_railway_finish_highlights(visible_line_names)
         else:
@@ -10986,24 +12055,16 @@ class MetroMapViewer:
             self._invalidate_world_map_render_cache()
             return None
 
-        render_cache_path = mode_paths.render_cache_path
-        render_cache_stat = _file_stat_key(render_cache_path)
-        if render_cache_stat is None:
-            legacy_cache_path = (
-                config.repo_root
-                / 'worldgen_data'
-                / 'cache'
-                / mode_paths.render_cache_path.name
-            )
-            legacy_cache_stat = _file_stat_key(legacy_cache_path)
-            if legacy_cache_stat is not None:
-                render_cache_path = legacy_cache_path
-                render_cache_stat = legacy_cache_stat
-        if render_cache_stat is None:
+        metadata_source = _world_map_preferred_render_metadata_path(
+            config.repo_root,
+            mode_paths,
+        )
+        if metadata_source is None:
             if cached_underlay is not None:
                 return cached_underlay
             self._invalidate_world_map_render_cache()
             return None
+        render_cache_path, render_cache_stat = metadata_source
 
         if (
             self.world_map_render_cache_stat == render_cache_stat
@@ -11028,15 +12089,11 @@ class MetroMapViewer:
             self._invalidate_world_map_render_cache()
             return None
 
-        image_candidates: list[Path] = []
-        image_candidates.append(mode_paths.docs_render_image_path)
-        image_candidates.append(mode_paths.render_image_path)
-        payload_image_path = payload.get('image_path')
-        if isinstance(payload_image_path, str) and payload_image_path:
-            image_candidates.append(Path(payload_image_path))
-        image_candidates.append(config.repo_root / 'worldgen_output' / mode_paths.render_image_path.name)
-        image_candidates.append(
-            config.repo_root / 'docs' / 'assets' / mode_paths.render_image_path.name
+        image_candidates = _world_map_image_candidate_paths(
+            config.repo_root,
+            mode_paths,
+            payload,
+            render_cache_path,
         )
 
         image_path: Path | None = None
@@ -12510,6 +13567,7 @@ def _apply_network_payload(payload: MetroNetworkPayload) -> None:
             station_entry_x=_coerce_int(stop_record.get('station_entry_x')),
             station_entry_y=_coerce_int(stop_record.get('station_entry_y')),
             city_limit_node_keys=tuple(str(key) for key in stop_record.get('city_limit_node_keys', [])),
+            abbr=str(stop_record.get('abbr', '')).strip(),
         )
         for stop_record in payload['stops']
     )
@@ -13062,13 +14120,24 @@ def _alignment_axis_for_pair(
     )
 
 
-def _remove_alignment_reminder_for_pair(
+def _resolved_alignment_axis_for_pair(
     payload: MetroNetworkPayload,
     first_var: str,
     second_var: str,
+    axis: AlignmentAxisInput,
+) -> AlignmentAxis:
+    if axis == 'auto':
+        return _alignment_axis_for_pair(payload, first_var, second_var)
+    return axis
+
+
+def _remove_alignment_reminder_record(
+    payload: MetroNetworkPayload,
+    first_var: str,
+    second_var: str,
+    axis: AlignmentAxis,
 ) -> None:
     ordered_first_var, ordered_second_var = sorted((first_var, second_var))
-    axis = _alignment_axis_for_pair(payload, first_var, second_var)
     alignment_reminders = payload.get('alignment_reminders', [])
     payload['alignment_reminders'] = [
         reminder
@@ -13079,6 +14148,15 @@ def _remove_alignment_reminder_for_pair(
             and str(reminder.get('axis')) == axis
         )
     ]
+
+
+def _remove_alignment_reminder_for_pair(
+    payload: MetroNetworkPayload,
+    first_var: str,
+    second_var: str,
+) -> None:
+    axis = _alignment_axis_for_pair(payload, first_var, second_var)
+    _remove_alignment_reminder_record(payload, first_var, second_var, axis)
 
 
 def _sync_direct_alignment_reminder_for_pair(
@@ -13205,6 +14283,65 @@ def _best_turn_variant_for_metro_segment_in_payload(
     return best_variant
 
 
+def _default_turn_coordinate_options_for_metro_segment_in_payload(
+    payload: MetroNetworkPayload,
+    line_name: str,
+    start_var: str,
+    end_var: str,
+) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]]:
+    start_index, _end_index, current_segment_specs = _find_line_segment_specs_in_payload(
+        payload,
+        line_name,
+        start_var,
+        end_var,
+    )
+    start_anchor_spec = cast(LinePathSpecRecord, current_segment_specs[0])
+    end_anchor_spec = cast(LinePathSpecRecord, current_segment_specs[-1])
+    stop_vars = tuple(str(stop_var) for stop_var in payload['line_stop_vars'][line_name])
+
+    previous_segment_specs: tuple[LinePathSpecRecord, ...] | None = None
+    if start_index > 0:
+        previous_start_var = stop_vars[stop_vars.index(start_var) - 1]
+        _previous_start_index, _previous_end_index, previous_segment_specs = _find_line_segment_specs_in_payload(
+            payload,
+            line_name,
+            previous_start_var,
+            start_var,
+        )
+
+    coordinate_options: list[tuple[tuple[int, int], ...]] = []
+    for variant in (0, 1):
+        bare_replacement_specs = _metro_segment_path_specs(
+            start_anchor_spec,
+            end_anchor_spec,
+            start_var=start_var,
+            shape='turn',
+            turn_variant=variant,
+            start_hook_spec=None,
+        )
+        start_hook_spec = _hook_spec_for_turn_start(
+            start_var,
+            previous_segment_specs,
+            bare_replacement_specs,
+        )
+        replacement_specs = _metro_segment_path_specs(
+            start_anchor_spec,
+            end_anchor_spec,
+            start_var=start_var,
+            shape='turn',
+            turn_variant=variant,
+            start_hook_spec=start_hook_spec,
+        )
+        coordinate_options.append(
+            tuple(
+                (point[0], -point[1])
+                for point in (_line_point_from_spec(spec) for spec in replacement_specs[1:-1])
+            )
+        )
+
+    return (coordinate_options[0], coordinate_options[1])
+
+
 def _set_metro_line_segment_shape(
     line_name: str,
     start_var: str,
@@ -13308,6 +14445,148 @@ def add_turn_to_metro_line_segment(line_name: str, start_var: str, end_var: str)
         shape='turn',
         turn_variant=preferred_variant,
     )
+
+
+def set_metro_line_segment_turn_variant(
+    line_name: str,
+    start_var: str,
+    end_var: str,
+    variant: int,
+) -> None:
+    start_stop = STOPS_BY_VAR[start_var]
+    end_stop = STOPS_BY_VAR[end_var]
+    if start_stop.x == end_stop.x or start_stop.y == end_stop.y:
+        raise ValueError('This metro segment is already axis-aligned, so there is no turn to add.')
+    if variant not in (0, 1):
+        raise ValueError(f'Unknown turn variant: {variant}')
+
+    _set_metro_line_segment_shape(
+        line_name,
+        start_var,
+        end_var,
+        shape='turn',
+        turn_variant=variant,
+    )
+
+
+def set_metro_line_segment_custom_points(
+    line_name: str,
+    start_var: str,
+    end_var: str,
+    coordinates: Sequence[tuple[int, int]],
+) -> None:
+    payload = _load_network_payload()
+    stop_vars = tuple(str(stop_var) for stop_var in payload['line_stop_vars'][line_name])
+    if start_var not in stop_vars or end_var not in stop_vars:
+        raise ValueError(f'Unknown segment on Line {line_name}.')
+
+    start_position = stop_vars.index(start_var)
+    end_position = stop_vars.index(end_var)
+    if end_position - start_position != 1:
+        raise ValueError('Metro segment edits only support consecutive stops on a line.')
+
+    start_index, end_index, current_segment_specs = _find_line_segment_specs_in_payload(
+        payload,
+        line_name,
+        start_var,
+        end_var,
+    )
+    start_anchor_spec = cast(LinePathSpecRecord, current_segment_specs[0])
+    end_anchor_spec = cast(LinePathSpecRecord, current_segment_specs[-1])
+    start_coordinates = STOPS_BY_VAR[start_var].coordinates
+    end_coordinates = STOPS_BY_VAR[end_var].coordinates
+    normalized_coordinates = _normalize_segment_via_coordinates(
+        start_coordinates,
+        end_coordinates,
+        coordinates,
+    )
+    if not normalized_coordinates:
+        raise ValueError('Enter at least one turn coordinate between the segment endpoints.')
+
+    replacement_specs = _custom_metro_segment_path_specs(
+        start_anchor_spec,
+        end_anchor_spec,
+        start_var=start_var,
+        via_coordinates=normalized_coordinates,
+    )
+    payload['line_path_specs'][line_name][start_index:end_index + 1] = replacement_specs
+    _sync_direct_alignment_reminder_for_pair(
+        payload,
+        start_var,
+        end_var,
+        is_direct=False,
+    )
+    _normalize_alignment_reminders(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+
+
+def set_metro_line_segment_endpoint_coordinates(
+    line_name: str,
+    start_var: str,
+    end_var: str,
+    *,
+    start_coordinates: tuple[int, int],
+    end_coordinates: tuple[int, int],
+) -> None:
+    payload = _load_network_payload()
+    stop_vars = tuple(str(stop_var) for stop_var in payload['line_stop_vars'][line_name])
+    if start_var not in stop_vars or end_var not in stop_vars:
+        raise ValueError(f'Unknown segment on Line {line_name}.')
+
+    start_position = stop_vars.index(start_var)
+    end_position = stop_vars.index(end_var)
+    if end_position - start_position != 1:
+        raise ValueError('Metro segment edits only support consecutive stops on a line.')
+
+    start_index, end_index, current_segment_specs = _find_line_segment_specs_in_payload(
+        payload,
+        line_name,
+        start_var,
+        end_var,
+    )
+    replacement_specs = [
+        _path_spec_record_for_coordinates(start_var, (int(start_coordinates[0]), int(start_coordinates[1]))),
+        *(_copy_path_spec_record(spec) for spec in current_segment_specs[1:-1]),
+        _path_spec_record_for_coordinates(end_var, (int(end_coordinates[0]), int(end_coordinates[1]))),
+    ]
+    payload['line_path_specs'][line_name][start_index:end_index + 1] = replacement_specs
+    _sync_direct_alignment_reminder_for_pair(
+        payload,
+        start_var,
+        end_var,
+        is_direct=_metro_segment_shape_label(
+            tuple(cast(LinePathSpecRecord, spec) for spec in replacement_specs),
+            start_var=start_var,
+            end_var=end_var,
+        ) == 'direct',
+    )
+    _normalize_alignment_reminders(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
+
+
+def reset_all_metro_line_segments_direct() -> None:
+    payload = _load_network_payload()
+    for line_name, stop_vars in payload['line_stop_vars'].items():
+        anchor_indices = _payload_line_anchor_index_map(payload, line_name)
+        payload['line_path_specs'][line_name] = [
+            _copy_path_spec_record(
+                cast(LinePathSpecRecord, payload['line_path_specs'][line_name][anchor_indices[str(stop_var)]])
+            )
+            for stop_var in stop_vars
+        ]
+        for start_var, end_var in zip(stop_vars, stop_vars[1:]):
+            _sync_direct_alignment_reminder_for_pair(
+                payload,
+                str(start_var),
+                str(end_var),
+                is_direct=True,
+            )
+
+    _normalize_alignment_reminders(payload)
+    _write_network_payload(payload)
+    _apply_network_payload(payload)
 
 
 def flip_metro_line_segment_turn(line_name: str, start_var: str, end_var: str) -> None:
@@ -13753,6 +15032,18 @@ def add_alignment_reminder(
     second_station: str,
     axis: AlignmentAxisInput = 'auto',
 ) -> None:
+    set_alignment_reminder(first_station, second_station, axis)
+
+
+def set_alignment_reminder(
+    first_station: str,
+    second_station: str,
+    axis: AlignmentAxisInput = 'auto',
+    *,
+    previous_first_station: str | None = None,
+    previous_second_station: str | None = None,
+    previous_axis: AlignmentAxis | None = None,
+) -> None:
     payload = _load_network_payload()
     first_var = _resolve_stop_var_in_payload(payload, first_station)
     second_var = _resolve_stop_var_in_payload(payload, second_station)
@@ -13763,22 +15054,22 @@ def add_alignment_reminder(
     if first_var == second_var:
         raise ValueError('Alignment reminders need two different stations.')
 
+    if previous_first_station is not None and previous_second_station is not None and previous_axis is not None:
+        previous_first_var = _resolve_stop_var_in_payload(payload, previous_first_station)
+        previous_second_var = _resolve_stop_var_in_payload(payload, previous_second_station)
+        if previous_first_var is None:
+            raise ValueError(f'Unknown station: {previous_first_station}')
+        if previous_second_var is None:
+            raise ValueError(f'Unknown station: {previous_second_station}')
+        _remove_alignment_reminder_record(payload, previous_first_var, previous_second_var, previous_axis)
+
     stop_lookup = {
         str(stop_record['var']): stop_record
         for stop_record in payload['stops']
     }
     first_record = stop_lookup[first_var]
     second_record = stop_lookup[second_var]
-    resolved_axis: AlignmentAxis
-    if axis == 'auto':
-        resolved_axis = _infer_alignment_axis_from_coordinates(
-            int(first_record['x']),
-            int(first_record['y']),
-            int(second_record['x']),
-            int(second_record['y']),
-        )
-    else:
-        resolved_axis = axis
+    resolved_axis = _resolved_alignment_axis_for_pair(payload, first_var, second_var, axis)
 
     if resolved_axis == 'x' and int(first_record['x']) == int(second_record['x']):
         _normalize_alignment_reminders(payload)
@@ -13792,6 +15083,7 @@ def add_alignment_reminder(
         return
 
     payload.setdefault('alignment_reminders', [])
+    _remove_alignment_reminder_record(payload, first_var, second_var, resolved_axis)
     payload['alignment_reminders'].append(
         {
             'first_var': first_var,

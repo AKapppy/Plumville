@@ -1,0 +1,79 @@
+PLUMVILLE CODEX RUN REPORT TEMPLATE
+
+RUN
+
+Name:
+Scope:
+Result: PASS / PARTIAL / BLOCKED
+
+CHECKLIST
+
+Changed to [~]:
+-
+
+Changed to [x]:
+-
+
+Changed to [verify]:
+-
+
+Changed to [blocked]:
+-
+
+Left on [hold]:
+-
+
+FILES
+
+- path/to/file
+  - What changed
+  - Why it changed
+
+TESTS
+
+1. Command:
+   Result: PASS / FAIL / SKIP
+   Essential output:
+
+2. Command:
+   Result: PASS / FAIL / SKIP
+   Essential output:
+
+Add every relevant command. Do not summarize a failed command as passing.
+
+USER CHECKS
+
+Leave the corresponding boxes in notes.txt unchecked.
+
+1. Action:
+   Expected:
+
+2. Action:
+   Expected:
+
+3. Action:
+   Expected:
+
+KNOWN ISSUES
+
+-
+-
+
+RISKS
+
+-
+-
+
+GIT
+
+Branch:
+`git status --short`:
+
+No commit performed: YES / NO
+No push performed: YES / NO
+
+NEXT RECOMMENDED RUN
+
+Name:
+Reason:
+Do not start it in the current run unless explicitly asked.

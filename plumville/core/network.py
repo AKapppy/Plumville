@@ -98,6 +98,16 @@ def normalize_stop_metadata(
             stop_record["chime_directions"] = normalized_chime_directions
             payload_changed = True
 
+        raw_abbreviation = stop_record.get("abbr")
+        normalized_abbreviation = str(raw_abbreviation).strip() if raw_abbreviation is not None else ""
+        if normalized_abbreviation:
+            if stop_record.get("abbr") != normalized_abbreviation:
+                stop_record["abbr"] = normalized_abbreviation
+                payload_changed = True
+        elif "abbr" in stop_record:
+            stop_record.pop("abbr", None)
+            payload_changed = True
+
     return payload_changed
 
 

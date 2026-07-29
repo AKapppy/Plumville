@@ -78,6 +78,18 @@
             >
             <span>Suggested walking paths</span>
           </label>
+          <label class="check-row">
+            <input id="showCityLimitsInput" type="checkbox">
+            <span>City limits</span>
+          </label>
+          <label class="check-row">
+            <input id="showAlignmentInput" type="checkbox">
+            <span>Alignment ellipses</span>
+          </label>
+          <label class="check-row">
+            <input id="showFrontierInput" type="checkbox">
+            <span>Frontier highlights</span>
+          </label>
           <details class="line-filter-section">
             <summary>Lines</summary>
             <div
@@ -134,6 +146,21 @@
           <section class="text-panel" aria-live="polite">
             <p id="routeSummary">Choose two stations.</p>
             <pre id="routeSteps">Enter or select two stations, then press Route.</pre>
+          </section>
+        </details>
+
+        <details class="collapsible-section">
+          <summary>Checklist</summary>
+          <section class="text-panel" aria-live="polite">
+            <p id="publicChecklistSummary">Loading checklist…</p>
+          </section>
+        </details>
+
+        <details class="collapsible-section">
+          <summary>Priority List</summary>
+          <section class="text-panel" aria-live="polite">
+            <p id="publicPrioritySummary">Loading priority list…</p>
+            <div id="publicPriorityList" class="priority-list"></div>
           </section>
         </details>
 
