@@ -6349,9 +6349,10 @@ class MetroMapViewer:
         self.route_start_var.trace_add('write', self._on_route_input_changed)
         self.route_end_var.trace_add('write', self._on_route_input_changed)
         self.world_map_mode_var.trace_add('write', self._on_world_map_mode_changed)
+        self._configure_desktop_workspace_hosts()
 
         self.sidebar_container = tk.Frame(
-            self.root,
+            self.workspace_secondary_parent,
             bg=BACKGROUND_COLOR,
             width=SIDEBAR_WIDTH,
         )
@@ -6385,7 +6386,7 @@ class MetroMapViewer:
         self._build_route_panel()
 
         self.canvas: tk.Canvas = tk.Canvas(
-            self.root,
+            self.workspace_map_parent,
             width=width,
             height=height,
             bg=BACKGROUND_COLOR,
@@ -6393,6 +6394,7 @@ class MetroMapViewer:
             cursor='crosshair',
         )
         self.canvas.pack(side='left', fill='both', expand=True)
+        self._finalize_desktop_workspace_hosts()
         self.canvas.bind('<Configure>', self._on_configure)
         self.canvas.bind('<ButtonPress-1>', self._on_drag_start)
         self.canvas.bind('<B1-Motion>', self._on_drag)
@@ -6429,6 +6431,13 @@ class MetroMapViewer:
             self.root.after(400, lambda: self.root.attributes('-topmost', False))
         except tk.TclError:
             return
+
+    def _configure_desktop_workspace_hosts(self) -> None:
+        self.workspace_secondary_parent = self.root
+        self.workspace_map_parent = self.root
+
+    def _finalize_desktop_workspace_hosts(self) -> None:
+        return None
 
     def _build_route_panel(self) -> None:
         self._make_sidebar_caption('Search').pack(anchor='w', padx=16)
@@ -7989,7 +7998,8 @@ class MetroMapViewer:
             item_label.bind('<Button-1>', lambda _event, target_stop_var=stop_var: self._focus_stop(target_stop_var))
 
     def _refresh_station_stats(self) -> None:
-        self.stats_summary_var.set(_station_progress_summary_text())
+        summary_text = _station_progress_summary_text()
+        self.stats_summary_var.set(summary_text)
 
     def _priority_origin_key(self) -> str:
         default_key = _blackport_stop().var
@@ -10816,6 +10826,11 @@ class MetroMapViewer:
             )
             return
 
+        from plumville.desktop import inspector as desktop_inspector
+
+        if desktop_inspector.show_metro_turn_editor(self, segment):
+            return
+
         payload = _load_network_payload()
         default_options = _default_turn_coordinate_options_for_metro_segment_in_payload(
             payload,
@@ -11030,6 +11045,11 @@ class MetroMapViewer:
 
     def _edit_metro_segment_endpoints(self, segment: MetroLineSegment) -> None:
         from tkinter import messagebox
+
+        from plumville.desktop import inspector as desktop_inspector
+
+        if desktop_inspector.show_metro_endpoint_editor(self, segment):
+            return
 
         dialog = tk.Toplevel(self.root)
         dialog.title(f'Line {segment.line_name} Endpoint Editor')

@@ -461,7 +461,7 @@ class DesktopModeShellTests(unittest.TestCase):
                             is_expanded,
                         )
 
-    def test_mode_shell_populates_menu_and_updates_state(self) -> None:
+    def test_mode_shell_installs_workspace_mode_rail(self) -> None:
         viewer = FakeModeViewer()
 
         with (
@@ -472,31 +472,24 @@ class DesktopModeShellTests(unittest.TestCase):
             ),
             mock.patch.object(
                 desktop_improvements.tk,
-                "Frame",
-                FakePackable,
+                "StringVar",
+                FakeStringVar,
             ),
             mock.patch.object(
-                desktop_improvements.tk,
-                "Label",
-                FakePackable,
+                desktop_improvements.workspace,
+                "install_mode_rail",
+            ) as install_mode_rail,
+            mock.patch.object(
+                desktop_improvements.workspace,
+                "sync_workspace",
             ),
         ):
             desktop_improvements._append_desktop_mode_shell(viewer)
 
-        self.assertEqual(viewer.captions, ["Mode"])
+        install_mode_rail.assert_called_once()
         self.assertEqual(
-            viewer.option_menu.menu.labels,
-            desktop_improvements._desktop_mode_labels(),
-        )
-        command = viewer.option_menu.menu.commands[3]
-        assert callable(command)
-        command()
-
-        self.assertEqual(viewer.desktop_mode_key, "construction")
-        self.assertEqual(viewer.desktop_mode_var.get(), "Construction")
-        self.assertIn(
-            "completion",
-            viewer.desktop_mode_status_var.get(),
+            install_mode_rail.call_args.kwargs["modes"],
+            desktop_improvements.DESKTOP_MODES,
         )
 
     def test_build_panel_starts_sections_collapsed(self) -> None:
@@ -968,7 +961,10 @@ class DesktopPathDetectionTests(unittest.TestCase):
         detect_paths.assert_called_once_with(viewer, base.BLACKPORT_VAR)
 
     def test_normal_popup_draws_without_detection_wrapper(self) -> None:
-        viewer = mock.Mock(_path_detection_hide_selected_popup=False)
+        viewer = mock.Mock(
+            _path_detection_hide_selected_popup=False,
+            _desktop_workspace_shell=None,
+        )
         original_draw = desktop_improvements._NORMAL_DRAW_SELECTED_STOP_INFO
         normal_draw = mock.Mock()
 
@@ -985,7 +981,10 @@ class DesktopPathDetectionTests(unittest.TestCase):
         normal_draw.assert_called_once_with(viewer)
 
     def test_normal_popup_receives_mmcp_decoration(self) -> None:
-        viewer = mock.Mock(_path_detection_hide_selected_popup=False)
+        viewer = mock.Mock(
+            _path_detection_hide_selected_popup=False,
+            _desktop_workspace_shell=None,
+        )
         original_draw = desktop_improvements._NORMAL_DRAW_SELECTED_STOP_INFO
         normal_draw = mock.Mock()
 
@@ -1005,6 +1004,57 @@ class DesktopPathDetectionTests(unittest.TestCase):
 
         normal_draw.assert_called_once_with(viewer)
         decorate.assert_called_once_with(viewer)
+
+    def test_docked_inspector_suppresses_persistent_station_popup(self) -> None:
+        viewer = mock.Mock(
+            _path_detection_hide_selected_popup=False,
+            _desktop_workspace_shell=None,
+        )
+        original_draw = desktop_improvements._NORMAL_DRAW_SELECTED_STOP_INFO
+        normal_draw = mock.Mock()
+
+        try:
+            desktop_improvements._NORMAL_DRAW_SELECTED_STOP_INFO = normal_draw
+            with mock.patch.object(
+                desktop_improvements.inspector,
+                "has_docked_inspector",
+                return_value=True,
+            ):
+                desktop_improvements._draw_selected_stop_info_without_detection_button(
+                    viewer
+                )
+        finally:
+            desktop_improvements._NORMAL_DRAW_SELECTED_STOP_INFO = original_draw
+
+        viewer._clear_info_popup.assert_called_once_with()
+        normal_draw.assert_not_called()
+
+    def test_docked_inspector_suppresses_persistent_segment_popup(self) -> None:
+        viewer = mock.Mock(_desktop_workspace_shell=None)
+        original_draw = (
+            desktop_improvements._ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO
+        )
+        normal_draw = mock.Mock()
+
+        try:
+            desktop_improvements._ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO = (
+                normal_draw
+            )
+            with mock.patch.object(
+                desktop_improvements.inspector,
+                "has_docked_inspector",
+                return_value=True,
+            ):
+                desktop_improvements._draw_selected_metro_segment_info_without_docked_popup(
+                    viewer
+                )
+        finally:
+            desktop_improvements._ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO = (
+                original_draw
+            )
+
+        viewer._clear_info_popup.assert_called_once_with()
+        normal_draw.assert_not_called()
 
 
 class DesktopWorldgenCompletionTests(unittest.TestCase):

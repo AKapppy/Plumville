@@ -7,6 +7,8 @@ from typing import Callable
 
 import legacy_core as base
 import path_detection
+from plumville.desktop import inspector
+from plumville.desktop import workspace
 
 
 ROUTE_FIT_MIN_SPAN = 900.0
@@ -56,6 +58,7 @@ _ORIGINAL_REDRAW: Callable[..., None] | None = None
 _ORIGINAL_CENTER_DIALOG: Callable[..., None] | None = None
 _ORIGINAL_CENTER_TOPLEVEL: Callable[..., None] | None = None
 _NORMAL_DRAW_SELECTED_STOP_INFO: Callable[..., None] | None = None
+_ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO: Callable[..., None] | None = None
 _ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION: (
     Callable[..., tk.Frame] | None
 ) = None
@@ -103,6 +106,9 @@ _ORIGINAL_ATTRS = {
     ),
     "_NORMAL_DRAW_SELECTED_STOP_INFO": (
         "_plumville_desktop_normal_draw_selected_stop_info"
+    ),
+    "_ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO": (
+        "_plumville_desktop_original_draw_selected_metro_segment_info"
     ),
     "_ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION": (
         "_plumville_desktop_original_make_collapsible_sidebar_section"
@@ -1053,54 +1059,36 @@ def _apply_desktop_mode_visibility(
         sidebar_canvas.configure(
             scrollregion=sidebar_canvas.bbox("all")
         )
+    _sync_desktop_workspace_shell(self)
 
 
 def _append_desktop_mode_shell(
     self: "base.MetroMapViewer",
 ) -> None:
     _ensure_desktop_mode_state(self)
-
-    self._make_sidebar_caption("Mode").pack(
-        anchor="w",
-        padx=16,
-    )
-    mode_row = tk.Frame(
-        self.sidebar,
-        bg=MMCP_SURFACE,
-    )
-    mode_row.pack(fill="x", padx=16, pady=(4, 6))
-    mode_menu = self._make_sidebar_option_menu(
-        mode_row,
-        self.desktop_mode_var,
-    )
-    mode_menu.pack(fill="x", expand=True)
-    menu = self._option_menu_widget(mode_menu)
-    menu.delete(0, "end")
-    for mode in DESKTOP_MODES:
-        menu.add_command(
-            label=mode.label,
-            command=lambda selected=mode.label: (
-                _set_desktop_mode_label(self, selected)
-            ),
-        )
-
-    tk.Label(
-        self.sidebar,
-        textvariable=self.desktop_mode_status_var,
-        bg=WEB_PANEL_RAISED,
-        fg=WEB_MUTED,
-        font=(
-            "Helvetica",
-            max(10, base.SIDEBAR_TEXT_FONT_SIZE - 1),
+    workspace.install_mode_rail(
+        self,
+        modes=DESKTOP_MODES,
+        on_mode_select=lambda selected: _set_desktop_mode_label(
+            self,
+            selected,
         ),
-        anchor="w",
-        justify="left",
-        wraplength=base.SIDEBAR_WIDTH - 56,
-        padx=12,
-        pady=10,
-        highlightbackground=WEB_BORDER_LIGHT,
-        highlightthickness=1,
-    ).pack(anchor="w", fill="x", padx=16, pady=(0, 12))
+    )
+    _sync_desktop_workspace_shell(self)
+
+
+def _sync_desktop_workspace_shell(
+    self: "base.MetroMapViewer",
+) -> None:
+    workspace.sync_workspace(
+        self,
+        modes=DESKTOP_MODES,
+        active_mode_key=getattr(
+            self,
+            "desktop_mode_key",
+            DESKTOP_MODE_DEFAULT_KEY,
+        ),
+    )
 
 
 def _desktop_initial_section_expanded(
@@ -1240,6 +1228,7 @@ def _patched_refresh_current_route(
 ) -> None:
     assert _ORIGINAL_REFRESH_CURRENT_ROUTE is not None
     _ORIGINAL_REFRESH_CURRENT_ROUTE(self)
+    _sync_desktop_workspace_shell(self)
 
 
 def _patched_plan_route(
@@ -1248,6 +1237,7 @@ def _patched_plan_route(
     assert _ORIGINAL_PLAN_ROUTE is not None
     _cancel_pending_route_fit(self)
     _ORIGINAL_PLAN_ROUTE(self)
+    _sync_desktop_workspace_shell(self)
     _schedule_route_fit_if_ready(self)
 
 
@@ -1257,6 +1247,7 @@ def _patched_on_route_options_changed(
     assert _ORIGINAL_ON_ROUTE_OPTIONS_CHANGED is not None
     _cancel_pending_route_fit(self)
     _ORIGINAL_ON_ROUTE_OPTIONS_CHANGED(self)
+    _sync_desktop_workspace_shell(self)
     _schedule_route_fit_if_ready(self)
 
 
@@ -1564,6 +1555,7 @@ def _patched_set_world_map_status_text(
 ) -> None:
     assert _ORIGINAL_SET_WORLD_MAP_STATUS_TEXT is not None
     _ORIGINAL_SET_WORLD_MAP_STATUS_TEXT(self, text)
+    _sync_desktop_workspace_shell(self)
     if hasattr(self, "root"):
         self.root.after_idle(
             lambda: _refresh_worldgen_control_visibility(
@@ -1601,9 +1593,22 @@ def _draw_selected_stop_info_without_detection_button(
         False,
     ):
         return
+    if inspector.has_docked_inspector(self):
+        self._clear_info_popup()
+        return
     assert _NORMAL_DRAW_SELECTED_STOP_INFO is not None
     _NORMAL_DRAW_SELECTED_STOP_INFO(self)
     _decorate_selected_stop_popup(self)
+
+
+def _draw_selected_metro_segment_info_without_docked_popup(
+    self: "base.MetroMapViewer",
+) -> None:
+    if inspector.has_docked_inspector(self):
+        self._clear_info_popup()
+        return
+    assert _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO is not None
+    _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO(self)
 
 
 def _popup_window_item_id(
@@ -2260,6 +2265,7 @@ def _patched_redraw(
     assert _ORIGINAL_REDRAW is not None
     _ORIGINAL_REDRAW(self)
     _overlay_web_station_markers(self)
+    inspector.sync_inspector(self)
 
 
 def _patched_build_route_panel(
@@ -2326,6 +2332,7 @@ def apply() -> None:
     global _ORIGINAL_CENTER_DIALOG
     global _ORIGINAL_CENTER_TOPLEVEL
     global _NORMAL_DRAW_SELECTED_STOP_INFO
+    global _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO
     global _ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION
     global _ORIGINAL_MAKE_SIDEBAR_CAPTION
     global _ORIGINAL_MAKE_SIDEBAR_HINT
@@ -2341,6 +2348,7 @@ def apply() -> None:
     if _APPLIED:
         return
     if getattr(base.MetroMapViewer, _APPLIED_ATTR, False):
+        workspace.apply()
         _ORIGINAL_BUILD_ROUTE_PANEL = getattr(
             base.MetroMapViewer,
             _ORIGINAL_ATTRS["_ORIGINAL_BUILD_ROUTE_PANEL"],
@@ -2393,6 +2401,13 @@ def apply() -> None:
         _NORMAL_DRAW_SELECTED_STOP_INFO = getattr(
             base.MetroMapViewer,
             _ORIGINAL_ATTRS["_NORMAL_DRAW_SELECTED_STOP_INFO"],
+            None,
+        )
+        _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO = getattr(
+            base.MetroMapViewer,
+            _ORIGINAL_ATTRS[
+                "_ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO"
+            ],
             None,
         )
         _ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION = getattr(
@@ -2451,6 +2466,8 @@ def apply() -> None:
         _APPLIED = True
         return
 
+    workspace.apply()
+
     _ORIGINAL_BUILD_ROUTE_PANEL = (
         base.MetroMapViewer._build_route_panel
     )
@@ -2481,6 +2498,9 @@ def apply() -> None:
         _NORMAL_DRAW_SELECTED_STOP_INFO = (
             base.MetroMapViewer._draw_selected_stop_info
         )
+    _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO = (
+        base.MetroMapViewer._draw_selected_metro_segment_info
+    )
     _ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION = (
         base.MetroMapViewer._make_collapsible_sidebar_section
     )
@@ -2572,6 +2592,9 @@ def apply() -> None:
     )
     base.MetroMapViewer._draw_selected_stop_info = (
         _draw_selected_stop_info_without_detection_button
+    )
+    base.MetroMapViewer._draw_selected_metro_segment_info = (
+        _draw_selected_metro_segment_info_without_docked_popup
     )
     base.MetroMapViewer._fit_current_route_view = (
         _fit_current_route_view

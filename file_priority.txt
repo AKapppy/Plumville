@@ -1,511 +1,281 @@
 PLUMVILLE FILE PRIORITY LIST
 
-Last synchronized with GitHub main: 2026-07-28
-
-PURPOSE
-
-This file tells Codex which files should receive attention first.
-
-Priority considers:
-
-- active checklist leverage;
-- regression risk;
-- ability to test locally;
-- architectural ownership;
-- whether a change requires a public phone push.
-
-Update this file after every implementation run.
-
-Do not lower a file merely because code was written. Lower it after the
-relevant behavior is tested and stable.
+Last audited against GitHub main: 2026-07-29
+Audited commit: 03f67070beb8224e426a575fd905b791d496810a
 
 ======================================================================
-CURRENT PRIORITY ORDER
+CURRENT PRIORITY ORDER — VISUAL PHASE
 ======================================================================
 
-1. desktop_improvements.py
-2. ui_extensions.py
-3. scripts/smoke_tk_sidebar.py and targeted desktop tests
-4. legacy_core.py
-5. path_detection.py
-6. docs/app.js
-7. docs/styles.css
-8. metro_station_extensions.py
-9. plumville/core/network.py
-10. plumville/paths.py
-11. plumville/core/public_export.py
-12. README.md and architecture documentation
-
-Phone/mobile-specific public files are on hold unless a desktop-only
-regression is being fixed.
+1. New desktop inspector module under plumville/desktop/
+2. New desktop shell module under plumville/desktop/
+3. Small stable hooks in legacy_core.py
+4. desktop_improvements.py
+5. Focused desktop UI tests
+6. metro_station_extensions.py
+7. ui_extensions.py
+8. Dedicated desktop theme/components module
+9. Dialog-owner files
+10. docs/app.js and docs/styles.css — desktop regressions only
+11. Data architecture files
+12. Documentation
 
 ======================================================================
-PRIORITY 1 — desktop_improvements.py
+1. NEW DESKTOP INSPECTOR MODULE
 ======================================================================
 
-Status:
-- Present in latest GitHub main
-- Draft implementation
-- D01-A wrapper reapply stability is covered by tests
-- D01-B route auto-fit scheduling and Fit Route helper behavior are covered by
-  targeted tests
-- D01-C path-detection relocation is covered by targeted tests
-- D01-D completed-worldgen completion decisions and hide/restore behavior are
-  covered by targeted tests
-- Desktop Mode Shell Slice 01 added a tested top-level mode model and
-  now uses an `All`-default sidebar selector without moving existing controls
-- Desktop collapsible sidebar sections now start collapsed by default
-- Desktop `Directions` mode now auto-opens the route-planning section while
-  keeping unrelated sections hidden, with focused coverage in desktop tests
-- Desktop `Construction`, `Edit`, `World`, and `Advanced` modes now auto-open
-  their primary sections while keeping mode-relevant supporting sections visible
-- Desktop abbreviation follow-up now loads shared stop abbreviations into the
-  private model, matches them in desktop search/route resolution, and displays
-  them in station details while preserving shared payload normalization
-- Desktop MMCP Visual Pass 01 / Web Parity Pass now derives desktop palette
-  and shared sidebar/button/input styling from the current web viewer, with
-  diamond station headers and circular line badges in the selected-station
-  popup pending live visual verification
-- Desktop web-parity follow-up now keeps popup headers on one row, wraps popup
-  action buttons, reapplies the named/frontier priority filter on refresh, adds
-  diamond station overlays after redraw, and makes mode selection change visible
-  desktop sections pending live verification
-- Desktop shared dialog chrome now routes centered dialogs through a web-derived
-  styling pass so line, station, alignment, and segment editors move closer to
-  the current web viewer pending live verification
-- Desktop popup/dialog fit refinement restores the popup title, uses a wider
-  popup action layout, and sizes centered dialogs closer to requested content
-  pending live verification
-- Desktop priority naming refinement now treats short all-caps / digit
-  placeholder labels as unnamed so they stay off the priority list unless they
-  are frontier stations
-- Desktop popup line-action follow-up now keeps line operations behind a single
-  `Manage`-row chooser, prompts removals from the station's current line list,
-  uses larger bordered station diamonds with web-style inner junction marks,
-  and sizes circular line badges/dialog minimums closer to the web viewer
-- Station-signage data drift was corrected; full Python unittest discovery now
-  passes
-- Line C path specs were repaired after the Amortay/Peapod correction so
-  `P_C6`, `P_C7`, and `P_C8` remain present in validated path geometry
-- Interactive Tk startup is locally verified by the user, but still blocked in
-  this execution environment by a fatal `tkinter.Tk()` abort before sidebar
-  construction
-- D01 user verification has been reported good by the user
+Recommended path:
 
-Leverage:
-- Extremely high
+- plumville/desktop/inspector.py
 
-Risk:
-- High
+Purpose:
 
-Why first:
-- It currently owns the draft desktop route-fit, path-detection relocation,
-  and completed-worldgen UI behavior.
-- The user reports errors in the prior desktop update.
-- Fixing this module may restore startup without touching legacy_core.py.
+- own the first real docked-station inspector implementation;
+- replace persistent selected-station popup content;
+- provide empty and selected states inside the right docked region;
+- keep station actions out of map-covering popups.
 
-Codex tasks:
+Current V02 state:
 
-- reproduce the current error;
-- verify import-time safety;
-- verify patch idempotence;
-- prevent recursive wrappers;
-- keep route fit limited to explicit route-affecting actions;
-- preserve manual map interaction;
-- hide path detection from normal station controls;
-- expose it only through Advanced / Experimental;
-- safely hide completed generation controls;
-- preserve corrected Amortay C/U and Peapod C/D data alignment;
-- preserve Line C path-spec coverage for Amortay, Neamegapolis, Pinto Peak,
-  Prumpvatn, and Peapod when touching station data;
-- keep the top-level desktop mode model stable while adding one mode slice at
-  a time;
-- preserve the collapsed initial sidebar-section state unless a future mode
-  explicitly opens its focused panel;
-- add testable pure helpers where possible.
-
-Preferred change style:
-
-- focused edits;
-- preserve working code;
-- split pure logic from Tk mutation;
-- avoid a second large replacement module.
+- `plumville/desktop/inspector.py` now exists and owns the first docked station
+  inspector pass;
+- the active desktop shell now sends persistent station detail rendering into
+  the docked inspector instead of the floating popup;
+- the inspector currently shows an empty state, station header block, line
+  badges, construction controls, signage, reminders, and grouped actions;
+- selected metro-segment details now render in the docked inspector instead of
+  the floating map popup when the shell is active;
+- metro turn and endpoint preview editors now use temporary inspector task
+  views with reachable Save/Cancel actions, while retaining the old dialogs as
+  fallback when the shell is absent;
+- inspector tabs and a dedicated danger region are still pending.
 
 Do not:
 
-- rewrite legacy_core.py to make this file easier;
-- delete path-detection data;
-- modify real worldgen data;
-- add unrelated desktop modes in D01.
+- rebuild the workspace shell here;
+- redesign dialogs in the same run;
+- move unrelated editing features into the inspector run.
 
 ======================================================================
-PRIORITY 2 — ui_extensions.py
+2. NEW DESKTOP SHELL MODULE
 ======================================================================
 
-Status:
-- Present in latest GitHub main
-- Imports desktop_improvements
-- Calls desktop_improvements.apply()
-- D01-A now stores extension applied state and captured originals on
-  MetroMapViewer so reapply/reload does not drop desktop wrappers
+Current state:
 
-Leverage:
-- Extremely high
+- `plumville/desktop/workspace.py` now exists and owns the V01 shell frames;
+- it mounts the legacy sidebar container into a dedicated secondary panel host;
+- it mounts the existing map canvas into a dedicated map host;
+- it provides a compact mode rail, top bar, empty inspector shell, and
+  optional status strip;
+- it still needs Andrew's live verification before further shell cleanup.
+
+======================================================================
+3. SMALL STABLE HOOKS IN legacy_core.py
+======================================================================
 
 Risk:
-- High
 
-Why second:
-- It controls the order of multiple monkey-patching extensions.
-- A bad order can cause recursion, missing controls, duplicated sections, or
-  stale references.
+- extremely high
 
-Codex tasks:
+Current V01 state:
 
-- document and test the extension order;
-- make application idempotent;
-- ensure every wrapper captures the intended prior method;
-- avoid duplicate sidebar construction;
-- preserve all existing extension controls;
-- keep large feature logic outside this orchestration file.
+- V01 added a narrow workspace-host hook so the new shell can own root layout
+  without broad constructor rewrites;
+- these hooks should remain small and explicit.
 
-Preferred change style:
+Next use:
 
-- small and explicit;
-- no hidden import-time mutation;
-- clear ordering comments;
-- tests that apply extensions twice.
-
-======================================================================
-PRIORITY 3 — scripts/smoke_tk_sidebar.py AND DESKTOP TESTS
-======================================================================
-
-Leverage:
-- Very high
-
-Risk:
-- Low
-
-Why third:
-- The current smoke test checks the basic sidebar but does not fully cover the
-  new Advanced section, Fit Route, hidden path detection, or duplicate patch
-  application.
-
-Codex tasks:
-
-- update expected section state carefully;
-- cover top-level desktop mode shell behavior without requiring a live Tk
-  display;
-- verify Fit Route appears once;
-- verify Advanced / Experimental appears once and defaults collapsed;
-- verify ordinary station popup does not include path detection;
-- verify applying extensions twice does not duplicate controls;
-- add pure unit tests for route bounds and worldgen completion decisions;
-- keep tests independent of real user runtime data.
+- selected-station change callback;
+- inspector refresh callback;
+- small shell/inpector lifecycle hooks only if required.
 
 Do not:
 
-- weaken existing assertions to make the new code pass;
-- require mutation of real render caches.
+- add hundreds of lines of styling;
+- put the inspector implementation directly into legacy_core.py;
+- rewrite existing builders wholesale.
 
 ======================================================================
-PRIORITY 4 — legacy_core.py
+4. desktop_improvements.py
 ======================================================================
 
-Leverage:
-- Extremely high
+Current state:
 
-Risk:
-- Extremely high
+- still large and mixed;
+- now bridges the existing mode model into the new workspace shell;
+- should continue shrinking in responsibility over later visual runs.
 
-Status:
-- Cross-Tk startup compatibility around `tk.Text.count()` is now patched and
-  covered by a targeted regression test.
-- World-map underlay source selection now prefers the newest coherent metadata
-  source so stale local cache bounds do not override newer synced docs bounds.
-- The private station popup now includes a desktop alignment-ellipse manager
-  backed by an atomic reminder replacement helper and targeted coverage for
-  preview/replacement behavior.
-- Shared priority entries now exclude unnamed started stations unless they are
-  frontier targets, and metro segment helpers now cover direct resets plus
-  default/custom turn path writes for the desktop editor.
-- Desktop metro segment editing now includes live map previews, compass-labeled
-  default turns, and endpoint-anchor editing for junction/offset cases.
-- The endpoint editor save action is now reachable: a shared coordinate-list
-  formatter fixes the preview-time `NameError`, with fake-Tk coverage that
-  reaches the `Save Endpoints` button without a display.
+Immediate goal:
 
-Use only when:
+- keep compatibility behavior stable;
+- let dedicated desktop modules own visual structure;
+- avoid adding new shell or inspector implementation detail here unless it is
+  truly a bridge concern.
 
-- the current extension architecture cannot safely implement the behavior;
-- a small stable hook is clearly preferable to another monkey patch;
-- targeted tests are added first.
-
-Potential small hooks:
-
-- post-route-calculation callback;
-- sidebar-section registration hook;
-- station-popup action registration hook;
-- world-map completion-state helper boundary.
-- narrow cross-platform Tk compatibility fixes when a stable wrapper boundary
-  does not exist.
-
-Do not:
-
-- replace the whole file;
-- combine D01 with large architectural extraction;
-- change unrelated editing behavior.
+Do not start this in Visual Run V01.
 
 ======================================================================
-PRIORITY 5 — path_detection.py
+5. FOCUSED DESKTOP UI TESTS
 ======================================================================
 
-Leverage:
-- Medium
+Recommended additions:
 
-Risk:
-- High because saved user data is involved
+- tests/test_desktop_workspace.py
+- tests/test_desktop_inspector.py
 
-D01 scope:
+Test without depending on real runtime data where possible.
 
-- preserve existing behavior and data;
-- expose a stable callable entry point if needed;
-- stop injecting normal popup controls if that can be done safely;
-- support Advanced / Experimental access.
+Cover:
 
-Out of scope:
+- region creation;
+- mode-to-panel mapping;
+- no duplicate control mounting;
+- inspector collapse state;
+- selected-station synchronization;
+- component configuration;
+- repeated extension application.
 
-- algorithm repair;
-- data migration;
-- deletion;
-- new detection features.
+Do not replace live user verification with fake-Tk assertions.
 
 ======================================================================
-PRIORITY 6 — docs/app.js
+6. metro_station_extensions.py
 ======================================================================
 
-Leverage:
-- High for public desktop browser
+Use after the inspector exists.
 
-Risk:
-- Medium to high
+Potential work:
 
-Current main already contains:
+- move station actions into inspector tabs;
+- add abbreviation editing;
+- add validation and duplicate warnings;
+- keep dialogs focused.
 
-- resizeFrame;
-- resizeSettleTimer;
-- syncViewportNow();
-- multi-pointer gestures;
-- public route auto-fit;
-- named/unnamed suggestion UI;
-- compact line controls.
-- optional public toggles for city limits, alignment ellipses, and frontier
-  highlights with deterministic docs smoke coverage.
-- read-only public Checklist and Priority List panels plus a read-only
-  station-popup checklist drilldown for incomplete railway checklist work.
-- Public desktop live-resize reproduction is blocked in this execution
-  environment by browser automation startup failures.
-- Blank station suggestion grouping now has deterministic public smoke
-  coverage. `HL` is present and verified as unnamed; `F6` is not present in
-  the current public network export, but will be checked if exported later.
+Do not use it to build the workspace shell.
+
+======================================================================
+7. ui_extensions.py
+======================================================================
+
+Keep as a small explicit coordinator.
+
+Responsibilities:
+
+- apply extensions in a documented order;
+- install the workspace shell;
+- avoid import-time mutation;
+- remain idempotent.
+
+Do not put visual implementation here.
+
+======================================================================
+8. DESKTOP THEME / COMPONENT MODULE
+======================================================================
+
+Recommended path:
+
+- plumville/desktop/theme.py
+- plumville/desktop/components.py
+
+Start after the shell geometry is stable.
+
+Move:
+
+- MMCP colors;
+- spacing;
+- typography;
+- button palettes;
+- panel builders;
+- line badges;
+- station diamonds;
+- status chips.
+
+Do not spend a run migrating constants before the shell exists.
+
+======================================================================
+9. DIALOG-OWNER FILES
+======================================================================
+
+After component foundations:
+
+- metro_station_extensions.py
+- legacy_core.py dialog methods
+- future plumville/desktop/station_editor.py
+- future plumville/desktop/line_editor.py
+
+Replace generic recursive styling with explicit templates one flow at a time.
+
+======================================================================
+10. PUBLIC VIEWER FILES
+======================================================================
+
+Files:
+
+- docs/app.js
+- docs/styles.css
+- docs/index.html
 
 Allowed during mobile hold:
 
-- reproduce and fix desktop-width blank-canvas regressions;
-- verify F6 and HL unnamed classification;
-- add deterministic tests;
-- preserve all phone behavior.
+- reproduced desktop-browser regressions;
+- accessibility issues testable locally;
+- public data validation.
 
 Do not:
 
-- add mobile features;
-- tune orientation behavior without phone verification;
-- rewrite the file for desktop D01.
+- add new phone features;
+- redesign mobile layout;
+- use the public viewer as a substitute for desktop shell work.
 
 ======================================================================
-PRIORITY 7 — docs/styles.css
+RECOMMENDED RUN ORDER
 ======================================================================
 
-Leverage:
-- Medium
+V01
+- workspace shell only
 
-Risk:
-- Medium
+V02
+- docked inspector shell and Overview tab
 
-Current main already contains a desktop-width viewport block and mobile layout.
+V03
+- remaining inspector tabs and action migration
 
-Allowed:
+V04
+- component system and secondary-panel cleanup
 
-- desktop-width fixes required by a reproduced bug;
-- accessibility fixes testable locally.
+V05
+- explicit dialog templates
 
-Do not:
+V06
+- canonical desktop map symbols and semantic labels
 
-- alter mobile safe areas;
-- redesign sticky mobile layout;
-- begin a bottom sheet.
-
-======================================================================
-PRIORITY 8 — metro_station_extensions.py
-======================================================================
-
-Leverage:
-- High after D01
-
-Risk:
-- Medium
-
-Next-phase work:
-
-- desktop abbreviation model and editing;
-- duplicate warnings;
-- dialog redesign;
-- inspector actions.
-
-Do not begin until desktop startup and extension application are stable.
+Each run must stop for Andrew's live check.
 
 ======================================================================
-PRIORITY 9 — plumville/core/network.py
+COMPLETED / LOWER-PRIORITY FILE WORK
 ======================================================================
 
-Leverage:
-- High foundational value
+desktop_improvements.py
+- route fit
+- Fit Route
+- path-detection relocation
+- completed-worldgen UI logic
+- mode filtering
+- first-pass MMCP styling
+- popup and marker decoration
 
-Risk:
-- Medium
+legacy_core.py
+- abbreviation load/search/display
+- alignment manager
+- metro-turn editor
+- endpoint editor
+- compatibility fixes
 
-Future work:
+docs/
+- public route and search improvements
+- public MMCP styling
+- public line filters
+- read-only checklist and priority views
+- overlay toggles
 
-- shared abbreviation normalization;
-- duplicate detection;
-- station resolution;
-- canonical-data validation.
-
-Not part of D01 unless a small tested helper is required.
-
-======================================================================
-PRIORITY 10 — plumville/paths.py
-======================================================================
-
-Leverage:
-- Medium
-
-Risk:
-- Low
-
-Future work:
-
-- canonical data paths;
-- public export paths;
-- runtime/history/export path definitions.
-
-Not part of D01.
-
-======================================================================
-PRIORITY 11 — plumville/core/public_export.py
-======================================================================
-
-Leverage:
-- High after canonical-path migration
-
-Risk:
-- Medium
-
-Future work:
-
-- sanitized canonical-to-public export;
-- abbreviation preservation;
-- construction contract;
-- private-field exclusion.
-
-Not part of D01.
-
-======================================================================
-PRIORITY 12 — DOCUMENTATION
-======================================================================
-
-Files may include:
-
-- README.md
-- development/IMPLEMENTATION_AND_QA.md
-- file-classification documentation
-
-Needed after D01:
-
-- correct three-track architecture;
-- current extension order;
-- testing commands;
-- mobile hold policy;
-- canonical/public data plan;
-- private data safety.
-
-======================================================================
-PUBLIC PHONE/MOBILE HOLD
-======================================================================
-
-Do not prioritize:
-
-- phone orientation Fit centering;
-- mobile navigation;
-- bottom sheet;
-- safe-area tweaks;
-- new touch-layout changes.
-
-Resume when the user can push and test a published build on a phone.
-
-======================================================================
-RECOMMENDED EXECUTION ORDER
-======================================================================
-
-Run D01-A:
-- baseline audit;
-- reproduce startup error;
-- stabilize extension application;
-- add tests;
-- stop and give user checks.
-
-Run D01-B:
-- route auto-fit and Fit Route behavior;
-- tests;
-- user checks.
-
-Run D01-C:
-- path-detection relocation;
-- tests;
-- user checks.
-
-Run D01-D:
-- completed-worldgen UI;
-- tests;
-- user checks.
-
-Codex may combine two sub-runs only when the diff remains small, coherent, and
-fully testable. Do not combine all four by default.
-
-======================================================================
-COMPLETED FILE-LEVEL WORK
-======================================================================
-
-[x] data/station_abbreviations.json
-- corrected authoritative mapping
-
-[x] docs/metro_network.json
-- public abbreviation fields
-- valid JSON
-- no station duplication or loss
-
-[x] docs/index.html
-- public Run 04 line disclosure and viewer structure
-
-[x] docs/app.js — verified public foundations
-- route auto-fit
-- abbreviation search and routing
-- custom suggestions
-- semantic zoom
-- line shields
-- share-state restoration
-
-[x] docs/styles.css — verified public foundations
-- MMCP styling
-- public responsive foundation
-- compact line controls
+tests/
+- extensive unit and smoke coverage for current behavior

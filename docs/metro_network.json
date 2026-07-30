@@ -821,7 +821,7 @@
     {
       "var": "P_KL",
       "lbl": "KL",
-      "x": 3544,
+      "x": 3575,
       "y": 1806,
       "has_connector": false,
       "has_full_station": false,
@@ -893,7 +893,7 @@
     {
       "var": "P_K3",
       "lbl": "K_3",
-      "x": 3464,
+      "x": 3575,
       "y": 2424,
       "has_connector": false,
       "has_full_station": false,
@@ -984,7 +984,7 @@
     {
       "var": "P_HKM",
       "lbl": "HKM",
-      "x": 3528,
+      "x": 3575,
       "y": 3006,
       "has_connector": false,
       "has_full_station": false,
@@ -1557,7 +1557,7 @@
       "var": "P_B8",
       "lbl": "Slimin",
       "x": 6184,
-      "y": 168,
+      "y": 125,
       "has_connector": false,
       "has_full_station": false,
       "is_connected": false,
@@ -1663,15 +1663,17 @@
     {
       "var": "P_BJZ",
       "lbl": "Toot'n'Cummin",
-      "x": 6728,
-      "y": 216,
+      "x": 6704,
+      "y": 125,
       "has_connector": false,
       "has_full_station": false,
       "is_connected": false,
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
-      "has_walking_paths": false
+      "has_walking_paths": false,
+      "station_entry_x": 6704,
+      "station_entry_y": 167
     },
     {
       "var": "P_GHI",
@@ -3770,7 +3772,7 @@
       {
         "x_var": "P_HKM",
         "y_var": "P_H10",
-        "dx": 2,
+        "dx": -2,
         "dy": 0
       },
       {
@@ -5257,11 +5259,6 @@
       "axis": "y"
     },
     {
-      "first_var": "P_HKM",
-      "second_var": "P_KL",
-      "axis": "x"
-    },
-    {
       "first_var": "P_K5",
       "second_var": "P_NU6",
       "axis": "y"
@@ -5359,16 +5356,6 @@
     {
       "first_var": "P_BJZ",
       "second_var": "P_J4",
-      "axis": "x"
-    },
-    {
-      "first_var": "P_K3",
-      "second_var": "P_KL",
-      "axis": "x"
-    },
-    {
-      "first_var": "P_HKM",
-      "second_var": "P_K3",
       "axis": "x"
     },
     {
@@ -23765,6 +23752,22 @@
       "id": "node_849",
       "x": 250,
       "y": -3083
+    },
+    {
+      "id": "monument_850",
+      "x": 5445,
+      "y": 183,
+      "poi_kind": "monument",
+      "label": "Unnamed Temple",
+      "category": "Temple"
+    },
+    {
+      "id": "monument_851",
+      "x": 3427,
+      "y": 115,
+      "poi_kind": "monument",
+      "label": "Unnamed Nether Portal",
+      "category": "Nether Portal"
     }
   ],
   "railway_finish_progress": {
