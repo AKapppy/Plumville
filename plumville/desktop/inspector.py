@@ -24,16 +24,46 @@ def sync_inspector(viewer: "base.MetroMapViewer") -> None:
         return
 
     stop_var = getattr(viewer, "selected_stop_var", None)
-    if stop_var not in base.STOPS_BY_VAR:
-        segment_getter = getattr(viewer, "_selected_metro_segment", None)
-        segment = segment_getter() if callable(segment_getter) else None
-        if segment is not None:
-            _render_selected_metro_segment(viewer, segment)
-            return
-        _render_empty_state(viewer)
+    if stop_var in base.STOPS_BY_VAR:
+        workspace.show_inspector_for_task(viewer, ("station", stop_var))
+        _render_selected_stop(viewer, base.STOPS_BY_VAR[stop_var])
         return
 
-    _render_selected_stop(viewer, base.STOPS_BY_VAR[stop_var])
+    path_node_getter = getattr(viewer, "_selected_path_node", None)
+    path_node = path_node_getter() if callable(path_node_getter) else None
+    if path_node is not None:
+        workspace.show_inspector_for_task(viewer, ("path_node", path_node.key))
+        _render_selected_path_node(viewer, path_node)
+        return
+
+    segment_getter = getattr(viewer, "_selected_metro_segment", None)
+    segment = segment_getter() if callable(segment_getter) else None
+    if segment is not None:
+        workspace.show_inspector_for_task(
+            viewer,
+            (
+                "metro_segment",
+                segment.line_name,
+                segment.start_var,
+                segment.end_var,
+            ),
+        )
+        _render_selected_metro_segment(viewer, segment)
+        return
+
+    path_click_mode_var = getattr(viewer, "path_click_mode_var", None)
+    if path_click_mode_var is not None and bool(path_click_mode_var.get()):
+        context_stop = _pathing_context_stop(viewer)
+        task_key = (
+            "pathing",
+            None if context_stop is None else context_stop.var,
+        )
+        workspace.show_inspector_for_task(viewer, task_key)
+        _render_pathing_context(viewer, context_stop=context_stop)
+        return
+
+    viewer._desktop_inspector_task_key = None
+    _render_empty_state(viewer)
 
 
 def _render_empty_state(viewer: "base.MetroMapViewer") -> None:
@@ -99,58 +129,67 @@ def _render_selected_stop(
     )
     header.pack(fill="x")
 
-    header_left = tk.Frame(header, bg=workspace.PANEL_RAISED)
-    header_left.pack(side="left", fill="x", expand=True)
-    _make_station_diamond(
-        header_left,
-        stop_var=stop.var,
-    ).pack(anchor="w")
-    tk.Label(
-        header_left,
-        text=base._station_display_name(stop),
-        bg=workspace.PANEL_RAISED,
-        fg=workspace.TEXT,
-        font=("Helvetica", 16, "bold"),
-        anchor="w",
-        justify="left",
-        wraplength=190,
-    ).pack(anchor="w", pady=(10, 0))
+    header.grid_columnconfigure(0, weight=1)
     abbreviation = base._stop_abbreviation(stop)
-    subtitle_lines = [f"Coords: ({stop.x}, {stop.y})"]
-    if abbreviation:
-        subtitle_lines.insert(0, f"Abbr: {abbreviation}")
     tk.Label(
-        header_left,
-        text="  |  ".join(subtitle_lines),
+        header,
+        text=abbreviation,
         bg=workspace.PANEL_RAISED,
-        fg=workspace.MUTED,
-        font=("Helvetica", 10),
+        fg=workspace.ACCENT,
+        font=("Helvetica", 17, "bold"),
         anchor="w",
         justify="left",
-        wraplength=220,
-    ).pack(anchor="w", pady=(6, 0))
-
-    badge_row = tk.Frame(header, bg=workspace.PANEL_RAISED)
-    badge_row.pack(side="right", anchor="ne", padx=(12, 0))
-    for line_name in base.STOP_LINE_NAMES.get(stop.var, ()):
-        _make_line_badge(
-            badge_row,
+    ).grid(row=0, column=0, sticky="w")
+    line_badges = tk.Frame(header, bg=workspace.PANEL_RAISED)
+    line_badges.grid(row=0, column=1, sticky="e")
+    for line_name in sorted(base.STOP_LINE_NAMES.get(stop.var, ())):
+        _make_line_diamond(
+            line_badges,
             line_name=line_name,
             line_color=base.LINE_COLORS.get(line_name, workspace.PANEL_ALT_BG),
         ).pack(side="left", padx=(6, 0))
 
-    summary = tk.Frame(
-        shell.inspector_body,
-        bg=workspace.PANEL_BG,
-        padx=2,
-        pady=12,
-    )
-    summary.pack(fill="x")
-    _make_detail_block(
-        summary,
-        title="Status",
-        lines=_status_lines(stop),
-    ).pack(fill="x")
+    title_row = tk.Frame(header, bg=workspace.PANEL_RAISED)
+    title_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(10, 0))
+    title_row.grid_columnconfigure(0, weight=1)
+    tk.Label(
+        title_row,
+        text=base._display_label(stop.lbl),
+        bg=workspace.PANEL_RAISED,
+        fg=workspace.TEXT,
+        font=("Helvetica", 18, "bold"),
+        anchor="w",
+        justify="left",
+        wraplength=210,
+    ).grid(row=0, column=0, sticky="w")
+    tk.Label(
+        title_row,
+        text=f"({stop.x},{stop.y})",
+        bg=workspace.PANEL_RAISED,
+        fg=workspace.MUTED,
+        font=("Helvetica", 11, "bold"),
+        anchor="e",
+        justify="left",
+    ).grid(row=0, column=1, sticky="e", padx=(10, 0))
+
+    status_lines = _status_lines(stop)
+    if status_lines:
+        summary = tk.Frame(
+            shell.inspector_body,
+            bg=workspace.PANEL_BG,
+            padx=2,
+            pady=12,
+        )
+        summary.pack(fill="x")
+        _make_detail_block(
+            summary,
+            title="Status",
+            lines=status_lines,
+        ).pack(fill="x")
+
+    path_click_mode_var = getattr(viewer, "path_click_mode_var", None)
+    if path_click_mode_var is not None and bool(path_click_mode_var.get()):
+        _render_pathing_town_section(viewer, shell.inspector_body, stop)
 
     construction_section = _make_section(shell.inspector_body, title="Construction")
     construction_section.pack(fill="x", pady=(0, SECTION_GAP))
@@ -167,15 +206,15 @@ def _render_selected_stop(
         actions_section,
         title="Edit",
         actions=[
-            ("Coordinates", viewer._edit_selected_coordinates),
-            ("Name / Abbr", viewer._edit_selected_label),
+            ("Name", viewer._edit_selected_label),
+            ("Coords", viewer._edit_selected_coordinates),
             ("Station Entry", viewer._edit_selected_station_entry),
         ],
     )
     manage_actions: list[tuple[str, Callable[[], None]]] = [
-        ("Alignments", viewer._manage_selected_alignments),
-        ("City Limits", viewer._toggle_selected_city_limits_edit),
         ("Lines", lambda active_stop_var=stop.var: _prompt_selected_stop_line_action(viewer, active_stop_var)),
+        ("Paths", lambda active_stop_var=stop.var: viewer._activate_station_pathing(active_stop_var)),
+        ("Alignments", viewer._manage_selected_alignments),
     ]
     if viewer.city_limits_edit_stop_var == stop.var:
         manage_actions.append(("Clear", viewer._clear_selected_city_limits))
@@ -280,6 +319,227 @@ def _render_selected_metro_segment(
     actions = _make_section(shell.inspector_body, title="Actions")
     actions.pack(fill="x")
     _metro_segment_action_buttons(viewer, actions, segment)
+
+
+def _render_selected_path_node(
+    viewer: "base.MetroMapViewer",
+    path_node: base.PathNode,
+) -> None:
+    shell = viewer._desktop_workspace_shell
+    _clear_inspector_body(viewer)
+    shell.inspector_header_label.configure(text="Map Pathing")
+    viewer.info_popup_variables = []
+
+    extra_edges = base._extra_edges_for_endpoint_key(path_node.key)
+    detail_lines = (
+        f"Current node: {path_node.display_label}",
+        f"Coords: ({path_node.x}, {path_node.y})",
+        f"Type: {base._path_node_type_label(path_node)}",
+        f"Path edges: {len(extra_edges)}",
+    )
+    _make_detail_block(
+        shell.inspector_body,
+        title="Node",
+        lines=detail_lines,
+    ).pack(fill="x", pady=(0, SECTION_GAP))
+
+    town = _pathing_context_stop(viewer)
+    _render_pathing_town_section(viewer, shell.inspector_body, town)
+
+    actions = _make_section(shell.inspector_body, title="Actions")
+    actions.pack(fill="x")
+    action_items = [
+        ("Walk Path", lambda: viewer._add_path_for_selected_node("walk")),
+        ("Metro Path", lambda: viewer._add_path_for_selected_node("connector")),
+        ("Edit Node", viewer._edit_selected_path_node_coordinates),
+    ]
+    if path_node.is_explicit:
+        action_items.append(("Remove", viewer._remove_selected_path_node))
+    _action_section(
+        viewer,
+        actions,
+        title="Node",
+        actions=action_items,
+    )
+
+    if extra_edges:
+        edges = _make_section(shell.inspector_body, title="Path Edges")
+        edges.pack(fill="x", pady=(SECTION_GAP, 0))
+        for extra_edge in extra_edges[:6]:
+            tk.Label(
+                edges,
+                text=base._extra_edge_full_summary(extra_edge),
+                bg=workspace.PANEL_BG,
+                fg=workspace.TEXT,
+                font=("Helvetica", 10),
+                anchor="w",
+                justify="left",
+                wraplength=workspace.INSPECTOR_WIDTH - 78,
+            ).pack(anchor="w", pady=(0, 4))
+
+
+def _render_pathing_context(
+    viewer: "base.MetroMapViewer",
+    *,
+    context_stop: base.MetroStop | None = None,
+) -> None:
+    shell = viewer._desktop_workspace_shell
+    _clear_inspector_body(viewer)
+    shell.inspector_header_label.configure(text="Map Pathing")
+
+    town = context_stop if context_stop is not None else _pathing_context_stop(viewer)
+    if town is None:
+        container = _make_section(shell.inspector_body, title="Town")
+        container.pack(fill="x")
+        tk.Label(
+            container,
+            text=(
+                "Zoom closer to the town you are mapping, or select a station "
+                "so Plumville can attach new nodes and city limits to the right place."
+            ),
+            bg=workspace.PANEL_BG,
+            fg=workspace.TEXT,
+            font=("Helvetica", 10),
+            anchor="w",
+            justify="left",
+            wraplength=workspace.INSPECTOR_WIDTH - 78,
+        ).pack(anchor="w", pady=(0, 8))
+        viewer._make_info_button(
+            container,
+            text="Choose Town",
+            command=viewer._edit_pathing_town_context,
+        ).pack(anchor="w")
+        return
+
+    _render_pathing_town_section(viewer, shell.inspector_body, town)
+
+    guide = _make_section(shell.inspector_body, title="Map")
+    guide.pack(fill="x", pady=(SECTION_GAP, 0))
+    for line in (
+        "Click empty map space to add a node.",
+        "Drag from a station or node to another station or node to add a path.",
+        str(viewer.path_click_status_var.get()),
+    ):
+        tk.Label(
+            guide,
+            text=line,
+            bg=workspace.PANEL_BG,
+            fg=workspace.TEXT if line != str(viewer.path_click_status_var.get()) else workspace.MUTED,
+            font=("Helvetica", 10),
+            anchor="w",
+            justify="left",
+            wraplength=workspace.INSPECTOR_WIDTH - 78,
+        ).pack(anchor="w", pady=(0, 4))
+
+
+def _pathing_context_stop(
+    viewer: "base.MetroMapViewer",
+) -> base.MetroStop | None:
+    context_getter = getattr(viewer, "_pathing_context_stop", None)
+    if not callable(context_getter):
+        return None
+    return context_getter()
+
+
+def _render_pathing_town_section(
+    viewer: "base.MetroMapViewer",
+    parent: tk.Misc,
+    town: base.MetroStop | None,
+) -> None:
+    if town is None:
+        return
+
+    owned_keys = viewer._suggested_city_limit_node_keys_for_stop(town.var)
+    town_section = _make_section(parent, title="Town")
+    town_section.pack(fill="x", pady=(0, SECTION_GAP))
+    for line in (
+        f"Detected town: {base._station_display_name(town)}",
+        f"Town nodes: {len(owned_keys)}",
+    ):
+        tk.Label(
+            town_section,
+            text=line,
+            bg=workspace.PANEL_BG,
+            fg=workspace.TEXT,
+            font=("Helvetica", 10),
+            anchor="w",
+            justify="left",
+            wraplength=workspace.INSPECTOR_WIDTH - 78,
+        ).pack(anchor="w", pady=(0, 4))
+    viewer._make_info_button(
+        town_section,
+        text="Change Town",
+        command=viewer._edit_pathing_town_context,
+    ).pack(anchor="w", pady=(0, 8))
+    _render_city_limit_controls(viewer, town_section, town, owned_keys)
+
+
+def _render_city_limit_controls(
+    viewer: "base.MetroMapViewer",
+    parent: tk.Misc,
+    town: base.MetroStop,
+    owned_node_keys: tuple[str, ...],
+) -> None:
+    is_editing = getattr(viewer, "city_limits_edit_stop_var", None) == town.var
+    pending_keys = tuple(getattr(viewer, "city_limits_pending_node_keys", ()))
+    saved_count = len(town.city_limit_node_keys)
+    suggested_count = len(owned_node_keys)
+    active_count = len(pending_keys) if is_editing else saved_count
+
+    lines: list[str] = []
+    if is_editing:
+        lines.append(f"Selected boundary nodes: {active_count}")
+        lines.append("Click any town node to add or remove it. The polygon order is handled automatically.")
+    elif saved_count:
+        lines.append(f"Saved boundary nodes: {saved_count}")
+    elif suggested_count:
+        lines.append(f"Suggested boundary nodes: {suggested_count}")
+    else:
+        lines.append("No town nodes are available for a city-limit suggestion yet.")
+
+    tk.Label(
+        parent,
+        text="City Limits",
+        bg=workspace.PANEL_BG,
+        fg=workspace.ACCENT,
+        font=("Courier", 10, "bold"),
+        anchor="w",
+    ).pack(anchor="w", pady=(4, 6))
+    for line in lines:
+        tk.Label(
+            parent,
+            text=line,
+            bg=workspace.PANEL_BG,
+            fg=workspace.TEXT,
+            font=("Helvetica", 10),
+            anchor="w",
+            justify="left",
+            wraplength=workspace.INSPECTOR_WIDTH - 78,
+        ).pack(anchor="w", pady=(0, 4))
+
+    actions: list[tuple[str, Callable[[], None]]] = []
+    if is_editing:
+        actions.extend(
+            [
+                ("Confirm", viewer._confirm_city_limits_edit),
+                ("Cancel", viewer._cancel_city_limits_edit),
+            ]
+        )
+        if saved_count:
+            actions.append(("Clear", viewer._clear_selected_city_limits))
+    elif saved_count:
+        actions.append(("Edit", lambda active_stop_var=town.var: viewer._start_city_limits_edit(active_stop_var)))
+        actions.append(("Clear", viewer._clear_selected_city_limits))
+    elif suggested_count:
+        actions.append(("Review", lambda active_stop_var=town.var: viewer._start_city_limits_edit(active_stop_var)))
+
+    if actions:
+        _action_section(
+            viewer,
+            parent,
+            title="Limits",
+            actions=actions,
+        )
 
 
 def _metro_segment_action_buttons(
@@ -701,23 +961,19 @@ def _field_row(
 
 
 def _status_lines(stop: base.MetroStop) -> tuple[str, ...]:
-    lines = [", ".join(base.STOP_LINE_NAMES.get(stop.var, ())) or "No lines yet"]
-    lines.append(f"Progress: {stop.checkpoint_count}/{stop.checkpoint_total}")
-    if stop.station_entry_coordinates is not None:
-        entry_x, entry_y = stop.station_entry_coordinates
-        lines.append(f"Station entry: ({entry_x}, {entry_y})")
-    if stop.city_limit_node_keys:
-        lines.append(f"City limits: {len(stop.city_limit_node_keys)} nodes")
-    reminders = base._alignment_reminders_for_stop(stop.var)
-    lines.append(
-        "Alignments: none" if not reminders else f"Alignments: {len(reminders)} active"
+    missing_tasks = base._missing_station_tasks(stop)
+    lines: list[str] = (
+        [f"Needs: {base._join_priority_tasks(missing_tasks)}"]
+        if missing_tasks
+        else []
     )
+    reminders = base._alignment_reminders_for_stop(stop.var)
+    if reminders:
+        lines.append(f"Alignments: {len(reminders)} active")
     if stop.is_connected:
         completed_chime_count = base._station_completed_chime_count(stop)
         max_chime_count = base._station_max_chime_count(stop)
-        if max_chime_count == 0:
-            lines.append("Chimes: none needed yet")
-        else:
+        if max_chime_count > 0 and completed_chime_count < max_chime_count:
             lines.append(f"Chimes: {completed_chime_count}/{max_chime_count}")
     return tuple(lines)
 
@@ -739,6 +995,13 @@ def _populate_checkpoint_section(
         checked=stop.has_connector,
         on_toggle=lambda value: viewer._update_selected_checkpoint("has_connector", value),
     ).pack(anchor="w")
+    if stop.has_connector:
+        viewer._make_info_checkbox(
+            parent,
+            text="Station Entry",
+            checked=stop.station_entry_coordinates is not None,
+            enabled=False,
+        ).pack(anchor="w")
     viewer._make_info_checkbox(
         parent,
         text="Station",
@@ -751,12 +1014,26 @@ def _populate_checkpoint_section(
         checked=stop.has_walking_paths,
         on_toggle=lambda value: viewer._update_selected_checkpoint("has_walking_paths", value),
     ).pack(anchor="w")
+    if stop.has_walking_paths:
+        viewer._make_info_checkbox(
+            parent,
+            text="City Limits",
+            checked=bool(stop.city_limit_node_keys),
+            enabled=False,
+        ).pack(anchor="w")
     viewer._make_info_checkbox(
         parent,
-        text="Connected",
-        checked=stop.is_connected,
-        on_toggle=lambda value: viewer._update_selected_checkpoint("is_connected", value),
+        text="Tunneled",
+        checked=stop.is_tunneled,
+        on_toggle=lambda value: viewer._update_selected_checkpoint("is_tunneled", value),
     ).pack(anchor="w")
+    if stop.is_tunneled:
+        viewer._make_info_checkbox(
+            parent,
+            text="Connected",
+            checked=stop.is_connected,
+            on_toggle=lambda value: viewer._update_selected_checkpoint("is_connected", value),
+        ).pack(anchor="w")
     if stop.is_connected and base.SHOW_RAILWAY_FINISHING_UI:
         viewer._make_info_checkbox(
             parent,
@@ -842,6 +1119,48 @@ def _make_station_diamond(
             outline=workspace.TEXT,
             width=1,
         )
+    return diamond
+
+
+def _make_line_diamond(
+    parent: tk.Misc,
+    *,
+    line_name: str,
+    line_color: str,
+) -> tk.Canvas:
+    size = 32
+    radius = 13
+    foreground = _line_badge_foreground(line_color)
+    diamond = tk.Canvas(
+        parent,
+        width=size,
+        height=size,
+        bg=workspace.PANEL_RAISED,
+        highlightthickness=0,
+        bd=0,
+    )
+    diamond.create_polygon(
+        (
+            size / 2,
+            size / 2 - radius,
+            size / 2 + radius,
+            size / 2,
+            size / 2,
+            size / 2 + radius,
+            size / 2 - radius,
+            size / 2,
+        ),
+        fill=line_color,
+        outline=foreground,
+        width=2,
+    )
+    diamond.create_text(
+        size / 2,
+        size / 2,
+        text=line_name,
+        fill=foreground,
+        font=("Courier", 10, "bold"),
+    )
     return diamond
 
 

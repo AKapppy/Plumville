@@ -50,6 +50,36 @@ Current V02 state:
   fallback when the shell is absent;
 - inspector tabs and a dedicated danger region are still pending.
 
+Current map-framing state:
+
+- inspector visibility changes preserve the current map center after the right
+  panel opens or closes;
+- selected stations intentionally frame to a 150-block radius around the
+  station point when they are selected.
+
+Current desktop pathing state:
+
+- selected path-node details/actions render in the docked inspector instead of
+  the map popup when the desktop shell is active;
+- the inspector starts hidden, reopens automatically for new selected tasks
+  after task-local hides, and now has a scrollable body for tall task content;
+- the station header now uses abbreviation-first title styling, right-aligned
+  line-colored diamond badges, simplified coordinates, and reduced status
+  noise;
+- station Status now lists unfinished priority-style needs instead of a raw
+  progress fraction;
+- station entry and city-limit completion now appear as automated construction
+  checks instead of status text; station entry appears after facade completion,
+  and city limits appear after walking paths are complete;
+- the docked signage section now keeps controls at the top and lays out
+  non-directional signs as raised equal-width cells before directional town
+  lists;
+- station inspector actions now order Edit as Name, Coords, Station Entry and
+  Manage as Lines, Paths, Alignments;
+- map pathing mode automatically owns path-node visibility;
+- city-limit editing uses inspector controls, inferred/correctable town
+  context, pending node selection, and confirm-to-save convex polygons.
+
 Do not:
 
 - rebuild the workspace shell here;
@@ -67,6 +97,10 @@ Current state:
 - it mounts the existing map canvas into a dedicated map host;
 - it provides a compact mode rail, top bar, empty inspector shell, and
   optional status strip;
+- the right inspector panel starts hidden while its top-bar Show/Hide control
+  remains available;
+- inspector visibility changes preserve the map center across right-panel width
+  changes instead of refitting the prior bounds;
 - it still needs Andrew's live verification before further shell cleanup.
 
 ======================================================================
@@ -82,6 +116,40 @@ Current V01 state:
 - V01 added a narrow workspace-host hook so the new shell can own root layout
   without broad constructor rewrites;
 - these hooks should remain small and explicit.
+
+Current priority-list state:
+
+- `legacy_core.py` owns the Priority List Need and Line filters;
+- selecting a line shows all unfinished stations on that line and ignores the
+  Need filter until All lines is selected again, while still excluding unnamed
+  placeholder stations;
+- desktop startup now uses the same reset view as the R hotkey;
+- station entries render as small zoom-gated dots with dotted gray station
+  links and continue to be used as station walking endpoints;
+- route planning now exposes a Metro/Walking travel dropdown and uses flying
+  only as a fallback when graph routes are unavailable.
+- the visible Railways sidebar no longer exposes finishing mode, finish
+  coordinate entry, or Save Point; its summary reports connected track length
+  against total planned track length.
+- Option+letter hotkeys fit the full selected letter line on the map, using
+  the complete planned line geometry regardless of completion.
+- station construction now records tunneling before connection; map rendering
+  distinguishes connected solid, tunneled dashed, and planned dotted segments.
+- line-specific tunneled stop membership is persisted in
+  `line_tunneled_stop_vars`, so shared geometry can be tunneled on one line
+  without forcing the same state on every line using that segment.
+- the Railways sidebar includes started or frontier lines with tunneling and
+  completion percentages, with completed lines sorted to the bottom; the
+  summary uses compact `T:` and `C:` rows to avoid sidebar text clipping, and
+  frontier inclusion now considers tunnelable next segments as well as
+  connected next segments.
+- the Show/Hide section has an off-by-default non-orthogonal segment
+  highlight to help find metro geometry that still needs turns.
+
+Deferred follow-up:
+
+- reverse-line-order editing needs a separate data-safe run because it changes
+  line ordering and generated unnamed station numbers.
 
 Next use:
 

@@ -14,6 +14,7 @@ class FakeWidget:
         self.kwargs = dict(kwargs)
         self.children: list[FakeWidget] = []
         self.pack_calls: list[dict[str, object]] = []
+        self.grid_calls: list[dict[str, object]] = []
         self.bindings: dict[str, object] = {}
         self.destroyed = False
         if isinstance(master, FakeWidget):
@@ -25,8 +26,17 @@ class FakeWidget:
     def pack(self, **kwargs: object) -> None:
         self.pack_calls.append(kwargs)
 
+    def grid(self, **kwargs: object) -> None:
+        self.grid_calls.append(kwargs)
+
     def bind(self, event: str, callback: object) -> None:
         self.bindings[event] = callback
+
+    def grid_columnconfigure(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def grid_rowconfigure(self, *_args: object, **_kwargs: object) -> None:
+        return None
 
     def winfo_children(self) -> list["FakeWidget"]:
         return list(self.children)
@@ -88,6 +98,17 @@ def _find_widget_by_text(widget: FakeWidget, text: str) -> FakeWidget | None:
     return None
 
 
+def _button_texts(widget: FakeWidget) -> list[str]:
+    texts: list[str] = []
+    if widget.kwargs.get("kind") == "button":
+        text = widget.kwargs.get("text")
+        if isinstance(text, str):
+            texts.append(text)
+    for child in widget.children:
+        texts.extend(_button_texts(child))
+    return texts
+
+
 class DesktopInspectorTests(unittest.TestCase):
     def _shell(self) -> SimpleNamespace:
         return SimpleNamespace(
@@ -101,8 +122,11 @@ class DesktopInspectorTests(unittest.TestCase):
             _desktop_workspace_shell=shell,
             selected_stop_var=None,
             city_limits_edit_stop_var=None,
+            city_limits_pending_node_keys=(),
             info_popup_variables=[],
             root=object(),
+            path_click_mode_var=FakeStringVar(value=""),
+            path_click_status_var=FakeStringVar(value=""),
         )
 
         def make_button(parent: FakeWidget, *, text: str, command: object) -> FakeWidget:
@@ -131,6 +155,16 @@ class DesktopInspectorTests(unittest.TestCase):
         viewer._update_selected_checkpoint = mock.Mock()
         viewer._update_selected_chime_direction = mock.Mock()
         viewer._remove_selected_station_from_line = mock.Mock()
+        viewer._activate_station_pathing = mock.Mock()
+        viewer._add_path_for_selected_node = mock.Mock()
+        viewer._edit_selected_path_node_coordinates = mock.Mock()
+        viewer._remove_selected_path_node = mock.Mock()
+        viewer._edit_pathing_town_context = mock.Mock()
+        viewer._start_city_limits_edit = mock.Mock()
+        viewer._confirm_city_limits_edit = mock.Mock()
+        viewer._cancel_city_limits_edit = mock.Mock()
+        viewer._suggested_city_limit_node_keys_for_stop = mock.Mock(return_value=())
+        viewer._pathing_context_stop = mock.Mock(return_value=None)
         return viewer
 
     def test_sync_inspector_renders_empty_state_without_selected_station(self) -> None:
@@ -196,6 +230,36 @@ class DesktopInspectorTests(unittest.TestCase):
         )
         self.assertEqual(viewer.info_popup_variables, [])
         self.assertGreaterEqual(len(viewer._desktop_workspace_shell.inspector_body.children), 4)
+        texts = _widget_texts(viewer._desktop_workspace_shell.inspector_body)
+        self.assertIn("Needs: city limits", texts)
+        self.assertNotIn("Progress: 7/8", texts)
+        buttons = _button_texts(viewer._desktop_workspace_shell.inspector_body)
+        self.assertLess(buttons.index("Name"), buttons.index("Coords"))
+        self.assertLess(buttons.index("Coords"), buttons.index("Station Entry"))
+        self.assertLess(buttons.index("Lines"), buttons.index("Paths"))
+        self.assertLess(buttons.index("Paths"), buttons.index("Alignments"))
+
+    def test_construction_section_hides_connected_until_station_is_tunneled(self) -> None:
+        viewer = self._viewer()
+        untunneled = base.MetroStop("P_A", "Alpha", 12, 34)
+        tunneled = base.MetroStop("P_A", "Alpha", 12, 34, is_tunneled=True)
+
+        with (
+            mock.patch.object(inspector.tk, "Frame", FakeWidget),
+            mock.patch.object(inspector.tk, "Label", FakeWidget),
+            mock.patch.object(inspector.tk, "Canvas", FakeCanvas),
+        ):
+            section = FakeWidget()
+            inspector._populate_checkpoint_section(viewer, section, untunneled)
+            untunneled_texts = _widget_texts(section)
+            section = FakeWidget()
+            inspector._populate_checkpoint_section(viewer, section, tunneled)
+            tunneled_texts = _widget_texts(section)
+
+        self.assertIn("Tunneled", untunneled_texts)
+        self.assertNotIn("Connected", untunneled_texts)
+        self.assertIn("Tunneled", tunneled_texts)
+        self.assertIn("Connected", tunneled_texts)
 
     def test_sync_inspector_renders_selected_metro_segment(self) -> None:
         viewer = self._viewer()
@@ -233,6 +297,46 @@ class DesktopInspectorTests(unittest.TestCase):
         self.assertIn("Line A", _widget_texts(shell.inspector_body))
         self.assertIn("Add Turn", _widget_texts(shell.inspector_body))
         self.assertIn("Edit Endpoints", _widget_texts(shell.inspector_body))
+
+    def test_sync_inspector_renders_selected_path_node_actions(self) -> None:
+        viewer = self._viewer()
+        town = base.MetroStop("P_A", "Alpha", 0, 0)
+        node = base.PathNode("node_1", 12, 34, label="Market Gate")
+        viewer._selected_path_node = mock.Mock(return_value=node)
+        viewer._pathing_context_stop = mock.Mock(return_value=town)
+        viewer._suggested_city_limit_node_keys_for_stop = mock.Mock(return_value=(node.key,))
+
+        with (
+            mock.patch.object(inspector.tk, "Frame", FakeWidget),
+            mock.patch.object(inspector.tk, "Label", FakeWidget),
+            mock.patch.object(inspector.tk, "Canvas", FakeCanvas),
+            mock.patch.object(base, "STOPS_BY_VAR", {town.var: town}),
+            mock.patch.object(base, "_extra_edges_for_endpoint_key", return_value=()),
+        ):
+            inspector.sync_inspector(viewer)
+
+        texts = _widget_texts(viewer._desktop_workspace_shell.inspector_body)
+        self.assertIn("Current node: Market Gate", texts)
+        self.assertIn("Walk Path", texts)
+        self.assertIn("Metro Path", texts)
+        self.assertIn("Edit Node", texts)
+        self.assertIn("Remove", texts)
+
+    def test_sync_inspector_renders_pathing_zoom_notice(self) -> None:
+        viewer = self._viewer()
+        viewer.path_click_mode_var.set(True)
+
+        with (
+            mock.patch.object(inspector.tk, "Frame", FakeWidget),
+            mock.patch.object(inspector.tk, "Label", FakeWidget),
+            mock.patch.object(inspector.tk, "Canvas", FakeCanvas),
+            mock.patch.object(base, "STOPS_BY_VAR", {}),
+        ):
+            inspector.sync_inspector(viewer)
+
+        body_text = "\n".join(_widget_texts(viewer._desktop_workspace_shell.inspector_body))
+        self.assertIn("Zoom closer", body_text)
+        self.assertIn("Choose Town", body_text)
 
     def test_sync_inspector_preserves_active_task_view(self) -> None:
         viewer = self._viewer()

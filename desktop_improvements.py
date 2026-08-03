@@ -59,6 +59,7 @@ _ORIGINAL_CENTER_DIALOG: Callable[..., None] | None = None
 _ORIGINAL_CENTER_TOPLEVEL: Callable[..., None] | None = None
 _NORMAL_DRAW_SELECTED_STOP_INFO: Callable[..., None] | None = None
 _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO: Callable[..., None] | None = None
+_ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO: Callable[..., None] | None = None
 _ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION: (
     Callable[..., tk.Frame] | None
 ) = None
@@ -109,6 +110,9 @@ _ORIGINAL_ATTRS = {
     ),
     "_ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO": (
         "_plumville_desktop_original_draw_selected_metro_segment_info"
+    ),
+    "_ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO": (
+        "_plumville_desktop_original_draw_selected_path_node_info"
     ),
     "_ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION": (
         "_plumville_desktop_original_make_collapsible_sidebar_section"
@@ -1579,6 +1583,7 @@ def _patched_refresh_priority_list(
     entries = _priority_entries_named_or_frontier(entries)
     base._write_priority_list_csv(entries)
     self._refresh_priority_filter_menu(entries)
+    self._refresh_priority_line_filter_menu()
     self._populate_priority_list(
         self._priority_filter_entries(entries)
     )
@@ -1609,6 +1614,16 @@ def _draw_selected_metro_segment_info_without_docked_popup(
         return
     assert _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO is not None
     _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO(self)
+
+
+def _draw_selected_path_node_info_without_docked_popup(
+    self: "base.MetroMapViewer",
+) -> None:
+    if inspector.has_docked_inspector(self):
+        self._clear_info_popup()
+        return
+    assert _ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO is not None
+    _ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO(self)
 
 
 def _popup_window_item_id(
@@ -2333,6 +2348,7 @@ def apply() -> None:
     global _ORIGINAL_CENTER_TOPLEVEL
     global _NORMAL_DRAW_SELECTED_STOP_INFO
     global _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO
+    global _ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO
     global _ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION
     global _ORIGINAL_MAKE_SIDEBAR_CAPTION
     global _ORIGINAL_MAKE_SIDEBAR_HINT
@@ -2407,6 +2423,13 @@ def apply() -> None:
             base.MetroMapViewer,
             _ORIGINAL_ATTRS[
                 "_ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO"
+            ],
+            None,
+        )
+        _ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO = getattr(
+            base.MetroMapViewer,
+            _ORIGINAL_ATTRS[
+                "_ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO"
             ],
             None,
         )
@@ -2500,6 +2523,9 @@ def apply() -> None:
         )
     _ORIGINAL_DRAW_SELECTED_METRO_SEGMENT_INFO = (
         base.MetroMapViewer._draw_selected_metro_segment_info
+    )
+    _ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO = (
+        base.MetroMapViewer._draw_selected_path_node_info
     )
     _ORIGINAL_MAKE_COLLAPSIBLE_SIDEBAR_SECTION = (
         base.MetroMapViewer._make_collapsible_sidebar_section
@@ -2595,6 +2621,9 @@ def apply() -> None:
     )
     base.MetroMapViewer._draw_selected_metro_segment_info = (
         _draw_selected_metro_segment_info_without_docked_popup
+    )
+    base.MetroMapViewer._draw_selected_path_node_info = (
+        _draw_selected_path_node_info_without_docked_popup
     )
     base.MetroMapViewer._fit_current_route_view = (
         _fit_current_route_view

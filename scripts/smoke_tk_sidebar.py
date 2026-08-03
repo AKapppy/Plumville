@@ -50,8 +50,10 @@ def main() -> int:
         if missing_headers:
             raise AssertionError(f"Missing sidebar section headers: {', '.join(missing_headers)}")
         expected_extension_controls = {
-            "Metro Stations",
+            "Add",
             "Add Metro Station",
+            "Add PoI",
+            "Add Path",
         }
         missing_extension_controls = sorted(expected_extension_controls - labels)
         if missing_extension_controls:

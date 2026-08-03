@@ -107,8 +107,8 @@ IMPLEMENTATION
     - Signs
     - Actions
 [verify] Add station name, abbreviation, coordinates, and status header.
-[verify] Use a large station diamond in the inspector header.
-[verify] Show circular line badges in the header.
+[verify] Show line-colored diamond badges with line letters in the station
+    inspector header.
 [ ] Keep edit and destructive actions separated.
 [ ] Put destructive actions in a redstone-styled danger region.
 [verify] Keep line management behind one coherent Lines or Actions workflow.
@@ -268,6 +268,223 @@ G. CODEX EFFICIENCY RULES FOR THE VISUAL PHASE
 ======================================================================
 VISUAL RUN HISTORY
 ======================================================================
+
+2026-08-01 — Railways Tunneling Frontier Inclusion
+
+- Scope: include lines on the Railways list when they have a tunnelable
+  frontier, even if they do not yet have a connected frontier.
+- Initial branch/status: `main`; `git status --short` already showed
+  uncommitted desktop/inspector/pathing/map-framing changes and modified
+  runtime/export files (`docs/metro_network.json`, `priority_list.csv`), which
+  were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: Python compile passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed.
+- Implementation: added a tunneling-frontier segment helper based on
+  line-specific tunneled stop membership. The Railways sidebar line inclusion
+  now considers both connected frontiers and tunneling frontiers.
+- Regression coverage: `tests/test_railway_timing.py` covers a line with one
+  tunneled stop and no connected frontier still appearing in the Railways list.
+- Checks after editing: `python3 -m unittest tests.test_railway_timing` passed;
+  targeted Python compile passed; full `python3 -m unittest discover -s tests`
+  passed; `npm run test:paths` passed; `npm test` passed; `git diff --check`
+  passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` still aborts
+  with exit code 134 before app-level output in this execution environment.
+- User verification still required: confirm a line appears in Railways when it
+  has an adjacent tunnelable next segment but no connected/open segment yet.
+
+2026-08-01 — Desktop Tunneling Follow-Up And Railway Summary Wrap
+
+- Scope: apply the reset/R zoom after the desktop layout settles, rename the
+  construction checkbox to Tunneled, persist line-specific tunneling for shared
+  stations/segments, refresh Railways percentages after checkpoint edits, and
+  shorten the Railways summary text to prevent horizontal clipping.
+- Initial branch/status: `main`; `git status --short` already showed
+  uncommitted desktop/inspector/pathing/map-framing changes and modified
+  runtime/export files (`docs/metro_network.json`, `priority_list.csv`), which
+  were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: Python compile passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed.
+- Implementation: startup now waits briefly for Tk layout work, runs idle
+  tasks, then calls the same `reset_view()` path used by the R hotkey. The
+  station construction checklist now says Tunneled. Tunnel saves can target a
+  subset of line letters on multi-line stations, persisted in
+  `line_tunneled_stop_vars`, so shared geometry can render dashed for one line
+  and dotted for another. Railways summaries now mark themselves dirty after
+  checkpoint changes, use compact `T:` and `C:` rows, hide the tunneling row at
+  100%, and collapse completed lines to `A  C: 100% (7.6 km)` style text.
+- Regression coverage: `tests/test_map_framing.py` covers delayed startup
+  reset. `tests/test_desktop_inspector.py` covers Tunneled wording.
+  `tests/test_path_rendering.py` covers line-specific shared geometry styling.
+  `tests/test_railway_timing.py` covers line-specific payload persistence,
+  compact summary formatting, completed-line formatting, and Railways dirty
+  refresh after checkpoint edits.
+- Checks after editing: targeted `python3 -m unittest tests.test_railway_timing
+  tests.test_path_rendering tests.test_map_framing tests.test_desktop_inspector`
+  passed; targeted Python compile passed; full `python3 -m unittest discover -s
+  tests` passed; `npm run test:paths` passed; `npm test` passed; `git diff
+  --check` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` still aborts
+  in this execution environment, now reporting
+  `sandbox_extension_issue_file_to_process failed ... Python.app: 3`.
+- User verification still required: confirm startup opens at the same framing
+  as pressing R after load, Tunneled wording appears, multi-line stations ask
+  which line letters were tunneled, Railways percentages update immediately,
+  and the Railways summary no longer bleeds off the sidebar.
+
+2026-08-01 — Desktop Tunneling And Line Hotkeys
+
+- Scope: add Option+letter line-fit hotkeys, station tunneling before
+  connection, solid/dashed/dotted metro segment rendering, Railways tunneling
+  and completion summaries, and an off-by-default non-orthogonal segment
+  highlight.
+- Initial branch/status: `main`; `git status --short` already showed the
+  uncommitted desktop/inspector/pathing/map-framing changes and modified
+  runtime/export files (`docs/metro_network.json`, `priority_list.csv`), which
+  were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: Python compile passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed; `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` aborted with
+  exit code 134 and no app-level diagnostic output.
+- Implementation: Option/Alt/Mod1 plus a letter now fits the complete planned
+  geometry for that line. Station construction now stores `is_tunneled`;
+  connected stations imply tunneled for backward compatibility. The inspector
+  shows Tunneling before Connected, and hides Connected until tunneling is set.
+  Metro segments render solid when connected, dashed when tunneled, and dotted
+  when planned. The Railways sidebar lists started/frontier lines, includes
+  tunneling and connection percentages, hides the tunneling percentage when it
+  reaches 100%, and sorts completed lines to the bottom. Show/Hide now includes
+  a non-orthogonal segment highlight.
+- Regression coverage: `tests/test_map_framing.py` covers Option-letter line
+  fitting. `tests/test_path_rendering.py` covers solid/dashed/dotted segment
+  rendering and non-orthogonal highlighting. `tests/test_railway_timing.py`
+  covers tunneling/connection summaries and completed-line sorting.
+  `tests/test_desktop_inspector.py` covers Tunneling hiding Connected until
+  needed.
+- Checks after editing: targeted `python3 -m unittest tests.test_map_framing
+  tests.test_path_rendering tests.test_railway_timing
+  tests.test_desktop_inspector tests.test_core_network
+  tests.test_legacy_path_metadata` passed; targeted Python compile passed; full
+  `python3 -m unittest discover -s tests` passed; `npm run test:paths` passed;
+  `npm test` passed; `git diff --check` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` still aborts
+  with exit code 134 before app-level output in this execution environment.
+- User verification still required: confirm Option+A/other letters fit the
+  full line, station Tunneling/Connected progression saves properly, planned
+  segments look dotted while tunneled segments look dashed, the Railways list
+  sorting feels useful, and the non-orthogonal highlight catches diagonal
+  planned geometry without clutter when off.
+- Follow-up note: line-specific tunneling for geometrically shared segments is
+  tracked separately because the current implementation records tunneling at
+  station endpoints rather than as independent per-line segment state.
+
+2026-07-30 — Desktop Pathing And City-Limit Inspector
+
+- Scope: move selected path-node and city-limit editing into the docked
+  inspector, make path nodes visible only while map pathing is active, infer
+  the active town from selection or zoomed-in map center, and add suggested
+  city-limit polygons.
+- Initial branch/status: `main`; `git status --short` already included
+  uncommitted desktop/priority/map-framing changes plus modified runtime/export
+  files (`docs/metro_network.json`, `priority_list.csv`), which were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: `python3 -m py_compile ui_extensions.py
+  desktop_improvements.py path_detection.py metro_station_extensions.py
+  legacy_core.py plumville/desktop/inspector.py plumville/desktop/workspace.py`
+  passed; full `python3 -m unittest discover -s tests` passed; `npm run
+  test:paths` passed; `npm test` passed.
+- Implementation: map pathing mode now drives path-node visibility. The docked
+  inspector renders selected path-node details/actions, active pathing town
+  context, town correction, and city-limit controls. Entering city-limit edit
+  mode starts a pending boundary from saved limits or suggested town-owned
+  nodes. Node clicks toggle unordered membership, the polygon order is derived
+  automatically, and Confirm saves through the existing station city-limit
+  record path.
+- Regression coverage: `tests/test_city_limit_pathing.py` covers town
+  inference, zoom notice conditions, suggested town nodes, pending edit state,
+  and confirm saves. `tests/test_desktop_inspector.py` covers selected-node
+  inspector controls and zoom/town notice. `tests/test_desktop_improvements.py`
+  covers suppressing the old path-node popup. `tests/test_path_rendering.py`
+  covers automatic node visibility from map pathing mode.
+- Checks after editing: targeted `python3 -m unittest
+  tests.test_city_limit_pathing tests.test_path_rendering
+  tests.test_desktop_inspector tests.test_desktop_improvements` passed;
+  targeted Python compile passed; full `python3 -m unittest discover -s tests`
+  passed; `npm run test:paths` passed; `npm test` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` still abort with exit code 134 before app-level
+  output in this execution environment.
+- User verification still required: confirm map pathing automatically shows
+  nodes, selected-node actions appear in the inspector, inferred town can be
+  corrected, suggested city limits preview and can be edited by toggling nodes,
+  and Confirm persists the polygon.
+
+2026-07-30 — Inspector Map Framing
+
+- Scope: keep the map visually anchored when the docked inspector opens or
+  closes, and frame selected stations to a 150-block radius.
+- Initial branch/status: `main`; `git status --short` already showed
+  uncommitted priority-list changes from the prior run, and those were
+  preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: `python3 -m py_compile ui_extensions.py
+  desktop_improvements.py path_detection.py metro_station_extensions.py
+  legacy_core.py` passed; full `python3 -m unittest discover -s tests` passed;
+  `npm run test:paths` passed; `npm test` passed.
+- Reproduction/root cause from code audit: inspector show/hide only
+  `grid()`/`grid_remove()`d the right panel. The map canvas then received a
+  new size, while `_on_configure()` kept the previous pan/zoom values and only
+  redrew, so the visible world area could shift.
+- Implementation: inspector visibility changes now capture the current visible
+  plot bounds before the layout change and refit those bounds after the Tk idle
+  resize. If a station is selected, the deferred refit frames that station
+  instead. Station selection through `_focus_stop()` and direct map clicks now
+  uses a 150-block plot-radius frame.
+- Regression coverage: `tests/test_desktop_workspace.py` covers deferred
+  inspector-toggle refitting and selected-station priority. `tests/test_map_framing.py`
+  covers the 150-block selected-station radius and `_focus_stop()` behavior.
+- Checks after editing: targeted `python3 -m unittest
+  tests.test_map_framing tests.test_desktop_workspace` passed; targeted Python
+  compile passed; full `python3 -m unittest discover -s tests` passed; `npm run
+  test:paths` passed; `npm test` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` still abort with exit code 134 before app-level
+  output in this execution environment.
+- User verification still required: confirm toggling the inspector preserves
+  the same general map area, and selecting a station zooms to a useful but not
+  excessive neighborhood around it.
+
+2026-07-30 — Priority List Line Filter
+
+- Scope: add a narrow Priority List filter for metro lines while preserving the
+  existing Need filter and desktop wrapper behavior.
+- Initial branch/status: `main`; `git status --short` showed an existing
+  partial `legacy_core.py` modification from this run after context compaction.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: `python3 -m py_compile ui_extensions.py
+  desktop_improvements.py path_detection.py metro_station_extensions.py
+  legacy_core.py` passed; full `python3 -m unittest discover -s tests` passed;
+  `npm run test:paths` passed; `npm test` passed.
+- Implementation: the Priority List now has a Line dropdown. Selecting a line
+  ignores the Need dropdown and route-priority narrowing, then lists every
+  station on that line that still has station-completion tasks. All lines keeps
+  the previous Need-filter behavior.
+- Regression coverage: `tests/test_priority_filter.py` covers line-filter
+  override behavior, map highlighting, and line-filter menu population.
+- Checks after editing: targeted `python3 -m unittest tests.test_priority_filter`
+  passed; targeted Python compile passed; full `python3 -m unittest discover -s
+  tests` passed; `npm run test:paths` passed; `npm test` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` still abort with exit code 134 before app-level
+  output in this execution environment.
+- User verification still required: confirm the Priority List Line dropdown is
+  visible, choosing a line shows its unfinished stations, and All lines restores
+  the existing Need filter behavior.
 
 2026-07-29 — V02 Pass 2: Segment Editors In Docked Inspector
 
@@ -486,6 +703,28 @@ REPORTED OR WELL-COVERED
 [x] Desktop abbreviations load, search, and display in code.
 [x] Metro line path reset and turn helpers have tests.
 [x] Alignment and endpoint helper logic has tests.
+[x] Priority list can filter to one metro line and show all unfinished stations
+    on that line.
+[x] Inspector open/close preserves the current map center, and selected
+    stations frame to a 150-block radius when selected.
+[x] Desktop map pathing shows nodes automatically, moves selected-node and
+    city-limit editing into the inspector, and supports suggested city-limit
+    polygons.
+[verify] Desktop inspector starts hidden, reopens for new tasks, supports scrolling
+    and revised station/sign/status layout, default reset-view startup, convex city
+    limits, station-entry map markers, and simplified route modes.
+[verify] Desktop inspector and sidebar refinement: use the default reset view on
+    startup, preserve map center when the inspector changes width, show
+    unfinished station needs in Status, tighten sign layout, move pathing entry
+    points, and exclude unnamed stations from the priority list.
+[verify] Add Option+letter line zoom, station tunneling state with tunneled/dotted
+    line rendering, railway tunneling/completion summaries, and a show/hide
+    highlight for non-orthogonal planned geometry.
+[verify] Add line-specific tunneling choices for geometrically shared segments.
+[verify] Fix startup reset-view timing, Tunneled wording, shared-line tunneling,
+    Railways summary wrapping/live refresh, and compact Railways summary text.
+[verify] Railways list includes tunneling frontier lines, not only connected
+    frontier lines.
 
 NEEDS ANDREW'S LIVE VERIFICATION
 
@@ -494,12 +733,46 @@ NEEDS ANDREW'S LIVE VERIFICATION
 [ ] Every focused mode opens the intended section.
 [ ] Station popup looks correct.
 [ ] Station diamonds look correct.
-[ ] Line badges look correct.
+[ ] Station inspector line diamonds are right-justified and ordered correctly.
 [ ] Dialogs remain usable.
 [ ] Abbreviation search works in the live desktop app.
 [ ] Alignment editor works with real data.
 [ ] Turn editor works with real data.
 [ ] Endpoint editor works with real data.
+[ ] Priority List Line filter shows selected-line unfinished stations and All
+    lines restores the Need filter.
+[ ] Priority List Line filter does not show unnamed placeholder stations.
+[ ] Inspector open/close keeps the same map center visible.
+[ ] Selecting a station frames it at roughly a 150-block radius.
+[ ] Map add/link mode automatically shows path nodes, and turning it off hides
+    them.
+[ ] Selecting a path node shows node details and path actions in the inspector.
+[ ] Pathing town detection chooses the correct nearest station, and Change Town
+    can correct it when needed.
+[ ] City-limit mode suggests a boundary from town nodes when none is saved.
+[ ] City-limit suggestions form one convex outline around town nodes.
+[ ] The inspector starts hidden, can be reopened with the top Show Inspector
+    control, and pops open again for a new selected task after being hidden.
+[ ] Tall inspector content scrolls vertically.
+[ ] Station signs show equal-width non-directional sign cells without clipped
+    text.
+[ ] Station entry dots and dotted station-entry connector lines appear only
+    when zoomed in enough.
+[ ] Directions use the Metro/Walking travel dropdown, with flying only as a
+    fallback for disconnected route portions.
+[ ] Station inspector Status lists unfinished needs instead of a progress
+    fraction.
+[ ] Checked construction checkboxes have muted text, while unchecked items stay
+    bright and readable.
+[ ] The station inspector Paths button enables map add/link mode for that town.
+[ ] The Pathing sidebar Add Path button enables intercity path add/link mode.
+[ ] Railways sidebar no longer shows finishing mode, finish coordinates, or a
+    Save Point action.
+[ ] Railways progress reads connected track length against planned track length.
+[ ] Line order reversal remains a separate follow-up before changing generated
+    unnamed station numbering.
+[ ] City-limit node toggles can be selected in any order, and Confirm saves a
+    sensible polygon.
 [ ] Completed worldgen UI hides only intended controls.
 [ ] Desktop public viewer survives live browser resizing.
 

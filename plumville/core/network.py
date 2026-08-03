@@ -76,6 +76,10 @@ def normalize_stop_metadata(
                 stop_record[field_name] = normalized_value
                 payload_changed = True
 
+        if bool(stop_record.get("is_connected", False)) and not bool(stop_record.get("is_tunneled", False)):
+            stop_record["is_tunneled"] = True
+            payload_changed = True
+
         station_entry_x = coerce_int(stop_record.get("station_entry_x"))
         station_entry_y = coerce_int(stop_record.get("station_entry_y"))
         if station_entry_x is None or station_entry_y is None:

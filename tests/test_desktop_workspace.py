@@ -26,7 +26,9 @@ class FakeWidget:
         self.children: list[FakeWidget] = []
         self.grid_calls: list[dict[str, object]] = []
         self.pack_calls: list[dict[str, object]] = []
+        self.created_windows: list[tuple[tuple[object, ...], dict[str, object]]] = []
         self.bindings: dict[str, object] = {}
+        self.idle_callbacks: list[object] = []
         self.hidden = False
         if isinstance(master, FakeWidget):
             master.children.append(self)
@@ -50,6 +52,29 @@ class FakeWidget:
 
     def bind(self, event: str, callback: object) -> None:
         self.bindings[event] = callback
+
+    def create_window(self, *args: object, **kwargs: object) -> int:
+        self.created_windows.append((args, kwargs))
+        return len(self.created_windows)
+
+    def itemconfigure(self, *_args: object, **_kwargs: object) -> None:
+        return None
+
+    def bbox(self, *_args: object) -> tuple[int, int, int, int]:
+        return (0, 0, 300, 600)
+
+    def yview(self, *_args: object) -> tuple[float, float]:
+        return (0.0, 1.0)
+
+    def yview_scroll(self, *_args: object) -> None:
+        return None
+
+    def set(self, *_args: object) -> None:
+        return None
+
+    def after_idle(self, callback: object) -> str:
+        self.idle_callbacks.append(callback)
+        return f"after-{len(self.idle_callbacks)}"
 
     def grid_rowconfigure(self, *_args: object, **_kwargs: object) -> None:
         return None
@@ -96,6 +121,8 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
             first_shell = viewer._desktop_workspace_shell
@@ -127,6 +154,8 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
             workspace.install_mode_rail(
@@ -161,8 +190,12 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
+            viewer._desktop_inspector_visible = True
+            viewer._desktop_workspace_shell.inspector_shell.hidden = False
             workspace.set_inspector_visible(viewer, False)
             self.assertTrue(viewer._desktop_workspace_shell.inspector_shell.hidden)
             self.assertEqual(
@@ -176,3 +209,81 @@ class DesktopWorkspaceTests(unittest.TestCase):
             viewer._desktop_workspace_shell.inspector_header_button.kwargs["text"],
             "Hide",
         )
+
+    def test_hidden_inspector_reopens_for_new_task_only(self) -> None:
+        viewer = self._viewer()
+
+        with (
+            mock.patch.object(workspace.tk, "Frame", FakeWidget),
+            mock.patch.object(workspace.tk, "Label", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
+        ):
+            workspace._configure_workspace_hosts(viewer)
+            shell = viewer._desktop_workspace_shell
+            self.assertTrue(shell.inspector_shell.hidden)
+
+            workspace.show_inspector_for_task(viewer, ("station", "P_A"))
+            self.assertFalse(shell.inspector_shell.hidden)
+
+            workspace.set_inspector_visible(viewer, False)
+            self.assertTrue(shell.inspector_shell.hidden)
+
+            workspace.show_inspector_for_task(viewer, ("station", "P_A"))
+            self.assertTrue(shell.inspector_shell.hidden)
+
+            workspace.show_inspector_for_task(viewer, ("station", "P_B"))
+            self.assertFalse(shell.inspector_shell.hidden)
+
+    def test_set_inspector_visible_preserves_previous_map_center_after_resize(self) -> None:
+        viewer = self._viewer()
+        viewer.width = 800
+        viewer.height = 600
+        viewer.selected_stop_var = None
+        viewer.canvas_to_world = mock.Mock(return_value=(123, -456))
+        viewer._center_on_world_point = mock.Mock()
+        viewer.redraw = mock.Mock()
+
+        with (
+            mock.patch.object(workspace.tk, "Frame", FakeWidget),
+            mock.patch.object(workspace.tk, "Label", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
+        ):
+            workspace._configure_workspace_hosts(viewer)
+            viewer._desktop_inspector_visible = True
+            viewer._desktop_workspace_shell.inspector_shell.hidden = False
+            workspace.set_inspector_visible(viewer, False)
+
+        self.assertEqual(len(viewer.root.idle_callbacks), 1)
+        viewer.root.idle_callbacks[0]()
+
+        viewer.canvas_to_world.assert_called_once_with((400.0, 300.0))
+        viewer._center_on_world_point.assert_called_once_with((123.0, 456.0))
+        viewer.redraw.assert_called_once_with()
+
+    def test_set_inspector_visible_keeps_selected_station_center_after_resize(self) -> None:
+        viewer = self._viewer()
+        stop = workspace.base.MetroStop("P_A", "Alpha", 10, 20)
+        viewer.selected_stop_var = stop.var
+        viewer.width = 800
+        viewer.height = 600
+        viewer.canvas_to_world = mock.Mock(return_value=(10, 20))
+        viewer._center_on_world_point = mock.Mock()
+        viewer.redraw = mock.Mock()
+
+        with (
+            mock.patch.object(workspace.tk, "Frame", FakeWidget),
+            mock.patch.object(workspace.tk, "Label", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
+            mock.patch.object(workspace.base, "STOPS_BY_VAR", {stop.var: stop}),
+        ):
+            workspace._configure_workspace_hosts(viewer)
+            viewer._desktop_inspector_visible = True
+            viewer._desktop_workspace_shell.inspector_shell.hidden = False
+            workspace.set_inspector_visible(viewer, False)
+            self.assertEqual(len(viewer.root.idle_callbacks), 1)
+            viewer.root.idle_callbacks[0]()
+
+        viewer._center_on_world_point.assert_called_once_with((10.0, -20.0))

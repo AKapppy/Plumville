@@ -24,65 +24,39 @@ def _append_pathing_extensions(
     parent: tk.Misc,
 ) -> None:
     self._make_sidebar_caption(
-        "Metro Stations",
+        "Add",
         parent=parent,
     ).pack(anchor="w", padx=16)
-    self._make_sidebar_hint(
-        (
-            "Extend an existing line from a chosen "
-            "station, or create a new line with a "
-            "chosen color."
-        ),
-        parent=parent,
-    ).pack(anchor="w", padx=16, pady=(4, 6))
+    button_row = tk.Frame(parent, bg=base.BACKGROUND_COLOR)
+    button_row.pack(fill="x", padx=16, pady=(4, 12))
+    for column in range(3):
+        button_row.grid_columnconfigure(column, weight=1, uniform="pathing-add")
     self._make_sidebar_button(
-        parent,
+        button_row,
         text="Add Metro Station",
         command=self._show_add_metro_station_dialog,
-    ).pack(anchor="w", padx=16, pady=(0, 12))
-
-    self._make_sidebar_caption(
-        "Points of Interest",
-        parent=parent,
-    ).pack(anchor="w", padx=16)
-    self._make_sidebar_hint(
-        (
-            "Add monuments and pillager towers by "
-            "typed Minecraft coordinates."
-        ),
-        parent=parent,
-    ).pack(anchor="w", padx=16, pady=(4, 6))
+    ).grid(row=0, column=0, sticky="ew")
     self._make_sidebar_button(
-        parent,
+        button_row,
         text="Add PoI",
         command=self._show_add_poi_dialog,
-    ).pack(anchor="w", padx=16, pady=(0, 12))
+    ).grid(row=0, column=1, sticky="ew", padx=(8, 0))
+    self._make_sidebar_button(
+        button_row,
+        text="Add Path",
+        command=self._activate_intercity_pathing,
+    ).grid(row=0, column=2, sticky="ew", padx=(8, 0))
 
     self._make_sidebar_caption(
         "Suggested Walking Paths",
         parent=parent,
     ).pack(anchor="w", padx=16)
-    self._make_sidebar_hint(
-        (
-            "Temporary dotted links that connect "
-            "village anchors using the current walk "
-            "network. Detected village-road nodes are "
-            "preferred when available."
-        ),
-        parent=parent,
-    ).pack(anchor="w", padx=16, pady=(4, 6))
     self._make_sidebar_checkbox(
         parent,
         text="View suggested walking paths",
         variable=self.show_suggested_walking_paths_var,
         command=self.redraw,
-    ).pack(anchor="w", padx=16, pady=(0, 6))
-    self._make_sidebar_checkbox(
-        parent,
-        text="Show path nodes",
-        variable=self.show_path_nodes_var,
-        command=self.redraw,
-    ).pack(anchor="w", padx=16, pady=(0, 12))
+    ).pack(anchor="w", padx=16, pady=(4, 6))
 
 
 def _append_world_map_extensions(

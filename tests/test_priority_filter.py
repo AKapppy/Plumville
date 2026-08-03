@@ -20,6 +20,17 @@ class _FakeVar:
         self.value = value
 
 
+class _FakeMenu:
+    def __init__(self) -> None:
+        self.labels: list[str] = []
+
+    def delete(self, _first: int, _last: str) -> None:
+        self.labels.clear()
+
+    def add_command(self, *, label: str, command: object) -> None:
+        self.labels.append(label)
+
+
 class PriorityFilterTest(unittest.TestCase):
     def test_placeholder_all_caps_labels_are_treated_as_unnamed(self) -> None:
         self.assertFalse(base._stop_has_name(base.MetroStop("P_ABCDE", "HL", 0, 0)))
@@ -59,6 +70,68 @@ class PriorityFilterTest(unittest.TestCase):
 
         self.assertEqual(base.MetroMapViewer._priority_filter_entries(viewer, entries), entries)
         self.assertEqual(viewer.priority_highlight_stop_vars, set())
+
+    def test_selected_line_filter_ignores_need_filter_and_route_entries(self) -> None:
+        a_incomplete = base.MetroStop("P_A1", "Alpha", 0, 0)
+        a_complete = base.MetroStop("P_A2", "Complete", 10, 0)
+        a_unnamed = base.MetroStop("P_A3", "TMP1", 15, 0)
+        b_incomplete = base.MetroStop("P_B1", "Other", 20, 0)
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.priority_filter_options = {"Named": "name"}
+        viewer.priority_filter_var = _FakeVar("Named")
+        viewer.priority_line_filter_var = _FakeVar("A")
+        viewer.priority_highlight_stop_vars = set()
+
+        def missing_tasks(stop: base.MetroStop) -> list[str]:
+            if stop.var == a_complete.var:
+                return []
+            if stop.var == a_incomplete.var:
+                return ["station"]
+            if stop.var == a_unnamed.var:
+                return ["station"]
+            return ["name"]
+
+        with (
+            mock.patch.object(
+                base,
+                "STOPS_BY_VAR",
+                {
+                    a_incomplete.var: a_incomplete,
+                    a_complete.var: a_complete,
+                    a_unnamed.var: a_unnamed,
+                    b_incomplete.var: b_incomplete,
+                },
+            ),
+            mock.patch.object(
+                base,
+                "LINE_STOP_VARS",
+                {
+                    "A": (a_incomplete.var, a_complete.var, a_unnamed.var),
+                    "B": (b_incomplete.var,),
+                },
+            ),
+            mock.patch.object(base, "_missing_station_tasks", side_effect=missing_tasks),
+        ):
+            filtered_entries = base.MetroMapViewer._priority_filter_entries(
+                viewer,
+                [(b_incomplete.var, "Normal route entry")],
+            )
+
+        self.assertEqual(filtered_entries, [(a_incomplete.var, "Alpha: needs station")])
+        self.assertEqual(viewer.priority_highlight_stop_vars, {a_incomplete.var})
+
+    def test_refresh_priority_line_filter_menu_lists_lines_and_preserves_selection(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.priority_line_filter_var = _FakeVar("B")
+        viewer.priority_line_filter_menu = object()
+        fake_menu = _FakeMenu()
+        viewer._option_menu_widget = lambda _menu: fake_menu
+
+        with mock.patch.object(base, "LINE_STOP_VARS", {"B": (), "A": ()}):
+            base.MetroMapViewer._refresh_priority_line_filter_menu(viewer)
+
+        self.assertEqual(fake_menu.labels, [base.PRIORITY_LINE_FILTER_ALL_LABEL, "A", "B"])
+        self.assertEqual(viewer.priority_line_filter_var.get(), "B")
 
     def test_priority_list_includes_started_unconnected_station_work(self) -> None:
         stop = base.MetroStop("P_TEST", "Started", 0, 0, has_full_station=True)

@@ -1056,6 +1056,33 @@ class DesktopPathDetectionTests(unittest.TestCase):
         viewer._clear_info_popup.assert_called_once_with()
         normal_draw.assert_not_called()
 
+    def test_docked_inspector_suppresses_persistent_path_node_popup(self) -> None:
+        viewer = mock.Mock(_desktop_workspace_shell=None)
+        original_draw = (
+            desktop_improvements._ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO
+        )
+        normal_draw = mock.Mock()
+
+        try:
+            desktop_improvements._ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO = (
+                normal_draw
+            )
+            with mock.patch.object(
+                desktop_improvements.inspector,
+                "has_docked_inspector",
+                return_value=True,
+            ):
+                desktop_improvements._draw_selected_path_node_info_without_docked_popup(
+                    viewer
+                )
+        finally:
+            desktop_improvements._ORIGINAL_DRAW_SELECTED_PATH_NODE_INFO = (
+                original_draw
+            )
+
+        viewer._clear_info_popup.assert_called_once_with()
+        normal_draw.assert_not_called()
+
 
 class DesktopWorldgenCompletionTests(unittest.TestCase):
     def test_completed_worldgen_hides_internal_void_checkbox(self) -> None:

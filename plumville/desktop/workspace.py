@@ -39,7 +39,10 @@ class WorkspaceShell:
     secondary_body: tk.Frame
     map_shell: tk.Frame
     inspector_shell: tk.Frame
+    inspector_canvas: tk.Canvas
+    inspector_scrollbar: tk.Scrollbar
     inspector_body: tk.Frame
+    inspector_body_window_id: int
     inspector_header_label: tk.Label
     inspector_header_button: tk.Label
     status_strip: tk.Frame
@@ -324,13 +327,62 @@ def _configure_workspace_hosts(
         command=lambda active_self=self: _toggle_inspector(active_self),
     )
     inspector_header_button.grid(row=0, column=1, sticky="e")
+
+    inspector_viewport = tk.Frame(inspector_shell, bg=PANEL_BG)
+    inspector_viewport.grid(row=1, column=0, sticky="nsew")
+    inspector_viewport.grid_rowconfigure(0, weight=1)
+    inspector_viewport.grid_columnconfigure(0, weight=1)
+    inspector_canvas = tk.Canvas(
+        inspector_viewport,
+        bg=PANEL_BG,
+        highlightthickness=0,
+        bd=0,
+    )
+    inspector_canvas.grid(row=0, column=0, sticky="nsew")
+    inspector_scrollbar = tk.Scrollbar(
+        inspector_viewport,
+        orient="vertical",
+        command=inspector_canvas.yview,
+    )
+    inspector_scrollbar.grid(row=0, column=1, sticky="ns")
+    inspector_canvas.configure(yscrollcommand=inspector_scrollbar.set)
     inspector_body = tk.Frame(
-        inspector_shell,
+        inspector_canvas,
         bg=PANEL_BG,
         padx=18,
         pady=18,
     )
-    inspector_body.grid(row=1, column=0, sticky="nsew")
+    inspector_body_window_id = inspector_canvas.create_window(
+        (0, 0),
+        anchor="nw",
+        window=inspector_body,
+    )
+
+    def refresh_inspector_scroll_region(_event: object | None = None) -> None:
+        try:
+            inspector_canvas.configure(scrollregion=inspector_canvas.bbox("all"))
+        except tk.TclError:
+            return
+
+    def resize_inspector_body(event: object) -> None:
+        try:
+            inspector_canvas.itemconfigure(
+                inspector_body_window_id,
+                width=int(getattr(event, "width", INSPECTOR_WIDTH)),
+            )
+            inspector_canvas.configure(scrollregion=inspector_canvas.bbox("all"))
+        except tk.TclError:
+            return
+
+    def scroll_inspector(event: object) -> None:
+        delta = int(getattr(event, "delta", 0))
+        if delta:
+            inspector_canvas.yview_scroll(int(-1 * (delta / 120)), "units")
+
+    inspector_body.bind("<Configure>", refresh_inspector_scroll_region)
+    inspector_canvas.bind("<Configure>", resize_inspector_body)
+    inspector_canvas.bind("<MouseWheel>", scroll_inspector)
+    inspector_body.bind("<MouseWheel>", scroll_inspector)
     tk.Label(
         inspector_body,
         text="◆",
@@ -387,7 +439,10 @@ def _configure_workspace_hosts(
         secondary_body=secondary_body,
         map_shell=map_shell,
         inspector_shell=inspector_shell,
+        inspector_canvas=inspector_canvas,
+        inspector_scrollbar=inspector_scrollbar,
         inspector_body=inspector_body,
+        inspector_body_window_id=inspector_body_window_id,
         inspector_header_label=inspector_header_label,
         inspector_header_button=inspector_header_button,
         status_strip=status_strip,
@@ -395,7 +450,12 @@ def _configure_workspace_hosts(
         mode_buttons={},
     )
     self._desktop_workspace_shell = shell
-    self._desktop_inspector_visible = True
+    self._desktop_inspector_visible = False
+    self._desktop_inspector_task_key = None
+    self._desktop_inspector_hidden_task_key = None
+    inspector_shell.grid_remove()
+    inspector_toggle_button.configure(text="Show Inspector")
+    inspector_header_button.configure(text="Show")
     self.workspace_secondary_parent = secondary_body
     self.workspace_map_parent = map_shell
 
@@ -447,23 +507,105 @@ def install_mode_rail(
         shell.mode_buttons[_mode_key(mode)] = label
 
 
+def _current_view_center(
+    viewer: "base.MetroMapViewer",
+) -> tuple[float, float] | None:
+    width = float(getattr(viewer, "width", 0))
+    height = float(getattr(viewer, "height", 0))
+    canvas_to_world = getattr(viewer, "canvas_to_world", None)
+    if width <= 0 or height <= 0 or not callable(canvas_to_world):
+        return None
+
+    try:
+        world_x, world_z = canvas_to_world((width / 2, height / 2))
+    except (TypeError, ValueError):
+        return None
+    return (float(world_x), -float(world_z))
+
+
+def _restore_map_after_inspector_layout(
+    viewer: "base.MetroMapViewer",
+    previous_center: tuple[float, float] | None,
+) -> None:
+    center_on_world_point = getattr(viewer, "_center_on_world_point", None)
+    if previous_center is None or not callable(center_on_world_point):
+        redraw = getattr(viewer, "redraw", None)
+        if callable(redraw):
+            redraw()
+        return
+
+    center_on_world_point(previous_center)
+    redraw = getattr(viewer, "redraw", None)
+    if callable(redraw):
+        redraw()
+
+
+def _schedule_map_refit_after_inspector_toggle(
+    viewer: "base.MetroMapViewer",
+    previous_center: tuple[float, float] | None,
+) -> None:
+    root = getattr(viewer, "root", None)
+    after_idle = getattr(root, "after_idle", None)
+    callback = lambda: _restore_map_after_inspector_layout(
+        viewer,
+        previous_center,
+    )
+    if callable(after_idle):
+        after_idle(callback)
+    else:
+        callback()
+
+
 def set_inspector_visible(
     viewer: "base.MetroMapViewer",
     visible: bool,
+    *,
+    remember_hidden_task: bool = True,
 ) -> None:
     shell = _workspace_shell(viewer)
     if shell is None:
         return
+    was_visible = bool(getattr(viewer, "_desktop_inspector_visible", True))
+    previous_center = None
+    if was_visible != visible:
+        previous_center = _current_view_center(viewer)
+
     viewer._desktop_inspector_visible = visible
     if visible:
+        viewer._desktop_inspector_hidden_task_key = None
         shell.inspector_shell.grid()
     else:
+        if remember_hidden_task:
+            viewer._desktop_inspector_hidden_task_key = getattr(
+                viewer,
+                "_desktop_inspector_task_key",
+                None,
+            )
         shell.inspector_shell.grid_remove()
     button_text = "Hide Inspector" if visible else "Show Inspector"
     shell.inspector_toggle_button.configure(text=button_text)
     shell.inspector_header_button.configure(
         text="Hide" if visible else "Show"
     )
+    if was_visible != visible:
+        _schedule_map_refit_after_inspector_toggle(viewer, previous_center)
+
+
+def show_inspector_for_task(
+    viewer: "base.MetroMapViewer",
+    task_key: object | None,
+) -> None:
+    viewer._desktop_inspector_task_key = task_key
+    if task_key is None:
+        return
+    if task_key == getattr(viewer, "_desktop_inspector_hidden_task_key", None):
+        return
+    if not bool(getattr(viewer, "_desktop_inspector_visible", False)):
+        set_inspector_visible(
+            viewer,
+            True,
+            remember_hidden_task=False,
+        )
 
 
 def sync_workspace(
