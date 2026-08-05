@@ -239,6 +239,23 @@ class DesktopInspectorTests(unittest.TestCase):
         self.assertLess(buttons.index("Lines"), buttons.index("Paths"))
         self.assertLess(buttons.index("Paths"), buttons.index("Alignments"))
 
+    def test_line_diamond_uses_white_border_and_letter_text(self) -> None:
+        parent = FakeWidget()
+
+        with mock.patch.object(inspector.tk, "Canvas", FakeCanvas):
+            diamond = inspector._make_line_diamond(
+                parent,
+                line_name="A",
+                line_color="#f3d66b",
+            )
+
+        polygon_call = next(
+            call for call in diamond.draw_calls if call[0] == "polygon"
+        )
+        text_call = next(call for call in diamond.draw_calls if call[0] == "text")
+        self.assertEqual(polygon_call[2]["outline"], inspector.workspace.TEXT)
+        self.assertEqual(text_call[2]["fill"], inspector.workspace.TEXT)
+
     def test_construction_section_hides_connected_until_station_is_tunneled(self) -> None:
         viewer = self._viewer()
         untunneled = base.MetroStop("P_A", "Alpha", 12, 34)

@@ -191,7 +191,7 @@ IMPLEMENTATION
     - preview editor
 [ ] Create explicit templates instead of recursively styling arbitrary widget trees.
 [ ] Restyle Add Station.
-[ ] Restyle station rename/edit.
+[verify] Restyle station rename/edit.
 [ ] Restyle line add/switch/remove.
 [ ] Restyle alignment editor.
 [verify] Restyle metro-turn editor.
@@ -228,15 +228,15 @@ IMPLEMENTATION
 [ ] Keep terminals diamond-first.
 [ ] Give Mt. Phosphagos a permanent gold/purple landmark treatment.
 [ ] Use selected diamond-blue focus rings.
-[ ] Use circular line badges only for line identity.
+[verify] Use circular line badges only for line identity.
 [ ] Preserve dotted/planned versus solid/open meaning.
-[ ] Add desktop semantic label priority.
-[ ] Prefer abbreviations when full names do not fit.
-[ ] Keep route endpoints and selected stations high priority.
-[ ] Keep labels collision-aware.
+[verify] Add desktop semantic label priority.
+[verify] Prefer abbreviations when full names do not fit.
+[verify] Keep route endpoints and selected stations high priority.
+[verify] Keep labels collision-aware.
 [ ] Measure redraw performance before adding caching.
-[ ] Update tests and manual checks.
-[ ] Update this checklist and file_priority.txt.
+[x] Update tests and manual checks.
+[x] Update this checklist and file_priority.txt.
 
 USER VERIFICATION — LEAVE UNCHECKED
 
@@ -268,6 +268,132 @@ G. CODEX EFFICIENCY RULES FOR THE VISUAL PHASE
 ======================================================================
 VISUAL RUN HISTORY
 ======================================================================
+
+2026-08-05 — Repository Cleanup Session
+
+- Scope: remove obsolete root-level visual refresh, audit, and AI prompt files;
+  clear generated macOS/Python/test cache files outside protected runtime areas;
+  preserve active task docs, runtime/private data, exports, history, and all
+  `data/mockups/` images.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  desktop/map/export/test files plus existing `docs/metro_network.json` and
+  `priority_list.csv` changes, which were preserved.
+- Implementation: deleted old July visual/audit package files after confirming
+  they only referenced each other, and removed `.DS_Store`, `__pycache__`, and
+  `.pytest_cache` artifacts outside protected runtime folders.
+- User verification still required: confirm the remaining root documentation set
+  feels sufficient and no old planning file Andrew still wanted was removed.
+
+2026-08-05 — Desktop Identity Edit, Coordinate Search, And Mode Dropdown
+
+- Scope: add abbreviation editing to the station Name action, keep the map
+  viewport center stable when the inspector is shown or hidden, remove the
+  search instruction text, let coordinate searches place a cursor crosshair,
+  and move mode selection from the left rail into the top-bar mode dropdown.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  desktop/map/export/test files plus existing `docs/metro_network.json` and
+  `priority_list.csv` changes, which were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: targeted Python compile passed; full
+  `python3 -m unittest discover -s tests` failed in the existing
+  `tests/test_station_signage.py` Line C/signage expectations; `npm run
+  test:paths` passed; `npm test` passed; `python3 plumville_app.py` and Tk
+  smoke both aborted with exit code 134 before app-level output.
+- Implementation: station Name now opens a two-field dialog for Name and
+  Abbreviation, and blank abbreviation clears the saved `abbr` field. Empty
+  search no longer shows the long instruction sentence. Searching for a
+  coordinate with no station match now centers that coordinate and shows the
+  cursor crosshair/readout. Inspector show/hide now refreshes canvas dimensions
+  after layout and recenters the same world point that was at the viewport
+  center, without changing zoom. The workspace mode control is now a top-bar
+  dropdown; the old left mode rail is hidden while the existing bridge API
+  remains idempotent.
+- Regression coverage: `tests/test_core_network.py` covers abbreviation save
+  and clear plus identity-field normalization. `tests/test_desktop_improvements.py`
+  covers blank search text and coordinate-search crosshair placement.
+  `tests/test_desktop_workspace.py` covers hidden mode rail, dropdown menu
+  labels, active dropdown text, and inspector center restore.
+- Checks after editing: targeted `python3 -m unittest tests.test_desktop_workspace
+  tests.test_desktop_improvements tests.test_core_network
+  tests.test_desktop_inspector` passed; targeted Python compile passed; full
+  `python3 -m unittest discover -s tests` still fails only in the pre-existing
+  `tests/test_station_signage.py` cases; `npm run test:paths` passed; `npm
+  test` passed; `git diff --check` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` still abort with exit code 134 before app-level
+  output in this execution environment.
+- User verification still required: confirm Name shows Name and Abbreviation
+  fields, blank abbreviation clears the abbreviation, inspector show/hide keeps
+  the same center without zooming, coordinate search shows the crosshair, and
+  modes are chosen from the top-bar dropdown instead of left-side tabs.
+
+2026-08-05 — Desktop Map Labels, Line Markers, And PNG Export
+
+- Scope: convert the desktop map export affordance from SVG to PNG, add
+  desktop label abbreviation/collision logic based on the web viewer, draw
+  circular line-letter markers on metro lines, make inspector line diamonds use
+  white borders and letters, and align unnamed-station detection with the web
+  placeholder rule for examples such as `Z_2` and `UW`.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  `docs/metro_network.json`, `file_priority.txt`, `notes.txt`,
+  `priority_list.csv`, which were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: targeted Python compile passed; full
+  `python3 -m unittest discover -s tests` failed in existing
+  `tests/test_station_signage.py` Line C/signage expectations; `npm run
+  test:paths` passed; `npm test` passed; `python3 plumville_app.py` and Tk
+  smoke both aborted with exit code 134 before app-level output in this
+  execution environment.
+- Implementation: the desktop Export button/dialog now says Export PNG and
+  writes `metro-map-*.png` by rasterizing the existing validated map SVG bytes
+  through CairoSVG. The main map redraw now stages station label placement,
+  tries abbreviations before full names away from close zoom, keeps selected
+  stations/route endpoints/junctions/terminals ahead of ordinary labels, skips
+  crowded low-priority labels, and draws circular line markers for terminal
+  lines and zoomed-in junction line identity. Inspector line diamonds now use
+  white outlines and white letter text.
+- Regression coverage: `tests/test_public_export.py` covers PNG rasterization
+  from validated SVG bytes. `tests/test_path_rendering.py` covers abbreviation
+  preference, route-endpoint label priority, and circular line-marker drawing.
+  `tests/test_desktop_inspector.py` covers white inspector diamond outline/text.
+  `tests/test_core_text.py` covers `Z_2` and `UW` placeholder/unnamed handling.
+- Checks after editing: targeted `python3 -m unittest tests.test_path_rendering
+  tests.test_public_export tests.test_desktop_inspector tests.test_core_text
+  tests.test_desktop_improvements` passed; targeted Python compile passed; full
+  `python3 -m unittest discover -s tests` still fails only in the pre-existing
+  `tests/test_station_signage.py` cases; `npm run test:paths` passed; `npm
+  test` passed; `git diff --check` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` still aborts
+  with exit code 134 before app-level output in this execution environment.
+- User verification still required: confirm Export PNG writes an openable PNG,
+  crowded station labels prefer abbreviations or drop low-priority overlaps,
+  line-letter circles appear on metro lines without clutter, and inspector
+  line diamonds have white borders and white letters.
+
+2026-08-04 — Unassociated Station Data Cleanup
+
+- Scope: remove the screenshot-confirmed unassociated station records at
+  `(-5080, 3432)`, `(5144, 2328)`, and `(5232, -2456)` from exported metro
+  data and the priority list.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  `docs/metro_network.json` and `priority_list.csv`, which were preserved and
+  edited in place.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: targeted Python compile passed; full
+  `python3 -m unittest discover -s tests` failed in existing
+  `tests/test_station_signage.py` expectations around Line C signage data;
+  `npm run test:paths` passed; `npm test` passed.
+- Implementation: removed station vars `P_0`, `P_6`, and `P_2` from
+  `docs/metro_network.json`, removed three alignment reminders pointing at
+  deleted station vars, removed their three `priority_list.csv` rows, and
+  renumbered the remaining priority ranks.
+- Checks after editing: JSON parsing passed; a focused data check found no
+  remaining `P_0`/`P_6`/`P_2` station records, removed coordinates, alignment
+  endpoints, or priority rows, and priority ranks are continuous through 78.
+  The full Python suite still fails in existing `tests/test_station_signage.py`
+  expectations unrelated to this cleanup.
+- User verification still required: confirm the public/desktop priority view no
+  longer shows either unassociated station card.
 
 2026-08-01 — Railways Tunneling Frontier Inclusion
 
@@ -652,7 +778,6 @@ NOT COMPLETED
 [ ] Inspector tabs
 [ ] Explicit reusable Tk component library
 [ ] Explicit dialog templates
-[ ] Desktop abbreviation editing
 [ ] Abbreviation validation and duplicate warnings
 [ ] Construction administration workspace
 [ ] Canonical/public data separation
@@ -701,6 +826,8 @@ REPORTED OR WELL-COVERED
 [x] Worldgen completion decisions have automated coverage.
 [x] Public viewer validation and smoke tests remain present.
 [x] Desktop abbreviations load, search, and display in code.
+[verify] Station edit dialogs can save a station name and optional abbreviation,
+    with blank abbreviation removing the saved abbreviation.
 [x] Metro line path reset and turn helpers have tests.
 [x] Alignment and endpoint helper logic has tests.
 [x] Priority list can filter to one metro line and show all unfinished stations
@@ -782,7 +909,7 @@ LOWER-PRIORITY BACKLOG
 
 DESKTOP ABBREVIATIONS
 
-[ ] Edit abbreviations in station dialogs.
+[verify] Edit abbreviations in station dialogs.
 [ ] Validate 2–5 alphanumeric characters.
 [ ] Preserve explicit user capitalization.
 [ ] Warn on duplicates.
@@ -805,6 +932,8 @@ DATA ARCHITECTURE
 
 STRUCTURAL CLEANUP
 
+[x] Remove obsolete visual-refresh/audit prompt docs from the repository root
+    while preserving active task docs and the mockup images.
 [ ] Update README architecture.
 [ ] Update file classification.
 [ ] Reduce monkey-patching through stable hooks.

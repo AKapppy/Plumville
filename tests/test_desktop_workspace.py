@@ -76,6 +76,9 @@ class FakeWidget:
         self.idle_callbacks.append(callback)
         return f"after-{len(self.idle_callbacks)}"
 
+    def update_idletasks(self) -> None:
+        return None
+
     def grid_rowconfigure(self, *_args: object, **_kwargs: object) -> None:
         return None
 
@@ -87,6 +90,49 @@ class FakeWidget:
 
     def pack_propagate(self, *_args: object, **_kwargs: object) -> None:
         return None
+
+    def delete(self, *_args: object) -> None:
+        return None
+
+    def add_command(self, **_kwargs: object) -> None:
+        return None
+
+
+class FakeMenu(FakeWidget):
+    def __init__(self, master: object | None = None, **kwargs: object) -> None:
+        super().__init__(master, **kwargs)
+        self.labels: list[str] = []
+        self.commands: list[object] = []
+        self.delete_calls: list[tuple[object, ...]] = []
+
+    def delete(self, *args: object) -> None:
+        self.delete_calls.append(args)
+        self.labels.clear()
+        self.commands.clear()
+
+    def add_command(self, *, label: str, command: object) -> None:
+        self.labels.append(label)
+        self.commands.append(command)
+
+
+class FakeCanvas(FakeWidget):
+    def __init__(
+        self,
+        master: object | None = None,
+        *,
+        width_value: int = 300,
+        height_value: int = 200,
+        **kwargs: object,
+    ) -> None:
+        super().__init__(master, **kwargs)
+        self.width_value = width_value
+        self.height_value = height_value
+
+    def winfo_width(self) -> int:
+        return self.width_value
+
+    def winfo_height(self) -> int:
+        return self.height_value
 
 
 @dataclass(frozen=True)
@@ -121,7 +167,9 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
-            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeCanvas),
+            mock.patch.object(workspace.tk, "Menubutton", FakeWidget),
+            mock.patch.object(workspace.tk, "Menu", FakeMenu),
             mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
@@ -141,6 +189,11 @@ class DesktopWorkspaceTests(unittest.TestCase):
         self.assertIs(viewer._desktop_workspace_shell, first_shell)
         self.assertIs(viewer.workspace_secondary_parent, first_shell.secondary_body)
         self.assertIs(viewer.workspace_map_parent, first_shell.map_shell)
+        self.assertTrue(first_shell.mode_rail.hidden)
+        self.assertEqual(
+            first_shell.topbar_mode_menu.labels,
+            ["All", "Directions", "World"],
+        )
         self.assertEqual(
             tuple(first_shell.mode_buttons),
             ("all", "directions", "world"),
@@ -154,7 +207,9 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
-            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeCanvas),
+            mock.patch.object(workspace.tk, "Menubutton", FakeWidget),
+            mock.patch.object(workspace.tk, "Menu", FakeMenu),
             mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
@@ -174,6 +229,7 @@ class DesktopWorkspaceTests(unittest.TestCase):
             shell.secondary_title_label.kwargs["text"],
             "Directions Mode",
         )
+        self.assertEqual(shell.topbar_mode_label.kwargs["text"], "Directions ▾")
         self.assertEqual(
             shell.status_label.kwargs["text"],
             "Blackport to Dicton",
@@ -190,7 +246,9 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
-            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeCanvas),
+            mock.patch.object(workspace.tk, "Menubutton", FakeWidget),
+            mock.patch.object(workspace.tk, "Menu", FakeMenu),
             mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
@@ -216,7 +274,9 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
-            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeCanvas),
+            mock.patch.object(workspace.tk, "Menubutton", FakeWidget),
+            mock.patch.object(workspace.tk, "Menu", FakeMenu),
             mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
@@ -247,7 +307,9 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
-            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeCanvas),
+            mock.patch.object(workspace.tk, "Menubutton", FakeWidget),
+            mock.patch.object(workspace.tk, "Menu", FakeMenu),
             mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
         ):
             workspace._configure_workspace_hosts(viewer)
@@ -275,7 +337,9 @@ class DesktopWorkspaceTests(unittest.TestCase):
         with (
             mock.patch.object(workspace.tk, "Frame", FakeWidget),
             mock.patch.object(workspace.tk, "Label", FakeWidget),
-            mock.patch.object(workspace.tk, "Canvas", FakeWidget),
+            mock.patch.object(workspace.tk, "Canvas", FakeCanvas),
+            mock.patch.object(workspace.tk, "Menubutton", FakeWidget),
+            mock.patch.object(workspace.tk, "Menu", FakeMenu),
             mock.patch.object(workspace.tk, "Scrollbar", FakeWidget),
             mock.patch.object(workspace.base, "STOPS_BY_VAR", {stop.var: stop}),
         ):

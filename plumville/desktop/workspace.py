@@ -28,7 +28,8 @@ _APPLIED = False
 class WorkspaceShell:
     root_frame: tk.Frame
     app_bar: tk.Frame
-    topbar_mode_label: tk.Label
+    topbar_mode_label: tk.Menubutton
+    topbar_mode_menu: tk.Menu
     topbar_status_label: tk.Label
     inspector_toggle_button: tk.Label
     content_frame: tk.Frame
@@ -194,16 +195,33 @@ def _configure_workspace_hosts(
         font=("Courier", 16, "bold"),
         anchor="w",
     ).grid(row=0, column=0, sticky="w")
-    mode_label = tk.Label(
+    mode_label = tk.Menubutton(
         app_bar,
-        text="All",
+        text="All ▾",
         bg=APP_BAR_BG,
         fg=ACCENT,
         font=("Helvetica", 12, "bold"),
-        anchor="w",
         padx=12,
+        pady=6,
+        cursor="hand2",
+        relief="flat",
+        activebackground=PANEL_RAISED,
+        activeforeground=ACCENT,
+        highlightbackground=BORDER,
+        highlightthickness=1,
+        bd=0,
     )
     mode_label.grid(row=0, column=1, sticky="w")
+    mode_menu = tk.Menu(
+        mode_label,
+        tearoff=False,
+        bg=PANEL_RAISED,
+        fg=TEXT,
+        activebackground="#20272d",
+        activeforeground=ACCENT,
+        bd=0,
+    )
+    mode_label.configure(menu=mode_menu)
     status_label = tk.Label(
         app_bar,
         text="Workspace shell active",
@@ -237,6 +255,7 @@ def _configure_workspace_hosts(
     )
     mode_rail.grid(row=0, column=0, sticky="ns")
     mode_rail.grid_propagate(False)
+    mode_rail.grid_remove()
 
     secondary_shell = tk.Frame(
         content_frame,
@@ -429,6 +448,7 @@ def _configure_workspace_hosts(
         root_frame=root_frame,
         app_bar=app_bar,
         topbar_mode_label=mode_label,
+        topbar_mode_menu=mode_menu,
         topbar_status_label=status_label,
         inspector_toggle_button=inspector_toggle_button,
         content_frame=content_frame,
@@ -480,31 +500,18 @@ def install_mode_rail(
     if shell is None or shell.mode_buttons:
         return
 
-    for index, mode in enumerate(modes):
-        label = tk.Label(
-            shell.mode_rail,
-            text=_mode_rail_text(_mode_label(mode)),
-            bg=PANEL_RAISED,
-            fg=TEXT,
-            font=("Helvetica", 10, "bold"),
-            anchor="center",
-            justify="center",
-            wraplength=MODE_RAIL_WIDTH - 24,
-            padx=8,
-            pady=12,
-            cursor="hand2",
-            highlightbackground=BORDER,
-            highlightthickness=1,
-            bd=0,
-        )
-        label.pack(fill="x", pady=(0, 8 if index < len(modes) - 1 else 0))
-        label.bind(
-            "<Button-1>",
-            lambda _event, active_label=_mode_label(mode): on_mode_select(
+    shell.topbar_mode_menu.delete(0, "end")
+    for mode in modes:
+        shell.topbar_mode_menu.add_command(
+            label=_mode_label(mode),
+            command=lambda active_label=_mode_label(mode): on_mode_select(
                 active_label
             ),
         )
-        shell.mode_buttons[_mode_key(mode)] = label
+        shell.mode_buttons[_mode_key(mode)] = tk.Label(
+            shell.mode_rail,
+            text=_mode_rail_text(_mode_label(mode)),
+        )
 
 
 def _current_view_center(
@@ -527,6 +534,24 @@ def _restore_map_after_inspector_layout(
     viewer: "base.MetroMapViewer",
     previous_center: tuple[float, float] | None,
 ) -> None:
+    root = getattr(viewer, "root", None)
+    update_idletasks = getattr(root, "update_idletasks", None)
+    if callable(update_idletasks):
+        try:
+            update_idletasks()
+        except tk.TclError:
+            return
+
+    canvas = getattr(viewer, "canvas", None)
+    winfo_width = getattr(canvas, "winfo_width", None)
+    winfo_height = getattr(canvas, "winfo_height", None)
+    if callable(winfo_width) and callable(winfo_height):
+        try:
+            viewer.width = int(winfo_width())
+            viewer.height = int(winfo_height())
+        except (TypeError, ValueError, tk.TclError):
+            pass
+
     center_on_world_point = getattr(viewer, "_center_on_world_point", None)
     if previous_center is None or not callable(center_on_world_point):
         redraw = getattr(viewer, "redraw", None)
@@ -622,7 +647,7 @@ def sync_workspace(
         (mode for mode in modes if _mode_key(mode) == active_mode_key),
         modes[0],
     )
-    shell.topbar_mode_label.configure(text=_mode_label(active_mode))
+    shell.topbar_mode_label.configure(text=f"{_mode_label(active_mode)} ▾")
     shell.topbar_status_label.configure(text=_topbar_status_text(viewer))
     shell.secondary_title_label.configure(text=f"{_mode_label(active_mode)} Mode")
     shell.secondary_description_label.configure(

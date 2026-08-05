@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 from unittest import mock
@@ -143,6 +144,50 @@ class PublicExportTests(unittest.TestCase):
         self.assertEqual(viewer.width, 640)
         self.assertEqual(viewer.height, 480)
         self.assertEqual(build.call_args.kwargs["visible_line_names"], {"A"})
+
+    def test_legacy_current_map_png_export_rasterizes_validated_svg(self) -> None:
+        options = base.SvgExportOptions(
+            include_world_map=False,
+            include_grid=False,
+            include_metro_lines=False,
+            include_stations=False,
+            include_labels=False,
+            include_path_nodes=False,
+            include_walking_paths=False,
+            include_connector_paths=False,
+            include_current_route=False,
+            include_planning_circle=False,
+            include_connected_area=False,
+            include_alignment_ellipses=False,
+            include_frontier_highlights=False,
+            include_railway_finishing=False,
+        )
+        viewer = object.__new__(base.MetroMapViewer)
+        viewer.width = 640
+        viewer.height = 480
+        svg2png = mock.Mock(return_value=b"png-bytes")
+
+        with (
+            mock.patch.object(
+                viewer,
+                "_build_current_map_svg_export_text",
+                return_value="<svg />\n",
+            ),
+            mock.patch.dict(
+                "sys.modules",
+                {"cairosvg": SimpleNamespace(svg2png=svg2png)},
+            ),
+        ):
+            self.assertEqual(
+                viewer._build_current_map_png_export_bytes(options),
+                b"png-bytes",
+            )
+
+        svg2png.assert_called_once_with(
+            bytestring=b"<svg />\n",
+            output_width=640,
+            output_height=480,
+        )
 
 
 if __name__ == "__main__":

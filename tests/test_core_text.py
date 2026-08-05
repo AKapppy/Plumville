@@ -16,11 +16,15 @@ class CoreTextTests(unittest.TestCase):
     def test_placeholder_station_label_detection(self) -> None:
         self.assertTrue(text.is_placeholder_station_label("P_ABC12"))
         self.assertTrue(text.is_placeholder_station_label("GHI"))
+        self.assertTrue(text.is_placeholder_station_label("Z_2"))
+        self.assertTrue(text.is_placeholder_station_label("UW"))
         self.assertFalse(text.is_placeholder_station_label("Cherry Hole"))
         self.assertEqual(
             base._is_placeholder_station_label("P_ABC12"),
             text.is_placeholder_station_label("P_ABC12"),
         )
+        self.assertFalse(base._stop_has_name(base.MetroStop("P_Z2", "Z_2", 0, 0)))
+        self.assertFalse(base._stop_has_name(base.MetroStop("P_UW", "UW", 0, 0)))
 
     def test_stop_identity_normalization_matches_legacy(self) -> None:
         self.assertEqual(text.normalize_stop_identity(" a-{12} "), "A12")

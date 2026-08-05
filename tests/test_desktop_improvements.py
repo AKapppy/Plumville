@@ -705,6 +705,45 @@ class DesktopMmcpVisualTests(unittest.TestCase):
                 stop.var,
             )
 
+    def test_blank_search_status_has_no_instruction_text(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.search_var = FakeStringVar("")
+        viewer.search_status_var = FakeStringVar("old")
+        viewer.search_match_stop_vars = ["P_A"]
+
+        base.MetroMapViewer._refresh_search_results(viewer)
+
+        self.assertEqual(viewer.search_status_var.get(), "")
+        self.assertEqual(viewer.search_match_stop_vars, [])
+
+    def test_coordinate_search_places_cursor_crosshair_when_no_station_matches(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.search_var = FakeStringVar("123, -456")
+        viewer.search_status_var = FakeStringVar("")
+        viewer.search_match_stop_vars = []
+        viewer.width = 800
+        viewer.height = 600
+        viewer._hide_suggestion_popup = mock.Mock()
+        viewer._clear_metro_segment_selection = mock.Mock()
+        viewer._center_on_world_point = mock.Mock()
+        viewer.redraw = mock.Mock()
+        viewer.selected_stop_var = "P_A"
+        viewer.selected_path_node_key = "node:a"
+        viewer.cursor_readout_coordinates = None
+        viewer.show_cursor_guides = False
+        viewer.hover_canvas_point = None
+
+        with mock.patch.object(base, "METRO_STOPS", ()):
+            base.MetroMapViewer._jump_to_first_search_result(viewer)
+
+        self.assertEqual(viewer.cursor_readout_coordinates, (123, -456))
+        self.assertTrue(viewer.show_cursor_guides)
+        self.assertEqual(viewer.hover_canvas_point, (400.0, 300.0))
+        self.assertIsNone(viewer.selected_stop_var)
+        self.assertIsNone(viewer.selected_path_node_key)
+        viewer._center_on_world_point.assert_called_once_with((123, -456))
+        viewer.redraw.assert_called_once_with()
+
 
 class DesktopRouteFitTests(unittest.TestCase):
     def test_route_steps_display_line_count_falls_back_without_return_ints(self) -> None:

@@ -158,6 +158,90 @@ class PathRenderingConsolidationTests(unittest.TestCase):
             base.STATION_RADIUS,
         )
 
+    def test_station_label_layout_prefers_abbreviation_when_full_label_collides(self) -> None:
+        labeled = base.MetroStop("P_A", "Long Harbor", 0, 0, abbr="LH")
+        blocker = base.MetroStop("P_B", "Blocker", 0, 0)
+
+        layout = base._station_label_layout(
+            (
+                (labeled, 0.0, 0.0, float(base.STATION_RADIUS)),
+                (blocker, 60.0, -12.0, float(base.STATION_RADIUS)),
+            ),
+            font_size=base.BASE_LABEL_FONT_SIZE,
+            label_offset_x=base.LABEL_OFFSET_X,
+            label_offset_y=base.LABEL_OFFSET_Y,
+            zoom=1.0,
+            selected_stop_var=None,
+            current_route=None,
+        )
+
+        self.assertEqual(layout[labeled.var].text, "LH")
+
+    def test_station_label_layout_keeps_route_endpoint_over_crowded_ordinary_label(self) -> None:
+        route_stop = base.MetroStop("P_ROUTE", "Route End", 0, 0)
+        ordinary_stop = base.MetroStop("P_NORMAL", "Normal", 0, 0)
+        route = base.RouteResult(
+            start_key=route_stop.var,
+            end_key="P_OTHER",
+            total_distance=0,
+            total_interchanges=0,
+            steps=(),
+        )
+
+        layout = base._station_label_layout(
+            (
+                (ordinary_stop, 0.0, 0.0, float(base.STATION_RADIUS)),
+                (route_stop, 0.0, 0.0, float(base.STATION_RADIUS)),
+            ),
+            font_size=base.BASE_LABEL_FONT_SIZE,
+            label_offset_x=base.LABEL_OFFSET_X,
+            label_offset_y=base.LABEL_OFFSET_Y,
+            zoom=1.0,
+            selected_stop_var=None,
+            current_route=route,
+        )
+
+        self.assertIn(route_stop.var, layout)
+        self.assertNotIn(ordinary_stop.var, layout)
+
+    def test_line_markers_draw_circular_line_letter_on_terminal_segment(self) -> None:
+        viewer = _viewer()
+        viewer.zoom = 1.0
+        viewer.selected_stop_var = None
+        viewer.current_route = None
+        viewer._terminal_line_names_for_stop = lambda stop, visible_line_names: (
+            base.MetroMapViewer._terminal_line_names_for_stop(viewer, stop, visible_line_names)
+        )
+        viewer._line_marker_names_for_stop = lambda stop, visible_line_names: (
+            base.MetroMapViewer._line_marker_names_for_stop(viewer, stop, visible_line_names)
+        )
+        viewer._line_marker_canvas_point = lambda stop_var, line_name: (
+            base.MetroMapViewer._line_marker_canvas_point(viewer, stop_var, line_name)
+        )
+        viewer._draw_line_marker_circle = lambda **kwargs: (
+            base.MetroMapViewer._draw_line_marker_circle(viewer, **kwargs)
+        )
+        first = base.MetroStop("P_A", "Alpha", 0, 0)
+        second = base.MetroStop("P_B", "Beta", 20, 0)
+        segment = SimpleNamespace(
+            line_name="A",
+            start_var=first.var,
+            end_var=second.var,
+            plot_points=((0, 0), (20, 0)),
+        )
+
+        with (
+            mock.patch.object(base, "METRO_STOPS", (first, second)),
+            mock.patch.object(base, "STOP_LINE_NAMES", {first.var: ("A",), second.var: ("A",)}),
+            mock.patch.object(base, "LINE_STOP_VARS", {"A": (first.var, second.var)}),
+            mock.patch.object(base, "LINE_COLORS", {"A": "#397b49"}),
+            mock.patch.object(base, "_all_metro_segments", return_value=(segment,)),
+        ):
+            base.MetroMapViewer._draw_line_markers(viewer, {"A"})
+
+        self.assertEqual(len(viewer.canvas.ovals), 1)
+        self.assertEqual(viewer.canvas.text[0][1]["text"], "A")
+
     def test_metro_segments_draw_solid_dashed_and_dotted_by_construction_state(self) -> None:
         viewer = _viewer()
         connected = base.MetroLineSegment(

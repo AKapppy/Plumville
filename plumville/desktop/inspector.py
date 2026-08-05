@@ -1130,7 +1130,7 @@ def _make_line_diamond(
 ) -> tk.Canvas:
     size = 32
     radius = 13
-    foreground = _line_badge_foreground(line_color)
+    foreground = workspace.TEXT
     diamond = tk.Canvas(
         parent,
         width=size,

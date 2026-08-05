@@ -95,6 +95,52 @@ class CoreNetworkTests(unittest.TestCase):
             },
         )
 
+    def test_update_stop_record_saves_and_clears_station_abbreviation(self) -> None:
+        payload = {"stops": [{"var": "P_A", "lbl": "Alpha"}]}
+
+        with (
+            mock.patch.object(base, "_load_network_payload", return_value=payload),
+            mock.patch.object(base, "_write_network_payload") as write_payload,
+            mock.patch.object(base, "_apply_network_payload") as apply_payload,
+            mock.patch.object(base, "_normalize_alignment_reminders"),
+            mock.patch.object(base, "_normalize_extra_edges"),
+            mock.patch.object(base, "_normalize_line_tunneled_stop_vars"),
+        ):
+            base._update_stop_record("P_A", lbl="Alpha City", abbr=" AC ")
+
+        self.assertEqual(payload["stops"][0]["lbl"], "Alpha City")
+        self.assertEqual(payload["stops"][0]["abbr"], "AC")
+        write_payload.assert_called_once_with(payload)
+        apply_payload.assert_called_once_with(payload)
+
+        write_payload.reset_mock()
+        apply_payload.reset_mock()
+        with (
+            mock.patch.object(base, "_load_network_payload", return_value=payload),
+            mock.patch.object(base, "_write_network_payload") as write_payload,
+            mock.patch.object(base, "_apply_network_payload") as apply_payload,
+            mock.patch.object(base, "_normalize_alignment_reminders"),
+            mock.patch.object(base, "_normalize_extra_edges"),
+            mock.patch.object(base, "_normalize_line_tunneled_stop_vars"),
+        ):
+            base._update_stop_record("P_A", abbr="   ")
+
+        self.assertNotIn("abbr", payload["stops"][0])
+        write_payload.assert_called_once_with(payload)
+        apply_payload.assert_called_once_with(payload)
+
+    def test_station_identity_fields_require_name_and_allow_blank_abbreviation(self) -> None:
+        self.assertEqual(
+            base._normalized_station_identity_fields(" Alpha ", " BKP "),
+            ("Alpha", "BKP"),
+        )
+        self.assertEqual(
+            base._normalized_station_identity_fields("Alpha", "   "),
+            ("Alpha", ""),
+        )
+        with self.assertRaisesRegex(ValueError, "cannot be blank"):
+            base._normalized_station_identity_fields("   ", "A")
+
     def test_line_finish_origin_options_uses_first_and_last_connected_line_stops(self) -> None:
         payload = {
             "stops": [

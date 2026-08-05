@@ -20,6 +20,13 @@ CURRENT PRIORITY ORDER — VISUAL PHASE
 11. Data architecture files
 12. Documentation
 
+Current documentation cleanup state:
+
+- obsolete root-level visual refresh, audit, and AI prompt files from July 2026
+  have been removed after confirming they only referenced each other;
+- active repo instructions, run trackers, runtime/private data, exports,
+  history, and `data/mockups/` were preserved.
+
 ======================================================================
 1. NEW DESKTOP INSPECTOR MODULE
 ======================================================================
@@ -63,9 +70,13 @@ Current desktop pathing state:
   the map popup when the desktop shell is active;
 - the inspector starts hidden, reopens automatically for new selected tasks
   after task-local hides, and now has a scrollable body for tall task content;
+- inspector show/hide now refreshes the post-layout canvas size and recenters
+  the same world point that was at the viewport center before the toggle,
+  without changing zoom;
 - the station header now uses abbreviation-first title styling, right-aligned
   line-colored diamond badges, simplified coordinates, and reduced status
-  noise;
+  noise; inspector line diamonds now use white borders and white letters for
+  contrast on the dark dock background;
 - station Status now lists unfinished priority-style needs instead of a raw
   progress fraction;
 - station entry and city-limit completion now appear as automated construction
@@ -99,8 +110,11 @@ Current state:
   optional status strip;
 - the right inspector panel starts hidden while its top-bar Show/Hide control
   remains available;
-- inspector visibility changes preserve the map center across right-panel width
-  changes instead of refitting the prior bounds;
+- inspector visibility changes preserve the viewport center across right-panel
+  width changes instead of refitting selected stations or prior bounds;
+- mode selection now lives in a top-bar mode dropdown, and the old left mode
+  rail is hidden while the existing `install_mode_rail()` bridge remains
+  idempotent;
 - it still needs Andrew's live verification before further shell cleanup.
 
 ======================================================================
@@ -145,6 +159,20 @@ Current priority-list state:
   connected next segments.
 - the Show/Hide section has an off-by-default non-orthogonal segment
   highlight to help find metro geometry that still needs turns.
+- the desktop map export button/dialog now says Export PNG and writes
+  `metro-map-*.png` by rasterizing the validated map SVG bytes through CairoSVG.
+- desktop map labels now use a web-inspired priority order and abbreviation
+  fallback before full labels away from close zoom; selected stations, route
+  endpoints, junctions, and terminals are kept ahead of ordinary crowded labels.
+- desktop metro lines now draw circular line-letter markers for terminal line
+  identity and zoomed-in junction identity.
+- station name detection now treats uppercase station-letter/position labels
+  such as `Z_2` and `UW` as unnamed placeholders.
+- station Name editing now saves both `lbl` and optional `abbr`; blank
+  abbreviation removes the saved abbreviation field.
+- empty search no longer shows the long instruction sentence, and coordinate
+  searches with no station match center the coordinate with the cursor
+  crosshair/readout visible.
 
 Deferred follow-up:
 
@@ -344,6 +372,9 @@ docs/
 - public line filters
 - read-only checklist and priority views
 - overlay toggles
+- exported metro data cleanup: unassociated station records `P_0`, `P_6`, and
+  `P_2` were removed from `docs/metro_network.json`, along with their
+  priority-list rows and orphaned alignment reminders.
 
 tests/
 - extensive unit and smoke coverage for current behavior

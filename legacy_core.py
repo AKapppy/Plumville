@@ -58,6 +58,11 @@ MAX_LABEL_FONT_GROWTH: Final[int] = 14
 LABEL_FONT_GROWTH_PER_ZOOM_STEP: Final[float] = 0.3
 LABEL_OFFSET_X: Final[int] = 7
 LABEL_OFFSET_Y: Final[int] = 7
+LABEL_CLOSE_ZOOM: Final[float] = 5.25
+LABEL_JUNCTION_ZOOM: Final[float] = 2.15
+LABEL_SCORE_LIMIT: Final[int] = 125_000
+LINE_MARKER_RADIUS: Final[int] = 9
+LINE_MARKER_TEXT_COLOR: Final[str] = '#ffffff'
 STATION_RADIUS: Final[int] = 4
 STATION_CLICK_TOLERANCE: Final[int] = 10
 STATION_ENTRY_MIN_ZOOM: Final[float] = 2.0
@@ -1308,7 +1313,7 @@ def _looks_like_placeholder_stop_label(text: str) -> bool:
 
 
 def _stop_has_name(stop: MetroStop) -> bool:
-    if _looks_like_placeholder_stop_label(stop.lbl):
+    if _is_placeholder_station_label(stop.lbl) or _looks_like_placeholder_stop_label(stop.lbl):
         return False
     return _normalize_stop_identity(stop.lbl) != _normalize_stop_identity(stop.var.removeprefix('P_'))
 
@@ -2012,6 +2017,16 @@ def _station_display_name(stop: MetroStop) -> str:
     return f"{label} ({abbreviation})"
 
 
+def _normalized_station_identity_fields(
+    label: str,
+    abbreviation: str,
+) -> tuple[str, str]:
+    normalized_label = label.strip()
+    if not normalized_label:
+        raise ValueError('Station label cannot be blank.')
+    return normalized_label, abbreviation.strip()
+
+
 def _is_placeholder_station_label(lbl: str) -> bool:
     return core_text.is_placeholder_station_label(lbl)
 
@@ -2099,6 +2114,166 @@ class SvgExportOptions:
     include_alignment_ellipses: bool
     include_frontier_highlights: bool
     include_railway_finishing: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ScreenRect:
+    min_x: float
+    max_x: float
+    min_y: float
+    max_y: float
+
+
+@dataclass(frozen=True, slots=True)
+class _StationLabelPlacement:
+    text: str
+    x: float
+    y: float
+    rect: _ScreenRect
+
+
+def _rects_overlap(first: _ScreenRect, second: _ScreenRect) -> bool:
+    return (
+        first.min_x < second.max_x
+        and first.max_x > second.min_x
+        and first.min_y < second.max_y
+        and first.max_y > second.min_y
+    )
+
+
+def _rect_overlap_area(first: _ScreenRect, second: _ScreenRect) -> float:
+    if not _rects_overlap(first, second):
+        return 0.0
+    return (
+        min(first.max_x, second.max_x) - max(first.min_x, second.min_x)
+    ) * (
+        min(first.max_y, second.max_y) - max(first.min_y, second.min_y)
+    )
+
+
+def _expanded_rect(rect: _ScreenRect, padding: float) -> _ScreenRect:
+    return _ScreenRect(
+        min_x=rect.min_x - padding,
+        max_x=rect.max_x + padding,
+        min_y=rect.min_y - padding,
+        max_y=rect.max_y + padding,
+    )
+
+
+def _estimated_label_rect(
+    *,
+    x: float,
+    y: float,
+    text: str,
+    font_size: int,
+) -> _ScreenRect:
+    width = max(font_size, len(text) * font_size * 0.58)
+    height = font_size + LABEL_CASING_WIDTH + 2
+    return _ScreenRect(
+        min_x=x - LABEL_CASING_WIDTH,
+        max_x=x + width + LABEL_CASING_WIDTH,
+        min_y=y - height - LABEL_CASING_WIDTH,
+        max_y=y + LABEL_CASING_WIDTH,
+    )
+
+
+def _station_label_priority(
+    stop: MetroStop,
+    *,
+    selected_stop_var: str | None,
+    current_route: RouteResult | None,
+) -> int:
+    if stop.lbl == 'Mt. Phosphagos':
+        return 0
+    if selected_stop_var == stop.var:
+        return 1
+    if current_route is not None and stop.var in {current_route.start_key, current_route.end_key}:
+        return 2
+    if len(STOP_LINE_NAMES.get(stop.var, ())) > 1:
+        return 3
+    for stop_vars in LINE_STOP_VARS.values():
+        if stop_vars and stop.var in {stop_vars[0], stop_vars[-1]}:
+            return 4
+    if stop.is_connected:
+        return 5
+    return 6
+
+
+def _station_label_text_options(stop: MetroStop, zoom: float) -> tuple[str, ...]:
+    full_label = _display_label(stop.lbl)
+    abbreviation = _stop_abbreviation(stop)
+    if zoom >= LABEL_CLOSE_ZOOM or not abbreviation or abbreviation == full_label:
+        return (full_label,)
+    return (abbreviation, full_label)
+
+
+def _station_label_layout(
+    station_items: Sequence[tuple[MetroStop, float, float, float]],
+    *,
+    font_size: int,
+    label_offset_x: float,
+    label_offset_y: float,
+    zoom: float,
+    selected_stop_var: str | None,
+    current_route: RouteResult | None,
+) -> dict[str, _StationLabelPlacement]:
+    occupied_rects = [
+        _expanded_rect(
+            _ScreenRect(
+                min_x=canvas_x - radius,
+                max_x=canvas_x + radius,
+                min_y=canvas_y - radius,
+                max_y=canvas_y + radius,
+            ),
+            4,
+        )
+        for _stop, canvas_x, canvas_y, radius in station_items
+    ]
+    placements: dict[str, _StationLabelPlacement] = {}
+    ordered_items = sorted(
+        station_items,
+        key=lambda item: _station_label_priority(
+            item[0],
+            selected_stop_var=selected_stop_var,
+            current_route=current_route,
+        ),
+    )
+
+    for stop, canvas_x, canvas_y, _radius in ordered_items:
+        best: tuple[float, _StationLabelPlacement] | None = None
+        for text_index, text in enumerate(_station_label_text_options(stop, zoom)):
+            label_x = canvas_x + label_offset_x
+            label_y = canvas_y - label_offset_y
+            rect = _estimated_label_rect(
+                x=label_x,
+                y=label_y,
+                text=text,
+                font_size=font_size,
+            )
+            score = text_index * 40_000
+            for occupied_rect in occupied_rects:
+                if _rects_overlap(rect, occupied_rect):
+                    score += 100_000 + _rect_overlap_area(rect, occupied_rect)
+            placement = _StationLabelPlacement(
+                text=text,
+                x=label_x,
+                y=label_y,
+                rect=rect,
+            )
+            if best is None or score < best[0]:
+                best = (score, placement)
+        if best is None:
+            continue
+        priority = _station_label_priority(
+            stop,
+            selected_stop_var=selected_stop_var,
+            current_route=current_route,
+        )
+        if priority > 4 and best[0] > LABEL_SCORE_LIMIT:
+            continue
+        placements[stop.var] = best[1]
+        occupied_rects.append(_expanded_rect(best[1].rect, 2))
+    return placements
 
 
 def _build_map_svg(
@@ -6532,7 +6707,7 @@ class MetroMapViewer:
         self.search_var = tk.StringVar(master=self.root)
         self.search_status_var = tk.StringVar(
             master=self.root,
-            value='Search stations by village name, abbreviation, or station code.',
+            value='',
         )
         self.route_start_var = tk.StringVar(master=self.root)
         self.route_end_var = tk.StringVar(master=self.root)
@@ -6745,7 +6920,7 @@ class MetroMapViewer:
         stats_label.pack(side='left', fill='x', expand=True)
         self._make_sidebar_button(
             checklist_top_row,
-            text='Export SVG',
+            text='Export PNG',
             command=self._show_export_svg_options,
         ).pack(side='right', anchor='n', padx=(10, 0))
 
@@ -8530,14 +8705,18 @@ class MetroMapViewer:
         self.search_match_stop_vars = []
 
         if not query:
-            self.search_status_var.set(
-                'Search stations by village name, abbreviation, or station code.'
-            )
+            self.search_status_var.set('')
             return
 
         matches = self._search_matches(query)
         if not matches:
-            self.search_status_var.set('No station matches that search.')
+            coordinate_target = self._coordinate_search_target(query)
+            if coordinate_target is None:
+                self.search_status_var.set('No station matches that search.')
+            else:
+                self.search_status_var.set(
+                    'Press Enter or click Go to show that coordinate.'
+                )
             return
 
         visible_matches = matches[:8]
@@ -8600,6 +8779,11 @@ class MetroMapViewer:
     def _jump_to_first_search_result(self) -> None:
         self._refresh_search_results()
         if not self.search_match_stop_vars:
+            coordinate_target = self._coordinate_search_target(
+                self.search_var.get().strip()
+            )
+            if coordinate_target is not None:
+                self._jump_to_coordinate_search_result(coordinate_target)
             return
 
         self._hide_suggestion_popup()
@@ -8610,6 +8794,26 @@ class MetroMapViewer:
             f'Centered on {_station_display_name(stop)}.'
         )
         self._focus_stop(stop_var)
+
+    def _coordinate_search_target(self, query: str) -> tuple[int, int] | None:
+        coordinates = _parse_coordinate_text(query)
+        if coordinates is None:
+            return None
+        if any(stop.coordinates == coordinates for stop in METRO_STOPS):
+            return None
+        return coordinates
+
+    def _jump_to_coordinate_search_result(self, coordinates: tuple[int, int]) -> None:
+        self._hide_suggestion_popup()
+        self.search_status_var.set(f'Showing coordinate ({coordinates[0]}, {coordinates[1]}).')
+        self.selected_stop_var = None
+        self.selected_path_node_key = None
+        self._clear_metro_segment_selection()
+        self.cursor_readout_coordinates = coordinates
+        self.show_cursor_guides = True
+        self._center_on_world_point(coordinates)
+        self.hover_canvas_point = (self.width / 2, self.height / 2)
+        self.redraw()
 
     def _jump_to_selected_search_result(self) -> None:
         self._jump_to_first_search_result()
@@ -10708,34 +10912,90 @@ class MetroMapViewer:
         if self.selected_stop_var is None:
             return
 
-        from tkinter import messagebox, simpledialog
+        from tkinter import messagebox
 
         stop = STOPS_BY_VAR[self.selected_stop_var]
-        new_label = simpledialog.askstring(
-            'Change Name',
-            'Enter the new station label:',
-            initialvalue=stop.lbl,
-            parent=self.root,
-        )
-        if new_label is None:
-            return
+        dialog = tk.Toplevel(self.root)
+        dialog.title('Edit Station Name')
+        dialog.configure(bg=BACKGROUND_COLOR)
+        dialog.transient(self.root)
+        dialog.resizable(False, False)
 
-        new_label = new_label.strip()
-        if not new_label:
-            messagebox.showerror('Invalid Label', 'Station label cannot be blank.', parent=self.root)
-            return
+        body = tk.Frame(dialog, bg=BACKGROUND_COLOR)
+        body.pack(fill='both', expand=True, padx=16, pady=14)
+        tk.Label(
+            body,
+            text='Edit Station Name',
+            bg=BACKGROUND_COLOR,
+            fg=TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE, 'bold'),
+            anchor='w',
+        ).pack(anchor='w', pady=(0, 10))
 
-        try:
-            _update_stop_record(stop.var, lbl=new_label)
-        except ValueError as exc:
-            messagebox.showerror('Could Not Save Label', str(exc), parent=self.root)
-            return
+        name_var = tk.StringVar(master=dialog, value=stop.lbl)
+        abbreviation_var = tk.StringVar(master=dialog, value=_stop_abbreviation(stop))
 
-        self.route_controls_dirty = True
-        self.route_dirty = True
-        self.priority_dirty = True
-        self.stats_dirty = True
-        self.redraw()
+        def field(label_text: str, variable: tk.StringVar) -> tk.Entry:
+            tk.Label(
+                body,
+                text=label_text,
+                bg=BACKGROUND_COLOR,
+                fg=TEXT_COLOR,
+                font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
+                anchor='w',
+            ).pack(anchor='w')
+            entry = self._make_sidebar_entry(body, variable)
+            entry.pack(fill='x', pady=(3, 10))
+            return entry
+
+        name_entry = field('Name', name_var)
+        field('Abbreviation', abbreviation_var)
+
+        tk.Label(
+            body,
+            text='Leave abbreviation blank for none.',
+            bg=BACKGROUND_COLOR,
+            fg=INFO_CHECKBOX_TEXT_COLOR,
+            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE - 1),
+            anchor='w',
+        ).pack(anchor='w', pady=(0, 10))
+
+        def save() -> None:
+            try:
+                new_label, abbreviation = _normalized_station_identity_fields(
+                    name_var.get(),
+                    abbreviation_var.get(),
+                )
+                _update_stop_record(stop.var, lbl=new_label, abbr=abbreviation)
+            except ValueError as exc:
+                messagebox.showerror('Could Not Save Name', str(exc), parent=dialog)
+                return
+
+            self.route_controls_dirty = True
+            self.route_dirty = True
+            self.priority_dirty = True
+            self.stats_dirty = True
+            dialog.destroy()
+            self.redraw()
+
+        button_row = tk.Frame(body, bg=BACKGROUND_COLOR)
+        button_row.pack(fill='x', pady=(2, 0))
+        self._make_sidebar_button(
+            button_row,
+            text='Save',
+            command=save,
+        ).pack(side='right')
+        self._make_sidebar_button(
+            button_row,
+            text='Cancel',
+            command=dialog.destroy,
+        ).pack(side='right', padx=(0, 10))
+
+        name_entry.focus_set()
+        dialog.bind('<Return>', lambda _event: save())
+        dialog.bind('<Escape>', lambda _event: dialog.destroy())
+        self._center_toplevel(dialog, width=360, height=230)
+        dialog.grab_set()
 
     def _edit_selected_coordinates(self) -> None:
         if self.selected_stop_var is None:
@@ -12185,7 +12445,7 @@ class MetroMapViewer:
         self._sync_svg_export_options_to_current_view()
 
         dialog = tk.Toplevel(self.root)
-        dialog.title('Export SVG')
+        dialog.title('Export PNG')
         dialog.configure(bg=BACKGROUND_COLOR)
         dialog.transient(self.root)
         dialog.resizable(False, False)
@@ -12194,7 +12454,7 @@ class MetroMapViewer:
         body.pack(fill='both', expand=True, padx=16, pady=14)
         tk.Label(
             body,
-            text='Export SVG',
+            text='Export PNG',
             bg=BACKGROUND_COLOR,
             fg=TEXT_COLOR,
             font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE, 'bold'),
@@ -12297,7 +12557,7 @@ class MetroMapViewer:
         from tkinter import messagebox
 
         try:
-            svg_text = self._build_current_map_svg_export_text(export_options)
+            png_bytes = self._build_current_map_png_export_bytes(export_options)
         except Exception as exc:
             messagebox.showerror(
                 'Export Preview Failed',
@@ -12306,21 +12566,36 @@ class MetroMapViewer:
             )
             return
 
-        byte_count = len(svg_text.encode('utf-8'))
+        byte_count = len(png_bytes)
         messagebox.showinfo(
             'Export Preview Ready',
             (
-                'SVG export preview passed validation.\n\n'
+                'PNG export preview passed validation.\n\n'
                 f'Estimated size: {public_export.format_byte_size(byte_count)}.'
             ),
             parent=self.root,
         )
 
+    def _build_current_map_png_export_bytes(self, export_options: SvgExportOptions) -> bytes:
+        svg_text = self._build_current_map_svg_export_text(export_options)
+        try:
+            import cairosvg
+        except ImportError as exc:
+            raise ValueError('PNG export requires CairoSVG to rasterize the map.') from exc
+        png_bytes = cairosvg.svg2png(
+            bytestring=svg_text.encode('utf-8'),
+            output_width=self.width,
+            output_height=self.height,
+        )
+        if not isinstance(png_bytes, bytes):
+            raise ValueError('PNG export did not produce image bytes.')
+        return png_bytes
+
     def _export_current_map(self, export_options: SvgExportOptions) -> None:
         from tkinter import messagebox
 
         try:
-            svg_text = self._build_current_map_svg_export_text(export_options)
+            png_bytes = self._build_current_map_png_export_bytes(export_options)
         except Exception as exc:
             messagebox.showerror(
                 'Export Failed',
@@ -12330,18 +12605,18 @@ class MetroMapViewer:
             return
 
         EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
-        export_path = EXPORTS_DIR / f"metro-map-{datetime.now().strftime('%Y%m%d-%H%M%S')}.svg"
+        export_path = EXPORTS_DIR / f"metro-map-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
         try:
-            export_path.write_text(svg_text, encoding='utf-8')
+            export_path.write_bytes(png_bytes)
         except Exception as exc:
             messagebox.showerror(
                 'Export Failed',
-                f'Could not write the SVG export.\n\n{exc}',
+                f'Could not write the PNG export.\n\n{exc}',
                 parent=self.root,
             )
             return
 
-        messagebox.showinfo('Map Exported', f'Saved SVG to:\n{export_path}', parent=self.root)
+        messagebox.showinfo('Map Exported', f'Saved PNG to:\n{export_path}', parent=self.root)
 
     def _current_world_map_svg_image(self) -> SvgRasterImage | None:
         render_underlay = self._current_world_map_render_underlay()
@@ -12472,14 +12747,32 @@ class MetroMapViewer:
             self._draw_frontier_highlights(visible_line_names)
         self._draw_alignment_reminders()
 
+        station_items: list[tuple[MetroStop, float, float, float]] = []
         for stop in METRO_STOPS:
             stop_visible_line_names = self._stop_visible_line_names(stop, visible_line_names)
             if not stop_visible_line_names and STOP_LINE_NAMES[stop.var]:
                 continue
             canvas_x, canvas_y = self.world_to_canvas(stop.plot_coordinates)
             self.station_canvas_positions[stop.var] = (canvas_x, canvas_y)
+            station_items.append((stop, canvas_x, canvas_y, float(STATION_RADIUS)))
+
+        label_layout = (
+            _station_label_layout(
+                station_items,
+                font_size=label_font_size,
+                label_offset_x=label_offset_x,
+                label_offset_y=label_offset_y,
+                zoom=self.zoom,
+                selected_stop_var=self.selected_stop_var,
+                current_route=self.current_route,
+            )
+            if self.show_labels_var.get()
+            else {}
+        )
+
+        for stop, canvas_x, canvas_y, _radius in station_items:
+            stop_visible_line_names = self._stop_visible_line_names(stop, visible_line_names)
             stop_fill = self._stop_fill_for_visible_lines(stop_visible_line_names)
-            label_fill = _label_fill_for_visible_line_names(stop_visible_line_names)
             is_priority_highlight = stop.var in self.priority_highlight_stop_vars
             if is_priority_highlight:
                 self.canvas.create_oval(
@@ -12509,46 +12802,54 @@ class MetroMapViewer:
                 outline=UNASSOCIATED_STATION_OUTLINE if not stop_visible_line_names else '',
                 width=2 if not stop_visible_line_names else 1,
             )
-            if self.show_labels_var.get():
-                active_label_font_size = label_font_size + (
-                    FRONTIER_LABEL_SIZE_BOOST if stop.var in frontier_label_stop_vars else 0
-                )
-                label_font = (
-                    ('Helvetica', active_label_font_size, 'bold')
-                    if stop.var in frontier_label_stop_vars or is_priority_highlight
-                    else ('Helvetica', active_label_font_size)
-                )
-                label_text = _display_label(stop.lbl)
-                for casing_offset_x, casing_offset_y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                    self.canvas.create_text(
-                        canvas_x + label_offset_x + casing_offset_x,
-                        canvas_y - label_offset_y + casing_offset_y,
-                        anchor='sw',
-                        angle=LABEL_ANGLE,
-                        text=label_text,
-                        fill=LABEL_CASING_COLOR,
-                        font=label_font,
-                    )
-                if is_priority_highlight:
-                    for glow_offset_x, glow_offset_y in ((-2, 0), (2, 0), (0, -2), (0, 2)):
-                        self.canvas.create_text(
-                            canvas_x + label_offset_x + glow_offset_x,
-                            canvas_y - label_offset_y + glow_offset_y,
-                            anchor='sw',
-                            angle=LABEL_ANGLE,
-                            text=label_text,
-                            fill=PRIORITY_HIGHLIGHT_COLOR,
-                            font=label_font,
-                        )
+
+        self._draw_line_markers(visible_line_names)
+
+        for stop, _canvas_x, _canvas_y, _radius in station_items:
+            label = label_layout.get(stop.var)
+            if label is None:
+                continue
+            stop_visible_line_names = self._stop_visible_line_names(stop, visible_line_names)
+            label_fill = _label_fill_for_visible_line_names(stop_visible_line_names)
+            is_priority_highlight = stop.var in self.priority_highlight_stop_vars
+            active_label_font_size = label_font_size + (
+                FRONTIER_LABEL_SIZE_BOOST if stop.var in frontier_label_stop_vars else 0
+            )
+            label_font = (
+                ('Helvetica', active_label_font_size, 'bold')
+                if stop.var in frontier_label_stop_vars or is_priority_highlight
+                else ('Helvetica', active_label_font_size)
+            )
+            for casing_offset_x, casing_offset_y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
                 self.canvas.create_text(
-                    canvas_x + label_offset_x,
-                    canvas_y - label_offset_y,
+                    label.x + casing_offset_x,
+                    label.y + casing_offset_y,
                     anchor='sw',
                     angle=LABEL_ANGLE,
-                    text=label_text,
-                    fill=label_fill,
+                    text=label.text,
+                    fill=LABEL_CASING_COLOR,
                     font=label_font,
                 )
+            if is_priority_highlight:
+                for glow_offset_x, glow_offset_y in ((-2, 0), (2, 0), (0, -2), (0, 2)):
+                    self.canvas.create_text(
+                        label.x + glow_offset_x,
+                        label.y + glow_offset_y,
+                        anchor='sw',
+                        angle=LABEL_ANGLE,
+                        text=label.text,
+                        fill=PRIORITY_HIGHLIGHT_COLOR,
+                        font=label_font,
+                    )
+            self.canvas.create_text(
+                label.x,
+                label.y,
+                anchor='sw',
+                angle=LABEL_ANGLE,
+                text=label.text,
+                fill=label_fill,
+                font=label_font,
+            )
 
         self._draw_path_drag_preview()
 
@@ -13219,6 +13520,114 @@ class MetroMapViewer:
                 width=width,
                 dash=dash,
             )
+
+    def _terminal_line_names_for_stop(
+        self,
+        stop: MetroStop,
+        visible_line_names: set[str],
+    ) -> tuple[str, ...]:
+        terminal_line_names: list[str] = []
+        for line_name, stop_vars in LINE_STOP_VARS.items():
+            if line_name not in visible_line_names or not stop_vars:
+                continue
+            if stop.var in {stop_vars[0], stop_vars[-1]}:
+                terminal_line_names.append(line_name)
+        return tuple(terminal_line_names)
+
+    def _line_marker_names_for_stop(
+        self,
+        stop: MetroStop,
+        visible_line_names: set[str],
+    ) -> tuple[str, ...]:
+        line_names = list(self._terminal_line_names_for_stop(stop, visible_line_names))
+        visible_stop_lines = [
+            line_name
+            for line_name in STOP_LINE_NAMES.get(stop.var, ())
+            if line_name in visible_line_names
+        ]
+        if len(visible_stop_lines) > 1 and self.zoom >= LABEL_JUNCTION_ZOOM:
+            line_names.extend(visible_stop_lines)
+        return tuple(dict.fromkeys(line_names))
+
+    def _line_marker_canvas_point(
+        self,
+        stop_var: str,
+        line_name: str,
+    ) -> tuple[float, float] | None:
+        candidates = [
+            segment
+            for segment in _all_metro_segments()
+            if (
+                segment.line_name == line_name
+                and stop_var in {segment.start_var, segment.end_var}
+                and len(segment.plot_points) >= 2
+            )
+        ]
+        if not candidates:
+            return None
+        segment = max(candidates, key=lambda item: _polyline_distance(item.plot_points))
+        return _polyline_midpoint(tuple(self.world_to_canvas(point) for point in segment.plot_points))
+
+    def _draw_line_marker_circle(
+        self,
+        *,
+        canvas_x: float,
+        canvas_y: float,
+        line_name: str,
+    ) -> None:
+        radius = LINE_MARKER_RADIUS
+        self.canvas.create_oval(
+            canvas_x - radius,
+            canvas_y - radius,
+            canvas_x + radius,
+            canvas_y + radius,
+            fill=LINE_COLORS[line_name],
+            outline=BACKGROUND_COLOR,
+            width=2,
+        )
+        self.canvas.create_text(
+            canvas_x,
+            canvas_y + 0.5,
+            text=line_name,
+            fill=LINE_MARKER_TEXT_COLOR,
+            font=('Helvetica', max(10, radius + 2), 'bold'),
+        )
+
+    def _draw_line_markers(self, visible_line_names: set[str]) -> None:
+        used_segment_keys: set[tuple[str, str, str]] = set()
+        for stop in sorted(
+            METRO_STOPS,
+            key=lambda item: _station_label_priority(
+                item,
+                selected_stop_var=self.selected_stop_var,
+                current_route=self.current_route,
+            ),
+        ):
+            for line_name in self._line_marker_names_for_stop(stop, visible_line_names):
+                marker_point = self._line_marker_canvas_point(stop.var, line_name)
+                if marker_point is None:
+                    continue
+                stop_vars = LINE_STOP_VARS.get(line_name, ())
+                if stop.var not in stop_vars:
+                    continue
+                stop_index = stop_vars.index(stop.var)
+                neighbor_var = (
+                    stop_vars[1]
+                    if stop_index == 0 and len(stop_vars) > 1
+                    else stop_vars[-2]
+                    if stop_index == len(stop_vars) - 1 and len(stop_vars) > 1
+                    else ''
+                )
+                segment_key = tuple(sorted((stop.var, neighbor_var)))
+                dedupe_key = (line_name, segment_key[0], segment_key[1])
+                if dedupe_key in used_segment_keys:
+                    continue
+                used_segment_keys.add(dedupe_key)
+                self._draw_line_marker_circle(
+                    canvas_x=marker_point[0],
+                    canvas_y=marker_point[1],
+                    line_name=line_name,
+                )
 
     def _draw_non_orthogonal_segment_highlights(self, visible_line_names: set[str]) -> None:
         if not self.show_non_orthogonal_segments_var.get():
@@ -14497,6 +14906,7 @@ def _update_stop_record(
     stop_var: str,
     *,
     lbl: str | None = None,
+    abbr: str | None = None,
     x: int | None = None,
     y: int | None = None,
     has_connector: bool | None = None,
@@ -14517,6 +14927,12 @@ def _update_stop_record(
             continue
         if lbl is not None:
             stop_record['lbl'] = lbl
+        if abbr is not None:
+            normalized_abbreviation = abbr.strip()
+            if normalized_abbreviation:
+                stop_record['abbr'] = normalized_abbreviation
+            else:
+                stop_record.pop('abbr', None)
         if x is not None:
             stop_record['x'] = int(x)
         if y is not None:
