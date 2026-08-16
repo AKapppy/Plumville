@@ -98,6 +98,15 @@ def _find_widget_by_text(widget: FakeWidget, text: str) -> FakeWidget | None:
     return None
 
 
+def _widgets_by_text(widget: FakeWidget, text: str) -> list[FakeWidget]:
+    matches: list[FakeWidget] = []
+    if widget.kwargs.get("text") == text:
+        matches.append(widget)
+    for child in widget.children:
+        matches.extend(_widgets_by_text(child, text))
+    return matches
+
+
 def _button_texts(widget: FakeWidget) -> list[str]:
     texts: list[str] = []
     if widget.kwargs.get("kind") == "button":
@@ -159,6 +168,7 @@ class DesktopInspectorTests(unittest.TestCase):
         viewer._add_path_for_selected_node = mock.Mock()
         viewer._edit_selected_path_node_coordinates = mock.Mock()
         viewer._remove_selected_path_node = mock.Mock()
+        viewer._remove_path_edge = mock.Mock()
         viewer._edit_pathing_town_context = mock.Mock()
         viewer._start_city_limits_edit = mock.Mock()
         viewer._confirm_city_limits_edit = mock.Mock()
@@ -319,6 +329,7 @@ class DesktopInspectorTests(unittest.TestCase):
         viewer = self._viewer()
         town = base.MetroStop("P_A", "Alpha", 0, 0)
         node = base.PathNode("node_1", 12, 34, label="Market Gate")
+        edge = object()
         viewer._selected_path_node = mock.Mock(return_value=node)
         viewer._pathing_context_stop = mock.Mock(return_value=town)
         viewer._suggested_city_limit_node_keys_for_stop = mock.Mock(return_value=(node.key,))
@@ -328,16 +339,43 @@ class DesktopInspectorTests(unittest.TestCase):
             mock.patch.object(inspector.tk, "Label", FakeWidget),
             mock.patch.object(inspector.tk, "Canvas", FakeCanvas),
             mock.patch.object(base, "STOPS_BY_VAR", {town.var: town}),
-            mock.patch.object(base, "_extra_edges_for_endpoint_key", return_value=()),
+            mock.patch.object(base, "_extra_edges_for_endpoint_key", return_value=(edge,)),
+            mock.patch.object(base, "_extra_edge_full_summary", return_value="Walk to node_2"),
         ):
             inspector.sync_inspector(viewer)
 
         texts = _widget_texts(viewer._desktop_workspace_shell.inspector_body)
         self.assertIn("Current node: Market Gate", texts)
-        self.assertIn("Walk Path", texts)
-        self.assertIn("Metro Path", texts)
-        self.assertIn("Edit Node", texts)
+        self.assertIn("Connect", texts)
+        self.assertIn("Edit", texts)
+        self.assertNotIn("Metro Path", texts)
         self.assertIn("Remove", texts)
+        self.assertIn("Walk to node_2", texts)
+        remove_buttons = [
+            widget
+            for widget in _widgets_by_text(viewer._desktop_workspace_shell.inspector_body, "Remove")
+            if widget.kwargs.get("kind") == "button"
+        ]
+        self.assertEqual(len(remove_buttons), 2)
+        remove_buttons[-1].kwargs["command"]()
+        viewer._remove_path_edge.assert_called_once_with(edge)
+
+    def test_sync_inspector_renders_remove_for_derived_path_node(self) -> None:
+        viewer = self._viewer()
+        node = base.PathNode("12_34", 12, 34, is_explicit=False)
+        viewer._selected_path_node = mock.Mock(return_value=node)
+
+        with (
+            mock.patch.object(inspector.tk, "Frame", FakeWidget),
+            mock.patch.object(inspector.tk, "Label", FakeWidget),
+            mock.patch.object(inspector.tk, "Canvas", FakeCanvas),
+            mock.patch.object(base, "STOPS_BY_VAR", {}),
+            mock.patch.object(base, "_extra_edges_for_endpoint_key", return_value=()),
+        ):
+            inspector.sync_inspector(viewer)
+
+        buttons = _button_texts(viewer._desktop_workspace_shell.inspector_body)
+        self.assertIn("Remove", buttons)
 
     def test_sync_inspector_renders_pathing_zoom_notice(self) -> None:
         viewer = self._viewer()

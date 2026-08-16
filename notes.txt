@@ -55,6 +55,212 @@ FREEZE DURING THIS PHASE
 [hold] Additional popup micro-adjustments before the docked inspector exists
 
 ----------------------------------------------------------------------
+A1. WALKING PATH SPLIT RUN W01
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Split an existing walking path when a new path node is added directly on
+    the drawn segment.
+[x] Preserve non-walking connector edges when adding an overlapping path node.
+[x] Add focused mutation tests that use a temporary network payload.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Adding a path node on a straight walking path replaces the one long path
+    with two shorter walking paths.
+[ ] Adding a path node on an existing turned walking path splits the correct
+    drawn segment.
+[ ] Adding a path node away from walking paths still creates only the node.
+
+----------------------------------------------------------------------
+A2. MAP PATHING NODE MERGE RUN W02
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Simplify selected-node pathing actions to Connect, Edit, and Remove.
+[x] Remove the selected-node metro path action from map pathing controls.
+[x] Merge path nodes when editing one onto an existing path-node coordinate.
+[x] Preserve the pre-existing node label during coordinate merges.
+[x] Add focused mutation and inspector label tests.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Selected path-node actions show Connect, Edit, and Remove, without a Metro
+    Path action.
+[ ] Editing a path node onto an existing node merges them into one node.
+[ ] The merge keeps the pre-existing node name/label.
+[ ] Paths and city-limit references that used the moved node now use the merged
+    node coordinate.
+
+----------------------------------------------------------------------
+A3. WALKING SUGGESTION FRONTIER RUN W03
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Limit suggested walking paths to the immediate frontier around the existing
+    walking-path network.
+[x] Ignore suggestion chains that connect one unconnected village through
+    another unconnected village.
+[x] Allow useful loop/alternate suggestions into the same frontier village.
+[x] Expand direct-frontier endpoint search so longer low-water routes can win.
+[x] Make suggested walking paths visibly yellower than existing walking paths.
+[x] Add focused suggestion-selection and rendering tests.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Suggested paths currently focus on Alexandropol, P_2, Minas Rojas, and
+    Hidden Valley Ranch instead of deeper chained villages.
+[ ] P_2 can show as a useful loop/shortcut opportunity from the existing
+    walking network.
+[ ] Suggestions favor routes with less water even when the path is longer.
+[ ] Suggested paths are visibly more yellow than existing walking paths.
+
+----------------------------------------------------------------------
+A4. DESKTOP PNG EXPORT STABILIZATION RUN D01-E
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Remove the desktop PNG export dependency on native Cairo/CairoSVG.
+[x] Export the visible rendered world-map area at 1 PNG pixel per block.
+[x] Preserve selected map overlays on the block-level PNG export.
+[x] Add focused PNG export regression tests.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Export PNG no longer shows a Cairo/cairo-2 missing-library error.
+[ ] Export PNG writes an openable PNG file.
+[ ] The exported PNG preserves one source block per image pixel.
+[ ] The exported PNG includes selected overlays such as metro lines, stations,
+    labels, paths, and route highlights.
+
+----------------------------------------------------------------------
+A5. PATH NODE NAMING AND CONNECTION DELETION RUN W04
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Normalize saved path-node IDs to positive numeric `node_<number>` values.
+[x] Keep path-node labels, PoI names, categories, and coordinates separate from
+    saved node IDs.
+[x] Reuse the lowest available numeric path-node ID before allocating a higher
+    ID.
+[x] Materialize referenced coordinate endpoints as saved numeric path nodes.
+[x] Allow every selected path node to show a Remove action.
+[x] Add selected-node inspector controls to remove individual path connections.
+[x] Add focused normalization, mutation, and inspector tests.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Newly added path nodes use `node_<number>` IDs, never labels or
+    coordinate-derived names.
+[ ] After deleting a lower-numbered node, the next added node reuses that open
+    numeric slot.
+[ ] Existing named nodes keep their visible labels while their saved IDs are
+    numeric.
+[ ] Selecting any path node shows a Remove action.
+[ ] Selecting a connected path node shows a Remove action for each listed
+    connection.
+[ ] Removing one connection leaves unrelated nodes and connections intact.
+
+----------------------------------------------------------------------
+A6. WALKING SUGGESTION CONSOLIDATION RUN W05
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Keep direct suggested routes to the same frontier village to the single
+    best endpoint pair unless an alternate can merge into a shared trunk.
+[x] Split close alternate suggestions at their route intersection so similar
+    paths share one trunk into the target village.
+[x] Add drawn walking-path vertices to suggestion component search so
+    suggestions can connect to the middle of an existing path segment.
+[x] Allow suggested routes to use isolated existing walk components as
+    already-built path segments when they reduce the missing-path cost.
+[x] Add focused walking-suggestion tests for duplicate suppression, shared
+    trunks, isolated path reuse, and middle-of-path connections.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Arrow Falls to P_2 shows only the best suggested connection rather than
+    two separate direct connections.
+[ ] Dicton and Hidden Valley Ranch suggestions toward Caverndeau combine into
+    a shared trunk when their routes intersect.
+[ ] Isolated hand-built walking path segments are reused by suggestions when
+    they are useful.
+[ ] Suggested paths can connect into the middle of an existing drawn walking
+    path instead of only its saved endpoints.
+
+----------------------------------------------------------------------
+A7. SHARED WEB/DESKTOP WALKING SUGGESTION SLOPE RUN W06
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Apply the shared desktop walking-suggestion generator to the web
+    `suggested_walking_segments` cache in `docs/metro_network.json`.
+[x] Keep suggested walking paths as dashed line segments in both desktop and
+    web rendering, without Bezier/smoothed curves.
+[x] Make the public web suggested walking path color match the desktop yellow.
+[x] Preserve sloped suggested line segments only when their slope is an integer
+    or reciprocal integer; split rational-slope segments into buildable
+    Minecraft-friendly line segments.
+[x] Add focused tests for integer/reciprocal slope preservation, rational
+    slope splitting, desktop unsmoothed rendering, and public viewer styling.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] The web Suggested paths overlay matches desktop suggestion scope and
+    consolidation behavior.
+[ ] Suggested paths on both desktop and web are yellow rather than pink.
+[ ] Suggested paths render as line segments, not smoothed curves.
+[ ] Any sloped suggested segment is buildable in Minecraft: integer slope,
+    reciprocal-integer slope, vertical, or horizontal.
+
+----------------------------------------------------------------------
+A8. WALKING SUGGESTION BRANCH TREE RUN W07
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Grow suggested walking paths as a rooted branch tree from the existing
+    walking-path network, so newly attached walk-ready villages can become
+    the source for later branches.
+[x] Keep non-walk-ready villages as leaves, avoiding branches from villages
+    that do not yet have walking paths.
+[x] Avoid direct bypass routes when an intermediate walk-ready village is the
+    sensible next attachment point.
+[x] Consolidate shared outgoing stems and nearby coordinate branch endpoints,
+    including saved coordinate endpoints, without modifying saved path data.
+[x] Regenerate the public web `suggested_walking_segments` cache from the
+    shared generator.
+[x] Add focused walking-suggestion tests for walk-ready middle-village
+    branching, non-walk-ready leaves, shared outgoing stems, and close
+    coordinate branch-point canonicalization.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Northbulge-to-south suggestions break clearly at Alexandropol before
+    branching farther south.
+[ ] Villages south of Nujeau branch from the Nujeau area instead of from far
+    north in the network.
+[ ] Isthmopol and Mt. Phosphagos share the same nearby branch line where their
+    suggested routes are close enough.
+[ ] Long direct bypasses are suppressed when a walk-ready village sits in the
+    middle and makes sense as the stop.
+
+----------------------------------------------------------------------
 B. VISUAL RUN V01 — WORKSPACE SHELL
 ----------------------------------------------------------------------
 
@@ -227,6 +433,8 @@ IMPLEMENTATION
 [ ] Keep junctions as larger or double diamonds.
 [ ] Keep terminals diamond-first.
 [ ] Give Mt. Phosphagos a permanent gold/purple landmark treatment.
+[verify] Add a separate desktop home landmark at -2556,1340 without replacing
+    the Mt. Phosphagos station.
 [ ] Use selected diamond-blue focus rings.
 [verify] Use circular line badges only for line identity.
 [ ] Preserve dotted/planned versus solid/open meaning.
@@ -243,6 +451,8 @@ USER VERIFICATION — LEAVE UNCHECKED
 [ ] Station and line symbols cannot be confused.
 [ ] Junctions are obvious.
 [ ] Mt. Phosphagos is distinctive.
+[ ] The separate home icon appears at -2556,1340 without replacing the
+    Mt. Phosphagos station marker.
 [ ] Selected stations are easy to find.
 [ ] Labels remain readable at world, regional, and close zoom.
 [ ] Planned and open track remain distinguishable.
@@ -268,6 +478,211 @@ G. CODEX EFFICIENCY RULES FOR THE VISUAL PHASE
 ======================================================================
 VISUAL RUN HISTORY
 ======================================================================
+
+2026-08-14 — Desktop PNG Export Stabilization Run D01-E
+
+- Scope: remove the desktop PNG export dependency on native Cairo/CairoSVG,
+  make the generated map PNG preserve block-level world-map detail, and keep
+  selected export overlays visible in that block-native PNG.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  `desktop_improvements.py`, `docs/metro_network.json`, `file_priority.txt`,
+  `legacy_core.py`, `notes.txt`, `plumville/desktop/inspector.py`,
+  `priority_list.csv`, `tests/test_desktop_improvements.py`,
+  `tests/test_desktop_inspector.py`, `tests/test_move_path_node.py`,
+  `tests/test_path_rendering.py`, `tests/test_walking_suggestions.py`,
+  `walking_suggestions.py`, and untracked `tests/test_path_node_splitting.py`,
+  which were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Reproduction: a direct call to `_build_current_map_png_export_bytes()` failed
+  while importing `cairosvg` with the reported missing `cairo-2` /
+  `libcairo.2.dylib` native-library error.
+- Implementation: `_build_current_map_png_export_bytes()` now writes PNG bytes
+  from the visible full-resolution world-map source crop instead of importing
+  CairoSVG, then draws selected overlays into that block-native image. Export
+  PNG supports metro lines, stations, labels, path nodes, walking/connector
+  paths, route highlights, grid axes, planning/connected/frontier/railway
+  overlays, and alignment reminders. The same byte builder is shared by Export
+  PNG and Export Block PNG, and the crop is saved as RGBA at one PNG pixel per
+  source block.
+- Regression coverage: `tests/test_public_export.py` asserts Export PNG writes
+  a block-sized PNG crop, draws a selected metro-line overlay into the PNG, and
+  fails if `cairosvg` is imported. It also covers the explicit World map image
+  requirement for block-level export.
+- Checks after editing: `python3 -m py_compile ui_extensions.py
+  desktop_improvements.py path_detection.py metro_station_extensions.py
+  legacy_core.py` passed; `python3 -m unittest tests.test_public_export
+  tests.test_world_map_overrides` passed; full `python3 -m unittest discover
+  -s tests` still fails only in the pre-existing `tests/test_station_signage.py`
+  cases; `npm run test:paths` passed; `npm test` passed; `git diff --check`
+  passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` both aborted with exit code 134 and no app-level
+  traceback/output in this execution environment.
+- User verification still required: confirm Export PNG no longer shows the
+  Cairo/cairo-2 error, writes an openable PNG, preserves one source block per
+  image pixel when inspected in a digital zoom tool, and includes selected
+  overlays such as metro lines, stations, labels, paths, and route highlights.
+
+2026-08-12 — Walking Suggestion Frontier Run W03
+
+- Scope: narrow suggested walking paths to the immediate walking-network
+  frontier, add bounded loop/alternate suggestions, and make suggestions more
+  visibly yellow.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  `desktop_improvements.py`, `docs/metro_network.json`, `file_priority.txt`,
+  `legacy_core.py`, `notes.txt`, `plumville/desktop/inspector.py`,
+  `priority_list.csv`, `tests/test_desktop_inspector.py`,
+  `tests/test_desktop_improvements.py`, `tests/test_move_path_node.py`,
+  `tests/test_path_rendering.py`, `tests/test_walking_suggestions.py`,
+  `walking_suggestions.py`, and untracked `tests/test_path_node_splitting.py`,
+  which were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Implementation: suggestion selection now treats the largest actual walking
+  component as the connected walking network, keeps only spanning suggestions
+  that touch that primary component, refines those direct-frontier paths with a
+  larger endpoint candidate pool so lower-water detours can win, and permits a
+  small number of close alternate routes into the same frontier component for
+  loop opportunities. Suggested walking paths now draw in yellow instead of the
+  existing walking-path pink.
+- Live-data probe with a fake distance terrain: direct frontier suggestions
+  resolved to Hidden Valley Ranch, Alexandropol, Minas Rojas, and P_2, plus
+  close alternate suggestions into the same frontier set rather than deeper
+  chained villages.
+- Regression coverage: `tests/test_walking_suggestions.py` covers immediate
+  frontier-only filtering, close loop alternates, and expanded endpoint
+  refinement; `tests/test_path_rendering.py` covers the yellow suggestion
+  render color.
+- Checks after editing: `python3 -m py_compile ui_extensions.py
+  desktop_improvements.py path_detection.py metro_station_extensions.py
+  legacy_core.py walking_suggestions.py` passed; `python3 -m unittest
+  tests.test_walking_suggestions tests.test_path_rendering` passed; full
+  `python3 -m unittest discover -s tests` still fails only in the pre-existing
+  `tests/test_station_signage.py` cases; `npm run test:paths` passed;
+  `npm test` passed; `git diff --check` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` both aborted with exit code 134 and no app-level
+  traceback/output in this execution environment.
+- User verification still required: confirm the Suggested paths overlay focuses
+  on Alexandropol, P_2, Minas Rojas, and Hidden Valley Ranch, that useful loop
+  alternates are not overwhelming, and that the suggestions read as yellow.
+
+2026-08-12 — Map Pathing Node Merge Run W02
+
+- Scope: simplify selected path-node actions and make coordinate edits merge
+  into an existing path node instead of failing.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  `desktop_improvements.py`, `docs/metro_network.json`, `file_priority.txt`,
+  `legacy_core.py`, `notes.txt`, `priority_list.csv`,
+  `tests/test_desktop_improvements.py`, `tests/test_path_rendering.py`,
+  `tests/test_walking_suggestions.py`, `walking_suggestions.py`, and untracked
+  `tests/test_path_node_splitting.py`, which were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Implementation: selected-node pathing actions now show Connect, Edit, and
+  Remove; the selected-node metro path action was removed from both legacy map
+  popup controls and the docked inspector. Editing a path node onto an occupied
+  path-node coordinate now merges references into the existing coordinate and
+  removes the moved explicit node, preserving the pre-existing node record and
+  label.
+- Regression coverage: `tests/test_move_path_node.py` covers merging into an
+  existing node while preserving the existing label and retargeting edge and
+  city-limit references; `tests/test_desktop_inspector.py` covers the updated
+  selected-node action labels and absence of Metro Path.
+- Checks after editing: `python3 -m py_compile ui_extensions.py
+  desktop_improvements.py path_detection.py metro_station_extensions.py
+  legacy_core.py plumville/desktop/inspector.py` passed; `python3 -m unittest
+  tests.test_move_path_node tests.test_desktop_inspector
+  tests.test_path_node_splitting` passed; full `python3 -m unittest discover
+  -s tests` still fails only in the pre-existing `tests/test_station_signage.py`
+  cases; `npm run test:paths` passed; `npm test` passed; `git diff --check`
+  passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` both aborted with exit code 134 and no app-level
+  traceback/output in this execution environment.
+- User verification still required: selected-node actions should show Connect,
+  Edit, and Remove with no Metro Path action; editing a node onto an existing
+  node should merge to one node using the existing node name.
+
+2026-08-12 — Walking Path Split Run W01
+
+- Scope: add automatic walking-path segment splitting when a new path node is
+  created on an existing drawn walking path.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  `desktop_improvements.py`, `docs/metro_network.json`, `file_priority.txt`,
+  `legacy_core.py`, `notes.txt`, `priority_list.csv`,
+  `tests/test_desktop_improvements.py`, `tests/test_path_rendering.py`,
+  `tests/test_walking_suggestions.py`, and `walking_suggestions.py`, which were
+  preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: targeted Python compile passed;
+  `python3 -m unittest discover -s tests` failed in existing
+  `tests/test_station_signage.py` cases around missing `P_CU5` / `P_GHI` and
+  changed Line C signage labels; `npm run test:paths` passed; `npm test`
+  passed.
+- Implementation: `add_path_node()` now normalizes existing path edges, finds
+  walking edges whose rendered polyline contains the new coordinate, replaces
+  each matching edge with two walk edges through the new node, and leaves
+  connector edges intact. Split edges preserve bidirectionality and labels, but
+  do not copy custom distance overrides because those would become inaccurate
+  after the split.
+- Regression coverage: added `tests/test_path_node_splitting.py` for direct
+  A-C splitting, splitting a turned path on an interior segment, and not
+  splitting connector edges.
+- Checks after editing: `python3 -m py_compile ui_extensions.py
+  desktop_improvements.py path_detection.py metro_station_extensions.py
+  legacy_core.py` passed; `python3 -m unittest tests.test_path_node_splitting
+  tests.test_move_path_node tests.test_path_rendering` passed; full
+  `python3 -m unittest discover -s tests` still fails only in the pre-existing
+  `tests/test_station_signage.py` cases; `npm run test:paths` passed;
+  `npm test` passed; `git diff --check` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` both aborted with exit code 134 and no app-level
+  traceback/output in this execution environment.
+- User verification still required: create a path node on a straight walking
+  segment, create one on a turned walking segment, and create one away from
+  walking paths to confirm the desktop behavior matches the automated mutation
+  coverage.
+
+2026-08-11 — Desktop Pathing Overlay Controls And Suggestions Cache
+
+- Scope: restore explicit path-node show/hide controls to the Pathing menu and
+  reduce repeated redraw cost when suggested walking paths are visible during
+  intercity pathing.
+- Initial branch/status: `main`; `git status --short` already showed modified
+  `desktop_improvements.py`, `docs/metro_network.json`, `file_priority.txt`,
+  `notes.txt`, `priority_list.csv`, and `tests/test_desktop_improvements.py`,
+  which were preserved.
+- Versions: Python 3.13.7; Node v24.11.1; npm 11.6.2.
+- Baseline checks before editing: targeted Python compile passed; full
+  `python3 -m unittest discover -s tests` failed in existing
+  `tests/test_station_signage.py` expectations around missing `P_CU5` /
+  `P_GHI` and Line C signage labels; `npm run test:paths` passed; `npm test`
+  passed.
+- Reproduction/root cause from code audit: the Pathing sidebar had no visible
+  overlay controls for `show_path_nodes_var` or
+  `show_suggested_walking_paths_var`. Path-node drawing was also hard-wired to
+  map pathing mode, so users could not hide nodes while intercity pathing was
+  active. Suggested walking paths cached completed suggestions, but redraws
+  still rebuilt the terrain grid before checking the cache.
+- Implementation: added Pathing > Overlays checkboxes for Path nodes and
+  Suggested paths, made path-node rendering follow the Path nodes variable,
+  and moved the suggested-path cache check ahead of terrain-grid construction
+  when world-map render metadata is available.
+- Regression coverage: `tests/test_path_rendering.py` covers hiding path nodes
+  while map pathing mode remains active. `tests/test_walking_suggestions.py`
+  covers cached suggestions skipping a second terrain-grid build.
+- Checks after editing: targeted `python3 -m unittest tests.test_path_rendering
+  tests.test_walking_suggestions` passed; targeted `python3 -m unittest
+  tests.test_desktop_improvements tests.test_city_limit_pathing` passed;
+  targeted Python compile passed; full `python3 -m unittest discover -s tests`
+  still fails only in the pre-existing `tests/test_station_signage.py` cases;
+  `npm run test:paths` passed; `npm test` passed; `git diff --check` passed.
+- Live-Tk limitation: `PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk` and
+  `python3 plumville_app.py` both aborted with exit code 134 and no app-level
+  traceback/output in this execution environment.
+- User verification still required: confirm the Pathing menu exposes Path nodes
+  and Suggested paths toggles, nodes can be hidden while intercity pathing is
+  still on, suggested paths remain visible when enabled, and repeated pan/zoom
+  redraws feel closer to the web version after the first suggestion build.
 
 2026-08-05 — Repository Cleanup Session
 
@@ -837,6 +1252,13 @@ REPORTED OR WELL-COVERED
 [x] Desktop map pathing shows nodes automatically, moves selected-node and
     city-limit editing into the inspector, and supports suggested city-limit
     polygons.
+[x] Pathing sidebar overlay toggles expose path nodes and suggested walking
+    paths, and suggested walking paths reuse cached terrain metadata between
+    unchanged redraws.
+[x] Saved path-node IDs now use positive numeric `node_<number>` values, labels
+    and PoI metadata remain separate, referenced coordinate endpoints are saved
+    as numeric nodes, new nodes reuse open numeric slots, and selected node
+    inspectors can remove nodes or individual path connections.
 [verify] Desktop inspector starts hidden, reopens for new tasks, supports scrolling
     and revised station/sign/status layout, default reset-view startup, convex city
     limits, station-entry map markers, and simplified route modes.
@@ -871,8 +1293,11 @@ NEEDS ANDREW'S LIVE VERIFICATION
 [ ] Priority List Line filter does not show unnamed placeholder stations.
 [ ] Inspector open/close keeps the same map center visible.
 [ ] Selecting a station frames it at roughly a 150-block radius.
-[ ] Map add/link mode automatically shows path nodes, and turning it off hides
-    them.
+[ ] The Pathing sidebar includes Path nodes and Suggested paths overlay toggles.
+[ ] Map add/link mode automatically shows path nodes, and the Path nodes toggle
+    can hide them again while pathing stays on.
+[ ] Suggested paths can stay visible during intercity pathing without repeated
+    pan/zoom redraws feeling as slow as the initial suggestion build.
 [ ] Selecting a path node shows node details and path actions in the inspector.
 [ ] Pathing town detection chooses the correct nearest station, and Change Town
     can correct it when needed.
@@ -893,6 +1318,14 @@ NEEDS ANDREW'S LIVE VERIFICATION
     bright and readable.
 [ ] The station inspector Paths button enables map add/link mode for that town.
 [ ] The Pathing sidebar Add Path button enables intercity path add/link mode.
+[ ] Path node IDs are numeric `node_<number>` values while labels remain
+    separate.
+[ ] Deleting a path node opens its numeric slot for the next newly added path
+    node.
+[ ] Every selected path node, including nodes created from path coordinates,
+    has a Remove action.
+[ ] Individual path connections can be removed from the selected-node
+    inspector without deleting unrelated connections.
 [ ] Railways sidebar no longer shows finishing mode, finish coordinates, or a
     Save Point action.
 [ ] Railways progress reads connected track length against planned track length.

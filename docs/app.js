@@ -65,6 +65,7 @@ const CONSTANTS = {
   lineHitToleranceMeters: 1.5,
   connectorPathColor: '#f0f0f0',
   walkingPathColor: '#f7c7db',
+  suggestedWalkingPathColor: '#f4d84a',
   walkingPathDash: [8, 6],
   extraPathWidth: 4,
   minecartSpeedMps: 8,
@@ -2058,7 +2059,7 @@ function drawSuggestedWalkingPaths() {
   ctx.save();
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
-  ctx.strokeStyle = CONSTANTS.walkingPathColor;
+  ctx.strokeStyle = CONSTANTS.suggestedWalkingPathColor;
   ctx.lineWidth = CONSTANTS.extraPathWidth;
   ctx.setLineDash(CONSTANTS.walkingPathDash);
   for (const segment of segments) {

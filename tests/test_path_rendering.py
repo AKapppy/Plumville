@@ -46,14 +46,17 @@ class _Canvas:
 def _viewer(
     *,
     path_click_mode: bool = False,
+    show_path_nodes: bool | None = None,
     selected_path_node_key: str | None = None,
     show_non_orthogonal_segments: bool = False,
 ) -> SimpleNamespace:
+    if show_path_nodes is None:
+        show_path_nodes = path_click_mode
     viewer = SimpleNamespace(
         canvas=_Canvas(),
         zoom=1.0,
         path_node_canvas_positions={},
-        show_path_nodes_var=_BoolVar(False),
+        show_path_nodes_var=_BoolVar(show_path_nodes),
         show_suggested_walking_paths_var=_BoolVar(False),
         show_non_orthogonal_segments_var=_BoolVar(show_non_orthogonal_segments),
         path_click_mode_var=_BoolVar(path_click_mode),
@@ -62,9 +65,9 @@ def _viewer(
         show_labels_var=_BoolVar(True),
         world_to_canvas=lambda point: point,
         _label_offset=lambda: (7, 7),
-        _path_nodes_should_show=lambda: path_click_mode,
         _stop_visible_line_names=lambda _stop, visible_line_names: visible_line_names,
     )
+    viewer._path_nodes_should_show = lambda: base.MetroMapViewer._path_nodes_should_show(viewer)
     viewer._draw_plot_polyline = lambda plot_points, **kwargs: base.MetroMapViewer._draw_plot_polyline(
         viewer,
         plot_points,
@@ -114,6 +117,22 @@ class PathRenderingConsolidationTests(unittest.TestCase):
         self.assertEqual(viewer.path_node_canvas_positions, {"node:a": (10, 20)})
         self.assertEqual(len(viewer.canvas.rectangles), 1)
 
+    def test_pathing_mode_can_hide_path_nodes(self) -> None:
+        viewer = _viewer(path_click_mode=True, show_path_nodes=False)
+        path_node = SimpleNamespace(
+            key="node:a",
+            plot_coordinates=(10, 20),
+            poi_kind=None,
+            label="A",
+            display_label="A",
+        )
+
+        with mock.patch.object(base, "_all_path_nodes", return_value=(path_node,)):
+            base.MetroMapViewer._draw_path_nodes(viewer)
+
+        self.assertEqual(viewer.path_node_canvas_positions, {})
+        self.assertEqual(viewer.canvas.rectangles, [])
+
     def test_suggested_walking_paths_draw_after_extra_edges(self) -> None:
         viewer = _viewer()
         viewer.show_suggested_walking_paths_var = _BoolVar(True)
@@ -128,8 +147,9 @@ class PathRenderingConsolidationTests(unittest.TestCase):
         self.assertEqual(len(viewer.canvas.lines), 1)
         args, kwargs = viewer.canvas.lines[0]
         self.assertEqual(args, (1, -2, 3, -4))
+        self.assertEqual(kwargs["fill"], base.SUGGESTED_WALK_ROUTE_COLOR)
         self.assertEqual(kwargs["dash"], (8, 6))
-        self.assertTrue(kwargs["smooth"])
+        self.assertNotIn("smooth", kwargs)
 
     def test_station_entry_draws_small_dot_with_dotted_link_when_zoomed_in(self) -> None:
         viewer = _viewer()

@@ -211,9 +211,9 @@ class CoreNetworkTests(unittest.TestCase):
         self.assertEqual(
             payload["path_nodes"],
             [
-                {"id": "keep", "x": 10, "y": 20, "label": "Oak"},
+                {"id": "node_1", "x": 10, "y": 20, "label": "Oak"},
                 {
-                    "id": "keep_2",
+                    "id": "node_2",
                     "x": 30,
                     "y": 40,
                     "poi_kind": "monument",
@@ -222,6 +222,54 @@ class CoreNetworkTests(unittest.TestCase):
             ],
         )
         self.assertFalse(base._normalize_path_nodes(payload))  # type: ignore[arg-type]
+
+    def test_normalize_path_nodes_repairs_ids_without_compacting_valid_nodes(self) -> None:
+        payload = {
+            "stops": [],
+            "path_nodes": [
+                {"id": "node_1", "x": 10, "y": 10},
+                {"id": "node_3", "x": 30, "y": 30},
+                {"id": "node_3_3", "x": 40, "y": 40},
+                {"id": "market gate", "x": 50, "y": 50, "label": "Market Gate"},
+                {"id": "monument_10", "x": 60, "y": 60, "poi_kind": "monument"},
+                {"id": "node_918_918", "x": 70, "y": 70},
+            ],
+        }
+
+        self.assertTrue(network.normalize_path_nodes(payload))
+
+        self.assertEqual(
+            [node["id"] for node in payload["path_nodes"]],
+            ["node_1", "node_3", "node_2", "node_4", "node_10", "node_918"],
+        )
+        self.assertFalse(network.normalize_path_nodes(payload))
+
+    def test_normalize_path_nodes_materializes_referenced_coordinate_nodes(self) -> None:
+        payload = {
+            "stops": [{"var": "P_A", "x": 0, "y": 0, "city_limit_node_keys": ["coord:30,40"]}],
+            "path_nodes": [{"id": "node_1", "x": 10, "y": 20}],
+            "extra_edges": [
+                {
+                    "id": "walk_1",
+                    "kind": "walk",
+                    "from_endpoint": {"kind": "coord", "x": 30, "y": 40},
+                    "to_endpoint": {"kind": "coord", "x": 50, "y": 60},
+                    "bidirectional": True,
+                    "path_points": [],
+                }
+            ],
+        }
+
+        self.assertTrue(network.normalize_path_nodes(payload))
+
+        self.assertEqual(
+            payload["path_nodes"],
+            [
+                {"id": "node_1", "x": 10, "y": 20},
+                {"id": "node_2", "x": 30, "y": 40},
+                {"id": "node_3", "x": 50, "y": 60},
+            ],
+        )
 
     def test_endpoint_resolution_supports_stop_labels_path_nodes_and_coordinates(self) -> None:
         payload = {

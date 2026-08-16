@@ -14,6 +14,12 @@ WATER_COST_MULTIPLIER = 10.0
 NEAR_WATER_COST_MULTIPLIER = 1.75
 OUTSIDE_RENDER_SEARCH_RADIUS = 4
 COMPONENT_PAIR_CANDIDATES = 8
+FRONTIER_COMPONENT_PAIR_CANDIDATES = 64
+TREE_COMPONENT_PAIR_CANDIDATES = 12
+TREE_ATTACHABLE_SOURCE_CANDIDATES = 3
+CLOSE_VIRTUAL_ENDPOINT_DISTANCE = 16.0
+LOOP_ROUTE_COST_MULTIPLIER = 1.25
+LOOP_CANDIDATES_PER_FRONTIER = 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -531,21 +537,28 @@ def _walk_component_index(base: Any, anchors: Iterable[_VillageAnchor]) -> dict[
     def ensure_key(endpoint_key: str) -> None:
         adjacency.setdefault(endpoint_key, set())
 
+    def connect(first_key: str, second_key: str) -> None:
+        ensure_key(first_key)
+        ensure_key(second_key)
+        adjacency[first_key].add(second_key)
+        adjacency[second_key].add(first_key)
+
     for edge in base.EXTRA_EDGES:
         if getattr(edge, "kind", None) != "walk":
             continue
         from_key = str(getattr(getattr(edge, "from_endpoint"), "key"))
         to_key = str(getattr(getattr(edge, "to_endpoint"), "key"))
-        ensure_key(from_key)
-        ensure_key(to_key)
-        adjacency[from_key].add(to_key)
-        adjacency[to_key].add(from_key)
+        path_keys = [from_key]
+        for point_x, point_y in _edge_path_coordinates(edge):
+            path_keys.append(_coordinate_key(base, point_x, point_y))
+        path_keys.append(to_key)
+        deduped_path_keys = _dedupe_consecutive_keys(path_keys)
+        for first_key, second_key in zip(deduped_path_keys, deduped_path_keys[1:]):
+            connect(first_key, second_key)
     for anchor in anchor_tuple:
         ensure_key(anchor.key)
         for component_key in anchor.component_keys:
-            ensure_key(component_key)
-            adjacency[anchor.key].add(component_key)
-            adjacency[component_key].add(anchor.key)
+            connect(anchor.key, component_key)
 
     component_by_key: dict[str, int] = {}
     next_component = 0
@@ -565,6 +578,36 @@ def _walk_component_index(base: Any, anchors: Iterable[_VillageAnchor]) -> dict[
     return component_by_key
 
 
+def _coordinate_key(base: Any, point_x: int, point_y: int) -> str:
+    coordinate_key = getattr(base, "_coordinate_endpoint_key", None)
+    if callable(coordinate_key):
+        return str(coordinate_key(point_x, point_y))
+    return f"coord:{point_x},{point_y}"
+
+
+def _edge_path_coordinates(edge: object) -> tuple[tuple[int, int], ...]:
+    path_points = tuple(getattr(edge, "path_points", ()) or ())
+    if not path_points:
+        return ()
+    from_coordinates = tuple(getattr(getattr(edge, "from_endpoint"), "coordinates"))
+    to_coordinates = tuple(getattr(getattr(edge, "to_endpoint"), "coordinates"))
+    points = [tuple(point) for point in path_points]
+    if points and points[0] == from_coordinates:
+        points = points[1:]
+    if points and points[-1] == to_coordinates:
+        points = points[:-1]
+    return tuple(cast(tuple[int, int], point) for point in points)
+
+
+def _dedupe_consecutive_keys(keys: list[str]) -> list[str]:
+    deduped: list[str] = []
+    for key in keys:
+        if deduped and deduped[-1] == key:
+            continue
+        deduped.append(key)
+    return deduped
+
+
 def _endpoint_coordinates(base: Any, endpoint_key: str) -> tuple[int, int]:
     endpoint = base._path_endpoint_from_key(endpoint_key)
     if endpoint is None:
@@ -572,7 +615,39 @@ def _endpoint_coordinates(base: Any, endpoint_key: str) -> tuple[int, int]:
     return tuple(endpoint.coordinates)
 
 
+def _endpoint_coordinates_or_none(base: Any, endpoint_key: str) -> tuple[int, int] | None:
+    try:
+        return _endpoint_coordinates(base, endpoint_key)
+    except (AttributeError, KeyError, TypeError, ValueError):
+        pass
+
+    if not endpoint_key.startswith("coord:"):
+        return None
+    coordinate_text = endpoint_key.removeprefix("coord:")
+    try:
+        point_x_text, point_y_text = coordinate_text.split(",", 1)
+        return (int(point_x_text), int(point_y_text))
+    except ValueError:
+        return None
+
+
 def _terrain_from_viewer(viewer: Any) -> TerrainGrid | None:
+    metadata = _terrain_metadata_from_viewer(viewer)
+    if metadata is None:
+        return None
+    min_x, max_x, min_z, max_z, source_image = metadata
+    return TerrainGrid(
+        min_x=min_x,
+        max_x=max_x,
+        min_z=min_z,
+        max_z=max_z,
+        image=source_image,
+    )
+
+
+def _terrain_metadata_from_viewer(
+    viewer: Any,
+) -> tuple[int, int, int, int, Image.Image] | None:
     if not hasattr(viewer, "_current_world_map_render_underlay"):
         return None
     render_underlay = viewer._current_world_map_render_underlay()
@@ -590,12 +665,23 @@ def _terrain_from_viewer(viewer: Any) -> TerrainGrid | None:
 
     if min_x >= max_x or min_z >= max_z:
         return None
-    return TerrainGrid(
-        min_x=min_x,
-        max_x=max_x,
-        min_z=min_z,
-        max_z=max_z,
-        image=source_image,
+    return (min_x, max_x, min_z, max_z, source_image)
+
+
+def _terrain_signature_from_metadata(
+    metadata: tuple[int, int, int, int, Image.Image],
+) -> tuple[object, ...]:
+    min_x, max_x, min_z, max_z, source_image = metadata
+    image_width, image_height = source_image.size
+    step_px = max(1, round(max(image_width, image_height) / MAX_GRID_DIMENSION))
+    return (
+        min_x,
+        max_x,
+        min_z,
+        max_z,
+        image_width,
+        image_height,
+        step_px,
     )
 
 
@@ -642,6 +728,8 @@ def _component_pair_candidates(
     grouped_keys: dict[int, list[str]],
     first_component: int,
     second_component: int,
+    *,
+    limit: int = COMPONENT_PAIR_CANDIDATES,
 ) -> list[tuple[float, str, str]]:
     candidates: list[tuple[float, str, str]] = []
     for first_key in grouped_keys[first_component]:
@@ -650,7 +738,64 @@ def _component_pair_candidates(
             second_coordinates = _endpoint_coordinates(base, second_key)
             candidates.append((dist(first_coordinates, second_coordinates), first_key, second_key))
     candidates.sort()
-    return candidates[:COMPONENT_PAIR_CANDIDATES]
+    return candidates[:limit]
+
+
+def _route_candidate_for_key_pair(
+    base: Any,
+    terrain: TerrainGrid,
+    first_key: str,
+    second_key: str,
+    first_component: int,
+    second_component: int,
+) -> _RouteCandidate | None:
+    first_coordinates = _endpoint_coordinates(base, first_key)
+    second_coordinates = _endpoint_coordinates(base, second_key)
+    route = terrain.find_path(first_coordinates, second_coordinates)
+    if route is None:
+        return None
+    route_cost, path_coordinates = route
+    path_coordinates = _minecraft_buildable_path(path_coordinates)
+    return _RouteCandidate(
+        cost=route_cost,
+        first_key=first_key,
+        second_key=second_key,
+        first_component=first_component,
+        second_component=second_component,
+        path_coordinates=path_coordinates,
+    )
+
+
+def _best_route_between_components(
+    base: Any,
+    terrain: TerrainGrid,
+    grouped_keys: dict[int, list[str]],
+    first_component: int,
+    second_component: int,
+    *,
+    limit: int = COMPONENT_PAIR_CANDIDATES,
+) -> _RouteCandidate | None:
+    best_route = None
+    for _straight_distance, first_key, second_key in _component_pair_candidates(
+        base,
+        grouped_keys,
+        first_component,
+        second_component,
+        limit=limit,
+    ):
+        candidate = _route_candidate_for_key_pair(
+            base,
+            terrain,
+            first_key,
+            second_key,
+            first_component,
+            second_component,
+        )
+        if candidate is None:
+            continue
+        if best_route is None or candidate.cost < best_route.cost:
+            best_route = candidate
+    return best_route
 
 
 def _candidate_routes(
@@ -670,20 +815,16 @@ def _candidate_routes(
                 first_component,
                 second_component,
             ):
-                first_coordinates = _endpoint_coordinates(base, first_key)
-                second_coordinates = _endpoint_coordinates(base, second_key)
-                route = terrain.find_path(first_coordinates, second_coordinates)
-                if route is None:
-                    continue
-                route_cost, path_coordinates = route
-                candidate = _RouteCandidate(
-                    cost=route_cost,
-                    first_key=first_key,
-                    second_key=second_key,
-                    first_component=first_component,
-                    second_component=second_component,
-                    path_coordinates=path_coordinates,
+                candidate = _route_candidate_for_key_pair(
+                    base,
+                    terrain,
+                    first_key,
+                    second_key,
+                    first_component,
+                    second_component,
                 )
+                if candidate is None:
+                    continue
                 if best_route is None or candidate.cost < best_route.cost:
                     best_route = candidate
             if best_route is not None:
@@ -692,46 +833,36 @@ def _candidate_routes(
     return candidates
 
 
-def build_suggested_segments(base: Any, viewer: Any | None = None) -> tuple[SuggestedSegment, ...]:
-    global _CACHE_KEY
-    global _CACHE_VALUE
-
-    anchors_by_stop = village_anchors(base)
-    anchor_keys = tuple(dict.fromkeys(anchor.key for anchor in anchors_by_stop.values()))
-    if len(anchor_keys) < 2:
-        return ()
-
-    component_by_key = _walk_component_index(base, anchors_by_stop.values())
-    anchor_component_ids = {
-        component_by_key[anchor.key]
-        for anchor in anchors_by_stop.values()
-    }
-    grouped_keys: dict[int, list[str]] = {}
-    for endpoint_key, component_id in component_by_key.items():
-        if component_id not in anchor_component_ids:
+def _primary_walk_component_id(
+    component_by_key: dict[str, int],
+    anchors_by_stop: dict[str, _VillageAnchor],
+) -> int | None:
+    component_counts: dict[int, int] = {}
+    for anchor in anchors_by_stop.values():
+        component_id = component_by_key.get(anchor.key)
+        if component_id is None:
             continue
-        grouped_keys.setdefault(component_id, []).append(endpoint_key)
-    for component_id in grouped_keys:
-        grouped_keys[component_id].sort()
+        component_counts[component_id] = component_counts.get(component_id, 0) + 1
+    if not component_counts:
+        return None
+    endpoint_counts: dict[int, int] = {}
+    for component_id in component_by_key.values():
+        endpoint_counts[component_id] = endpoint_counts.get(component_id, 0) + 1
+    return max(
+        component_counts,
+        key=lambda component_id: (
+            component_counts[component_id],
+            endpoint_counts.get(component_id, 0),
+            -component_id,
+        ),
+    )
 
-    if len(grouped_keys) < 2:
-        return ()
 
-    terrain = _terrain_from_viewer(viewer) if viewer is not None else None
-    if terrain is None:
-        return ()
-
-    cache_key = (_network_signature(base), terrain.signature)
-    if cache_key == _CACHE_KEY:
-        return _CACHE_VALUE
-
-    candidates = _candidate_routes(base, terrain, grouped_keys)
-    if not candidates:
-        _CACHE_KEY = cache_key
-        _CACHE_VALUE = ()
-        return ()
-
-    parent = {component_id: component_id for component_id in grouped_keys}
+def _minimum_spanning_candidates(
+    candidates: Iterable[_RouteCandidate],
+    component_ids: Iterable[int],
+) -> list[_RouteCandidate]:
+    parent = {component_id: component_id for component_id in component_ids}
 
     def find(component_id: int) -> int:
         while parent[component_id] != component_id:
@@ -747,10 +878,866 @@ def build_suggested_segments(base: Any, viewer: Any | None = None) -> tuple[Sugg
         parent[second_root] = first_root
         return True
 
-    segments: list[SuggestedSegment] = []
+    selected_candidates: list[_RouteCandidate] = []
     for candidate in candidates:
         if not union(candidate.first_component, candidate.second_component):
             continue
+        selected_candidates.append(candidate)
+    return selected_candidates
+
+
+def _direct_frontier_candidates(
+    base: Any,
+    terrain: TerrainGrid,
+    grouped_keys: dict[int, list[str]],
+    candidates: Iterable[_RouteCandidate],
+    primary_component: int,
+) -> list[_RouteCandidate]:
+    direct_candidates: list[_RouteCandidate] = []
+    seen_pairs: set[tuple[int, int]] = set()
+    for candidate in candidates:
+        if primary_component not in (candidate.first_component, candidate.second_component):
+            continue
+        component_pair = tuple(sorted((candidate.first_component, candidate.second_component)))
+        if component_pair in seen_pairs:
+            continue
+        seen_pairs.add(component_pair)
+        refined_candidate = _best_route_between_components(
+            base,
+            terrain,
+            grouped_keys,
+            candidate.first_component,
+            candidate.second_component,
+            limit=FRONTIER_COMPONENT_PAIR_CANDIDATES,
+        )
+        direct_candidates.append(refined_candidate or candidate)
+    direct_candidates.sort(key=lambda candidate: (candidate.cost, candidate.first_key, candidate.second_key))
+    return direct_candidates
+
+
+def _anchor_route_candidates_between_components(
+    base: Any,
+    terrain: TerrainGrid,
+    anchors_by_stop: dict[str, _VillageAnchor],
+    component_by_key: dict[str, int],
+    first_component: int,
+    second_component: int,
+) -> list[_RouteCandidate]:
+    first_anchors = tuple(
+        anchor
+        for anchor in anchors_by_stop.values()
+        if component_by_key.get(anchor.key) == first_component
+    )
+    second_anchors = tuple(
+        anchor
+        for anchor in anchors_by_stop.values()
+        if component_by_key.get(anchor.key) == second_component
+    )
+    candidates: list[_RouteCandidate] = []
+    for first_anchor in first_anchors:
+        for second_anchor in second_anchors:
+            candidate = _route_candidate_for_key_pair(
+                base,
+                terrain,
+                first_anchor.key,
+                second_anchor.key,
+                first_component,
+                second_component,
+            )
+            if candidate is not None:
+                candidates.append(candidate)
+    candidates.sort(key=lambda candidate: (candidate.cost, candidate.first_key, candidate.second_key))
+    return candidates
+
+
+def _loop_candidates_for_direct_routes(
+    base: Any,
+    terrain: TerrainGrid,
+    anchors_by_stop: dict[str, _VillageAnchor],
+    component_by_key: dict[str, int],
+    direct_candidates: Iterable[_RouteCandidate],
+) -> list[_RouteCandidate]:
+    loop_candidates: list[_RouteCandidate] = []
+    selected_pairs = {
+        frozenset((candidate.first_key, candidate.second_key))
+        for candidate in direct_candidates
+    }
+    for direct_candidate in direct_candidates:
+        added_for_frontier = 0
+        for candidate in _anchor_route_candidates_between_components(
+            base,
+            terrain,
+            anchors_by_stop,
+            component_by_key,
+            direct_candidate.first_component,
+            direct_candidate.second_component,
+        ):
+            candidate_pair = frozenset((candidate.first_key, candidate.second_key))
+            if candidate_pair in selected_pairs:
+                continue
+            if candidate.cost > direct_candidate.cost * LOOP_ROUTE_COST_MULTIPLIER:
+                break
+            selected_pairs.add(candidate_pair)
+            loop_candidates.append(candidate)
+            added_for_frontier += 1
+            if added_for_frontier >= LOOP_CANDIDATES_PER_FRONTIER:
+                break
+    loop_candidates.sort(key=lambda candidate: (candidate.cost, candidate.first_key, candidate.second_key))
+    return loop_candidates
+
+
+def _anchor_component_ids(
+    anchors_by_stop: dict[str, _VillageAnchor],
+    component_by_key: dict[str, int],
+) -> set[int]:
+    return {
+        component_id
+        for anchor in anchors_by_stop.values()
+        for component_id in (component_by_key.get(anchor.key),)
+        if component_id is not None
+    }
+
+
+def _pass_through_component_ids(
+    base: Any,
+    anchors_by_stop: dict[str, _VillageAnchor],
+    component_by_key: dict[str, int],
+) -> set[int]:
+    stop_by_var = {
+        str(getattr(stop, "var")): stop
+        for stop in base.METRO_STOPS
+    }
+    pass_through_components: set[int] = set()
+    for stop_var, anchor in anchors_by_stop.items():
+        stop = stop_by_var.get(stop_var)
+        if stop is None or not bool(getattr(stop, "has_walking_paths", False)):
+            continue
+        component_id = component_by_key.get(anchor.key)
+        if component_id is not None:
+            pass_through_components.add(component_id)
+    return pass_through_components
+
+
+def _best_route_chain_between_components(
+    base: Any,
+    terrain: TerrainGrid,
+    grouped_keys: dict[int, list[str]],
+    first_component: int,
+    second_component: int,
+    anchored_components: set[int],
+    *,
+    limit: int = FRONTIER_COMPONENT_PAIR_CANDIDATES,
+) -> list[_RouteCandidate]:
+    direct_route = _best_route_between_components(
+        base,
+        terrain,
+        grouped_keys,
+        first_component,
+        second_component,
+        limit=limit,
+    )
+    best_cost = direct_route.cost if direct_route is not None else float("inf")
+    best_chain = [direct_route] if direct_route is not None else []
+
+    for intermediate_component in sorted(grouped_keys):
+        if intermediate_component in {first_component, second_component}:
+            continue
+        if intermediate_component in anchored_components:
+            continue
+
+        first_route = _best_route_between_components(
+            base,
+            terrain,
+            grouped_keys,
+            first_component,
+            intermediate_component,
+            limit=limit,
+        )
+        if first_route is None:
+            continue
+        second_route = _best_route_between_components(
+            base,
+            terrain,
+            grouped_keys,
+            intermediate_component,
+            second_component,
+            limit=limit,
+        )
+        if second_route is None:
+            continue
+
+        chain_cost = first_route.cost + second_route.cost
+        if chain_cost < best_cost:
+            best_cost = chain_cost
+            best_chain = [first_route, second_route]
+
+    return best_chain
+
+
+def _chain_cost(chain: Iterable[_RouteCandidate]) -> float:
+    return sum(candidate.cost for candidate in chain)
+
+
+def _component_straight_distance(
+    base: Any,
+    grouped_keys: dict[int, list[str]],
+    first_component: int,
+    second_component: int,
+) -> float:
+    candidates = _component_pair_candidates(
+        base,
+        grouped_keys,
+        first_component,
+        second_component,
+        limit=1,
+    )
+    if not candidates:
+        return float("inf")
+    return candidates[0][0]
+
+
+def _route_shared_key(first_candidate: _RouteCandidate, second_candidate: _RouteCandidate) -> str | None:
+    shared_keys = {
+        first_candidate.first_key,
+        first_candidate.second_key,
+    } & {
+        second_candidate.first_key,
+        second_candidate.second_key,
+    }
+    if len(shared_keys) != 1:
+        return None
+    return next(iter(shared_keys))
+
+
+def _oriented_path_to_key(
+    candidate: _RouteCandidate,
+    end_key: str,
+) -> tuple[str, tuple[tuple[int, int], ...]] | None:
+    if candidate.second_key == end_key:
+        return (candidate.first_key, candidate.path_coordinates)
+    if candidate.first_key == end_key:
+        return (candidate.second_key, tuple(reversed(candidate.path_coordinates)))
+    return None
+
+
+def _route_merge_point(
+    first_path: tuple[tuple[int, int], ...],
+    second_path: tuple[tuple[int, int], ...],
+) -> tuple[int, int] | None:
+    first_unique = first_path[0]
+    second_unique = second_path[0]
+    shared_endpoint = first_path[-1]
+    best_point = None
+    best_distance = None
+
+    for first_start, first_end in zip(first_path, first_path[1:]):
+        for second_start, second_end in zip(second_path, second_path[1:]):
+            intersection = _segment_intersection(first_start, first_end, second_start, second_end)
+            if intersection is None:
+                continue
+            if intersection in {first_unique, second_unique, shared_endpoint}:
+                continue
+            intersection_distance = dist(intersection, shared_endpoint)
+            if best_distance is None or intersection_distance > best_distance:
+                best_distance = intersection_distance
+                best_point = intersection
+    return best_point
+
+
+def _segment_intersection(
+    first_start: tuple[int, int],
+    first_end: tuple[int, int],
+    second_start: tuple[int, int],
+    second_end: tuple[int, int],
+) -> tuple[int, int] | None:
+    first_x, first_y = first_start
+    first_dx = first_end[0] - first_x
+    first_dy = first_end[1] - first_y
+    second_x, second_y = second_start
+    second_dx = second_end[0] - second_x
+    second_dy = second_end[1] - second_y
+    denominator = (first_dx * second_dy) - (first_dy * second_dx)
+
+    if denominator == 0:
+        for point in (first_start, first_end, second_start, second_end):
+            if _point_on_segment(point, first_start, first_end) and _point_on_segment(point, second_start, second_end):
+                return point
+        return None
+
+    delta_x = second_x - first_x
+    delta_y = second_y - first_y
+    first_fraction = ((delta_x * second_dy) - (delta_y * second_dx)) / denominator
+    second_fraction = ((delta_x * first_dy) - (delta_y * first_dx)) / denominator
+    if not (0.0 <= first_fraction <= 1.0 and 0.0 <= second_fraction <= 1.0):
+        return None
+    return (
+        round(first_x + (first_fraction * first_dx)),
+        round(first_y + (first_fraction * first_dy)),
+    )
+
+
+def _point_on_segment(
+    point: tuple[int, int],
+    segment_start: tuple[int, int],
+    segment_end: tuple[int, int],
+) -> bool:
+    cross_product = (
+        (point[1] - segment_start[1]) * (segment_end[0] - segment_start[0])
+        - (point[0] - segment_start[0]) * (segment_end[1] - segment_start[1])
+    )
+    if cross_product != 0:
+        return False
+    return (
+        min(segment_start[0], segment_end[0]) <= point[0] <= max(segment_start[0], segment_end[0])
+        and min(segment_start[1], segment_end[1]) <= point[1] <= max(segment_start[1], segment_end[1])
+    )
+
+
+def _split_path_at_point(
+    path: tuple[tuple[int, int], ...],
+    split_point: tuple[int, int],
+) -> tuple[
+    tuple[tuple[int, int], ...],
+    tuple[tuple[int, int], ...],
+] | None:
+    if split_point == path[0]:
+        return ((path[0],), path)
+    if split_point == path[-1]:
+        return (path, (path[-1],))
+
+    for index, (segment_start, segment_end) in enumerate(zip(path, path[1:])):
+        if not _point_on_segment(split_point, segment_start, segment_end):
+            continue
+        prefix = [*path[: index + 1]]
+        suffix = [*path[index + 1 :]]
+        if prefix[-1] != split_point:
+            prefix.append(split_point)
+        if suffix[0] != split_point:
+            suffix.insert(0, split_point)
+        return (tuple(_dedupe_consecutive_points(prefix)), tuple(_dedupe_consecutive_points(suffix)))
+    return None
+
+
+def _candidate_from_path(
+    *,
+    first_key: str,
+    second_key: str,
+    first_component: int,
+    second_component: int,
+    path_coordinates: tuple[tuple[int, int], ...],
+) -> _RouteCandidate | None:
+    if len(path_coordinates) < 2:
+        return None
+    path_coordinates = _minecraft_buildable_path(path_coordinates)
+    return _RouteCandidate(
+        cost=_polyline_length(path_coordinates),
+        first_key=first_key,
+        second_key=second_key,
+        first_component=first_component,
+        second_component=second_component,
+        path_coordinates=path_coordinates,
+    )
+
+
+def _merged_shared_trunk_candidates(
+    base: Any,
+    first_candidate: _RouteCandidate,
+    second_candidate: _RouteCandidate,
+) -> tuple[_RouteCandidate, ...]:
+    shared_key = _route_shared_key(first_candidate, second_candidate)
+    if shared_key is None:
+        return ()
+
+    first_oriented = _oriented_path_to_key(first_candidate, shared_key)
+    second_oriented = _oriented_path_to_key(second_candidate, shared_key)
+    if first_oriented is None or second_oriented is None:
+        return ()
+
+    first_unique_key, first_path = first_oriented
+    second_unique_key, second_path = second_oriented
+    merge_point = _route_merge_point(first_path, second_path)
+    if merge_point is None:
+        return ()
+
+    first_split = _split_path_at_point(first_path, merge_point)
+    second_split = _split_path_at_point(second_path, merge_point)
+    if first_split is None or second_split is None:
+        return ()
+
+    merge_key = _coordinate_key(base, merge_point[0], merge_point[1])
+    first_branch, first_trunk = first_split
+    second_branch, second_trunk = second_split
+    trunk_path = first_trunk if _polyline_length(first_trunk) <= _polyline_length(second_trunk) else second_trunk
+
+    candidates = tuple(
+        candidate
+        for candidate in (
+            _candidate_from_path(
+                first_key=first_unique_key,
+                second_key=merge_key,
+                first_component=first_candidate.first_component,
+                second_component=first_candidate.first_component,
+                path_coordinates=first_branch,
+            ),
+            _candidate_from_path(
+                first_key=second_unique_key,
+                second_key=merge_key,
+                first_component=second_candidate.first_component,
+                second_component=second_candidate.first_component,
+                path_coordinates=second_branch,
+            ),
+            _candidate_from_path(
+                first_key=merge_key,
+                second_key=shared_key,
+                first_component=first_candidate.first_component,
+                second_component=first_candidate.second_component,
+                path_coordinates=trunk_path,
+            ),
+        )
+        if candidate is not None
+    )
+    return candidates
+
+
+def _consolidated_candidates(
+    base: Any,
+    direct_candidates: list[_RouteCandidate],
+    loop_candidates: Iterable[_RouteCandidate],
+) -> list[_RouteCandidate]:
+    consolidated = direct_candidates[:]
+    replaced_indexes: set[int] = set()
+    additions: list[_RouteCandidate] = []
+
+    for loop_candidate in loop_candidates:
+        for index, direct_candidate in enumerate(consolidated):
+            if index in replaced_indexes:
+                continue
+            if {
+                direct_candidate.first_component,
+                direct_candidate.second_component,
+            } != {
+                loop_candidate.first_component,
+                loop_candidate.second_component,
+            }:
+                continue
+            merged_candidates = _merged_shared_trunk_candidates(base, direct_candidate, loop_candidate)
+            if not merged_candidates:
+                continue
+            replaced_indexes.add(index)
+            additions.extend(merged_candidates)
+            break
+
+    if not replaced_indexes:
+        return consolidated
+    return [
+        candidate
+        for index, candidate in enumerate(consolidated)
+        if index not in replaced_indexes
+    ] + additions
+
+
+def _route_branch_point(
+    first_path: tuple[tuple[int, int], ...],
+    second_path: tuple[tuple[int, int], ...],
+) -> tuple[int, int] | None:
+    shared_start = first_path[0]
+    first_target = first_path[-1]
+    second_target = second_path[-1]
+    best_point = None
+    best_distance = None
+
+    for first_start, first_end in zip(first_path, first_path[1:]):
+        for second_start, second_end in zip(second_path, second_path[1:]):
+            intersection = _segment_intersection(first_start, first_end, second_start, second_end)
+            if intersection is None:
+                continue
+            if intersection in {shared_start, first_target, second_target}:
+                continue
+            intersection_distance = dist(shared_start, intersection)
+            if best_distance is None or intersection_distance > best_distance:
+                best_distance = intersection_distance
+                best_point = intersection
+    return best_point
+
+
+def _oriented_path_from_key(
+    candidate: _RouteCandidate,
+    start_key: str,
+) -> tuple[str, tuple[tuple[int, int], ...]] | None:
+    if candidate.first_key == start_key:
+        return (candidate.second_key, candidate.path_coordinates)
+    if candidate.second_key == start_key:
+        return (candidate.first_key, tuple(reversed(candidate.path_coordinates)))
+    return None
+
+
+def _merged_shared_stem_candidates(
+    base: Any,
+    first_candidate: _RouteCandidate,
+    second_candidate: _RouteCandidate,
+) -> tuple[_RouteCandidate, ...]:
+    shared_key = _route_shared_key(first_candidate, second_candidate)
+    if shared_key is None:
+        return ()
+
+    first_oriented = _oriented_path_from_key(first_candidate, shared_key)
+    second_oriented = _oriented_path_from_key(second_candidate, shared_key)
+    if first_oriented is None or second_oriented is None:
+        return ()
+
+    first_target_key, first_path = first_oriented
+    second_target_key, second_path = second_oriented
+    branch_point = _route_branch_point(first_path, second_path)
+    if branch_point is None:
+        return ()
+
+    first_split = _split_path_at_point(first_path, branch_point)
+    second_split = _split_path_at_point(second_path, branch_point)
+    if first_split is None or second_split is None:
+        return ()
+
+    branch_key = _coordinate_key(base, branch_point[0], branch_point[1])
+    first_stem, first_branch = first_split
+    _second_stem, second_branch = second_split
+    return tuple(
+        candidate
+        for candidate in (
+            _candidate_from_path(
+                first_key=shared_key,
+                second_key=branch_key,
+                first_component=first_candidate.first_component,
+                second_component=first_candidate.first_component,
+                path_coordinates=first_stem,
+            ),
+            _candidate_from_path(
+                first_key=branch_key,
+                second_key=first_target_key,
+                first_component=first_candidate.first_component,
+                second_component=first_candidate.second_component,
+                path_coordinates=first_branch,
+            ),
+            _candidate_from_path(
+                first_key=branch_key,
+                second_key=second_target_key,
+                first_component=second_candidate.first_component,
+                second_component=second_candidate.second_component,
+                path_coordinates=second_branch,
+            ),
+        )
+        if candidate is not None
+    )
+
+
+def _consolidate_shared_stems(
+    base: Any,
+    candidates: Iterable[_RouteCandidate],
+) -> list[_RouteCandidate]:
+    consolidated = _dedupe_route_candidates(candidates)
+    for _attempt in range(len(consolidated)):
+        for first_index, first_candidate in enumerate(consolidated):
+            for second_index in range(first_index + 1, len(consolidated)):
+                second_candidate = consolidated[second_index]
+                merged_candidates = _merged_shared_stem_candidates(
+                    base,
+                    first_candidate,
+                    second_candidate,
+                )
+                if not merged_candidates:
+                    continue
+                consolidated = _dedupe_route_candidates(
+                    [
+                        candidate
+                        for index, candidate in enumerate(consolidated)
+                        if index not in {first_index, second_index}
+                    ]
+                    + list(merged_candidates)
+                )
+                break
+            else:
+                continue
+            break
+        else:
+            break
+    return consolidated
+
+
+def _canonicalize_close_virtual_endpoints(
+    base: Any,
+    candidates: Iterable[_RouteCandidate],
+    fixed_endpoint_keys: set[str],
+) -> list[_RouteCandidate]:
+    canonical_coordinate_points: list[tuple[str, tuple[int, int]]] = []
+    canonical_by_key: dict[str, str] = {}
+
+    def canonical_key(endpoint_key: str) -> str:
+        cached_key = canonical_by_key.get(endpoint_key)
+        if cached_key is not None:
+            return cached_key
+        if endpoint_key in fixed_endpoint_keys and not endpoint_key.startswith("coord:"):
+            canonical_by_key[endpoint_key] = endpoint_key
+            return endpoint_key
+
+        coordinates = _endpoint_coordinates_or_none(base, endpoint_key)
+        if coordinates is None:
+            canonical_by_key[endpoint_key] = endpoint_key
+            return endpoint_key
+
+        nearest_coordinate = min(
+            (
+                (dist(coordinates, known_coordinates), known_key)
+                for known_key, known_coordinates in canonical_coordinate_points
+                if dist(coordinates, known_coordinates) <= CLOSE_VIRTUAL_ENDPOINT_DISTANCE
+            ),
+            default=None,
+            key=lambda item: (item[0], item[1]),
+        )
+        if nearest_coordinate is not None:
+            canonical_by_key[endpoint_key] = nearest_coordinate[1]
+            return nearest_coordinate[1]
+
+        canonical_coordinate_points.append((endpoint_key, coordinates))
+        canonical_by_key[endpoint_key] = endpoint_key
+        return endpoint_key
+
+    rewritten_candidates: list[_RouteCandidate] = []
+    for candidate in _dedupe_route_candidates(candidates):
+        first_key = canonical_key(candidate.first_key)
+        second_key = canonical_key(candidate.second_key)
+        if first_key == second_key:
+            continue
+
+        path_coordinates = list(candidate.path_coordinates)
+        first_coordinates = _endpoint_coordinates_or_none(base, first_key)
+        second_coordinates = _endpoint_coordinates_or_none(base, second_key)
+        if first_coordinates is not None:
+            path_coordinates[0] = first_coordinates
+        if second_coordinates is not None:
+            path_coordinates[-1] = second_coordinates
+
+        rewritten_candidate = _candidate_from_path(
+            first_key=first_key,
+            second_key=second_key,
+            first_component=candidate.first_component,
+            second_component=candidate.second_component,
+            path_coordinates=tuple(path_coordinates),
+        )
+        if rewritten_candidate is not None:
+            rewritten_candidates.append(rewritten_candidate)
+
+    return _dedupe_route_candidates(rewritten_candidates)
+
+
+def _tree_route_candidates(
+    base: Any,
+    terrain: TerrainGrid,
+    grouped_keys: dict[int, list[str]],
+    anchors_by_stop: dict[str, _VillageAnchor],
+    component_by_key: dict[str, int],
+    primary_component: int,
+) -> list[_RouteCandidate]:
+    anchored_components = _anchor_component_ids(anchors_by_stop, component_by_key)
+    pass_through_components = _pass_through_component_ids(base, anchors_by_stop, component_by_key)
+    attached_components = {primary_component}
+    attachable_components = {primary_component}
+    remaining_components = anchored_components - attached_components
+    selected_candidates: list[_RouteCandidate] = []
+    route_chain_cache: dict[tuple[int, int], list[_RouteCandidate]] = {}
+
+    def route_chain_between(
+        source_component: int,
+        target_component: int,
+    ) -> list[_RouteCandidate]:
+        cache_key = (source_component, target_component)
+        cached_chain = route_chain_cache.get(cache_key)
+        if cached_chain is not None:
+            return cached_chain
+        route_chain = _best_route_chain_between_components(
+            base,
+            terrain,
+            grouped_keys,
+            source_component,
+            target_component,
+            anchored_components,
+            limit=TREE_COMPONENT_PAIR_CANDIDATES,
+        )
+        route_chain_cache[cache_key] = route_chain
+        return route_chain
+
+    while remaining_components and attachable_components:
+        best_source = None
+        best_target = None
+        best_chain: list[_RouteCandidate] = []
+        best_cost = float("inf")
+        pairs_to_try: set[tuple[int, int]] = set()
+        for target_component in sorted(remaining_components):
+            closest_sources = sorted(
+                (
+                    (
+                        _component_straight_distance(
+                            base,
+                            grouped_keys,
+                            source_component,
+                            target_component,
+                        ),
+                        source_component,
+                    )
+                    for source_component in attachable_components
+                ),
+                key=lambda item: (item[0], item[1]),
+            )[:TREE_ATTACHABLE_SOURCE_CANDIDATES]
+            pairs_to_try.update(
+                (source_component, target_component)
+                for _straight_distance, source_component in closest_sources
+            )
+
+        for source_component, target_component in sorted(
+            pairs_to_try,
+            key=lambda pair: (
+                _component_straight_distance(base, grouped_keys, pair[0], pair[1]),
+                pair[0],
+                pair[1],
+            ),
+        ):
+            route_chain = route_chain_between(source_component, target_component)
+            if not route_chain:
+                continue
+            route_cost = _chain_cost(route_chain)
+            if route_cost < best_cost:
+                best_cost = route_cost
+                best_source = source_component
+                best_target = target_component
+                best_chain = route_chain
+
+        if best_source is None or best_target is None:
+            break
+
+        selected_candidates.extend(best_chain)
+        attached_components.add(best_target)
+        remaining_components.remove(best_target)
+        if best_target in pass_through_components:
+            attachable_components.add(best_target)
+
+    return selected_candidates
+
+
+def _dedupe_route_candidates(candidates: Iterable[_RouteCandidate]) -> list[_RouteCandidate]:
+    deduped: list[_RouteCandidate] = []
+    seen_pairs: set[frozenset[str]] = set()
+    for candidate in sorted(candidates, key=lambda item: (item.cost, item.first_key, item.second_key)):
+        candidate_pair = frozenset((candidate.first_key, candidate.second_key))
+        if candidate_pair in seen_pairs:
+            continue
+        seen_pairs.add(candidate_pair)
+        deduped.append(candidate)
+    return deduped
+
+
+def _suggestion_candidates(
+    base: Any,
+    terrain: TerrainGrid,
+    grouped_keys: dict[int, list[str]],
+    anchors_by_stop: dict[str, _VillageAnchor],
+    component_by_key: dict[str, int],
+) -> list[_RouteCandidate]:
+    primary_component = _primary_walk_component_id(component_by_key, anchors_by_stop)
+    if primary_component is None:
+        return []
+
+    direct_candidates = _tree_route_candidates(
+        base,
+        terrain,
+        grouped_keys,
+        anchors_by_stop,
+        component_by_key,
+        primary_component,
+    )
+
+    loop_candidates = _loop_candidates_for_direct_routes(
+        base,
+        terrain,
+        anchors_by_stop,
+        component_by_key,
+        direct_candidates,
+    )
+    consolidated_candidates = _consolidated_candidates(base, direct_candidates, loop_candidates)
+    stem_candidates = _consolidate_shared_stems(base, consolidated_candidates)
+    fixed_endpoint_keys = {
+        endpoint_key
+        for endpoint_keys in grouped_keys.values()
+        for endpoint_key in endpoint_keys
+    }
+    return _canonicalize_close_virtual_endpoints(base, stem_candidates, fixed_endpoint_keys)
+
+
+def build_suggested_segments(base: Any, viewer: Any | None = None) -> tuple[SuggestedSegment, ...]:
+    global _CACHE_KEY
+    global _CACHE_VALUE
+
+    anchors_by_stop = village_anchors(base)
+    anchor_keys = tuple(dict.fromkeys(anchor.key for anchor in anchors_by_stop.values()))
+    if len(anchor_keys) < 2:
+        return ()
+
+    component_by_key = _walk_component_index(base, anchors_by_stop.values())
+    grouped_keys: dict[int, list[str]] = {}
+    for endpoint_key, component_id in component_by_key.items():
+        grouped_keys.setdefault(component_id, []).append(endpoint_key)
+    for component_id in grouped_keys:
+        grouped_keys[component_id].sort()
+
+    if len(grouped_keys) < 2:
+        return ()
+
+    terrain = None
+    terrain_metadata = (
+        _terrain_metadata_from_viewer(viewer)
+        if viewer is not None
+        else None
+    )
+    if terrain_metadata is None and viewer is not None:
+        terrain = _terrain_from_viewer(viewer)
+        if terrain is not None:
+            terrain_signature = terrain.signature
+        else:
+            terrain_signature = None
+    else:
+        terrain_signature = (
+            _terrain_signature_from_metadata(terrain_metadata)
+            if terrain_metadata is not None
+            else None
+        )
+    if terrain_signature is None:
+        return ()
+
+    cache_key = (_network_signature(base), terrain_signature)
+    if cache_key == _CACHE_KEY:
+        return _CACHE_VALUE
+
+    if terrain is None:
+        assert terrain_metadata is not None
+        min_x, max_x, min_z, max_z, source_image = terrain_metadata
+        terrain = TerrainGrid(
+            min_x=min_x,
+            max_x=max_x,
+            min_z=min_z,
+            max_z=max_z,
+            image=source_image,
+        )
+
+    candidates = _suggestion_candidates(
+        base,
+        terrain,
+        grouped_keys,
+        anchors_by_stop,
+        component_by_key,
+    )
+    if not candidates:
+        _CACHE_KEY = cache_key
+        _CACHE_VALUE = ()
+        return ()
+
+    segments: list[SuggestedSegment] = []
+    for candidate in candidates:
         start_coordinates = _endpoint_coordinates(base, candidate.first_key)
         end_coordinates = _endpoint_coordinates(base, candidate.second_key)
         segments.append(
@@ -774,3 +1761,56 @@ def build_suggested_segments(base: Any, viewer: Any | None = None) -> tuple[Sugg
 
 def _polyline_length(points: tuple[tuple[int, int], ...]) -> float:
     return sum(dist(first_point, second_point) for first_point, second_point in zip(points, points[1:]))
+
+
+def _minecraft_buildable_path(
+    points: tuple[tuple[int, int], ...],
+) -> tuple[tuple[int, int], ...]:
+    if len(points) <= 1:
+        return points
+
+    buildable_points = [points[0]]
+    for start_point, end_point in zip(points, points[1:]):
+        for point in _minecraft_buildable_segment_points(start_point, end_point):
+            if buildable_points[-1] != point:
+                buildable_points.append(point)
+    return tuple(buildable_points)
+
+
+def _minecraft_buildable_segment_points(
+    start_point: tuple[int, int],
+    end_point: tuple[int, int],
+) -> tuple[tuple[int, int], ...]:
+    if _has_minecraft_buildable_slope(start_point, end_point):
+        return (end_point,)
+
+    delta_x = end_point[0] - start_point[0]
+    delta_y = end_point[1] - start_point[1]
+    abs_delta_x = abs(delta_x)
+    abs_delta_y = abs(delta_y)
+    sign_x = _sign(delta_x)
+    sign_y = _sign(delta_y)
+
+    if abs_delta_x > abs_delta_y:
+        slope_denominator = max(1, abs_delta_x // abs_delta_y)
+        sloped_delta_x = slope_denominator * abs_delta_y
+        bend_point = (start_point[0] + (sign_x * sloped_delta_x), end_point[1])
+    else:
+        slope_numerator = max(1, abs_delta_y // abs_delta_x)
+        sloped_delta_y = slope_numerator * abs_delta_x
+        bend_point = (end_point[0], start_point[1] + (sign_y * sloped_delta_y))
+
+    if bend_point in {start_point, end_point}:
+        return (end_point,)
+    return (bend_point, end_point)
+
+
+def _has_minecraft_buildable_slope(
+    first_point: tuple[int, int],
+    second_point: tuple[int, int],
+) -> bool:
+    delta_x = abs(second_point[0] - first_point[0])
+    delta_y = abs(second_point[1] - first_point[1])
+    if delta_x == 0 or delta_y == 0:
+        return True
+    return delta_y % delta_x == 0 or delta_x % delta_y == 0

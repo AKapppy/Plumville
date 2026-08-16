@@ -84,7 +84,7 @@
         "coord:-495,253",
         "coord:-413,291",
         "coord:-401,238",
-        "coord:-402,202"
+        "coord:-278,204"
       ],
       "station_entry_x": -434,
       "station_entry_y": 174,
@@ -191,7 +191,7 @@
       ],
       "has_walking_paths": true,
       "city_limit_node_keys": [
-        "coord:1279,105",
+        "coord:1279,104",
         "coord:1278,154",
         "coord:1282,157",
         "coord:1300,155",
@@ -557,7 +557,7 @@
       "y": 1325,
       "has_connector": false,
       "has_full_station": false,
-      "is_connected": false,
+      "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
@@ -589,7 +589,7 @@
         "coord:158,-1968",
         "coord:158,-1962",
         "coord:209,-1966",
-        "coord:217,-1996",
+        "coord:219,-1997",
         "coord:213,-2023",
         "coord:207,-2029",
         "coord:205,-2030",
@@ -600,7 +600,7 @@
     },
     {
       "var": "P_F5",
-      "lbl": "F_5",
+      "lbl": "Pano",
       "x": 1922,
       "y": -1350,
       "has_connector": false,
@@ -610,7 +610,8 @@
       "has_signs": false,
       "chime_directions": [],
       "has_walking_paths": false,
-      "is_tunneled": false
+      "is_tunneled": false,
+      "abbr": "PAN"
     },
     {
       "var": "P_CN",
@@ -643,7 +644,7 @@
     },
     {
       "var": "P_F4",
-      "lbl": "F_4",
+      "lbl": "Papillon",
       "x": 2314,
       "y": -1350,
       "has_connector": false,
@@ -653,7 +654,8 @@
       "has_signs": false,
       "chime_directions": [],
       "has_walking_paths": false,
-      "is_tunneled": false
+      "is_tunneled": false,
+      "abbr": "PAP"
     },
     {
       "var": "P_P4",
@@ -671,7 +673,7 @@
     },
     {
       "var": "P_FG",
-      "lbl": "FG",
+      "lbl": "Kato",
       "x": 1850,
       "y": -1940,
       "has_connector": false,
@@ -681,7 +683,8 @@
       "has_signs": false,
       "chime_directions": [],
       "has_walking_paths": false,
-      "is_tunneled": false
+      "is_tunneled": false,
+      "abbr": "KAT"
     },
     {
       "var": "P_D5",
@@ -736,8 +739,8 @@
         "coord:693,-2621",
         "coord:671,-2642"
       ],
-      "station_entry_x": 800,
-      "station_entry_y": -2582,
+      "station_entry_x": 802,
+      "station_entry_y": -2583,
       "abbr": "HLH",
       "is_tunneled": true
     },
@@ -746,15 +749,17 @@
       "lbl": "Mt. Phosphagos",
       "x": -2555,
       "y": 1325,
-      "has_connector": false,
-      "has_full_station": false,
-      "is_connected": false,
+      "has_connector": true,
+      "has_full_station": true,
+      "is_connected": true,
       "has_finished_railway": false,
       "has_signs": false,
       "chime_directions": [],
       "has_walking_paths": false,
       "abbr": "MTP",
-      "is_tunneled": true
+      "is_tunneled": true,
+      "station_entry_x": -2555,
+      "station_entry_y": 1352
     },
     {
       "var": "P_C5",
@@ -827,7 +832,7 @@
     },
     {
       "var": "P_F7",
-      "lbl": "F_7",
+      "lbl": "Skylonisos",
       "x": 1748,
       "y": -2600,
       "has_connector": false,
@@ -837,7 +842,8 @@
       "has_signs": false,
       "chime_directions": [],
       "has_walking_paths": false,
-      "is_tunneled": false
+      "is_tunneled": false,
+      "abbr": "SKY"
     },
     {
       "var": "P_A9",
@@ -857,8 +863,8 @@
         "coord:268,-3090",
         "coord:193,-3099",
         "coord:180,-3060",
-        "coord:256,-2998",
-        "coord:278,-2998",
+        "coord:256,-2999",
+        "coord:278,-2999",
         "coord:282,-3052"
       ],
       "abbr": "IWH",
@@ -972,9 +978,9 @@
       ],
       "has_walking_paths": true,
       "city_limit_node_keys": [
-        "coord:688,-3454",
+        "coord:689,-3455",
         "coord:596,-3450",
-        "coord:592,-3454",
+        "coord:592,-3455",
         "coord:592,-3475",
         "coord:650,-3543",
         "coord:692,-3520"
@@ -1688,7 +1694,7 @@
       "chime_directions": [],
       "has_walking_paths": false,
       "abbr": "PPD",
-      "is_tunneled": false
+      "is_tunneled": true
     },
     {
       "var": "P_MNX",
@@ -1747,7 +1753,8 @@
       "has_walking_paths": false,
       "station_entry_x": 6704,
       "station_entry_y": 167,
-      "is_tunneled": true
+      "is_tunneled": true,
+      "abbr": "TNC"
     },
     {
       "var": "P_GI",
@@ -7064,7 +7071,7 @@
       "to_endpoint": {
         "kind": "coord",
         "x": 1279,
-        "y": 105
+        "y": 104
       },
       "bidirectional": true,
       "path_points": []
@@ -10423,7 +10430,7 @@
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": -404,
+        "x": -403,
         "y": 204
       },
       "bidirectional": true,
@@ -10434,13 +10441,13 @@
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
-        "x": -404,
+        "x": -403,
         "y": 204
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": -402,
-        "y": 202
+        "x": -278,
+        "y": 204
       },
       "bidirectional": true,
       "path_points": []
@@ -16215,8 +16222,8 @@
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": 217,
-        "y": -1996
+        "x": 219,
+        "y": -1997
       },
       "bidirectional": true,
       "path_points": []
@@ -16343,7 +16350,7 @@
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": 186,
+        "x": 182,
         "y": -1967
       },
       "bidirectional": true,
@@ -16354,7 +16361,7 @@
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
-        "x": 186,
+        "x": 182,
         "y": -1967
       },
       "to_endpoint": {
@@ -16370,8 +16377,8 @@
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
-        "x": 185,
-        "y": -1992
+        "x": 182,
+        "y": -1991
       },
       "to_endpoint": {
         "kind": "coord",
@@ -16391,8 +16398,8 @@
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": 185,
-        "y": -1992
+        "x": 182,
+        "y": -1991
       },
       "bidirectional": true,
       "path_points": []
@@ -16402,12 +16409,12 @@
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
-        "x": 185,
-        "y": -1992
+        "x": 182,
+        "y": -1991
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": 185,
+        "x": 182,
         "y": -1983
       },
       "bidirectional": true,
@@ -16418,12 +16425,12 @@
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
-        "x": 185,
+        "x": 182,
         "y": -1983
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": 186,
+        "x": 182,
         "y": -1967
       },
       "bidirectional": true,
@@ -16466,7 +16473,7 @@
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
-        "x": 185,
+        "x": 182,
         "y": -1983
       },
       "to_endpoint": {
@@ -16482,7 +16489,7 @@
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
-        "x": 185,
+        "x": 182,
         "y": -1983
       },
       "to_endpoint": {
@@ -18808,7 +18815,7 @@
       "to_endpoint": {
         "kind": "coord",
         "x": 635,
-        "y": -3454
+        "y": -3455
       },
       "bidirectional": true,
       "path_points": []
@@ -18819,12 +18826,12 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 635,
-        "y": -3454
+        "y": -3455
       },
       "to_endpoint": {
         "kind": "coord",
-        "x": 688,
-        "y": -3454
+        "x": 689,
+        "y": -3455
       },
       "bidirectional": true,
       "path_points": []
@@ -18835,12 +18842,12 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 635,
-        "y": -3454
+        "y": -3455
       },
       "to_endpoint": {
         "kind": "coord",
         "x": 624,
-        "y": -3454
+        "y": -3455
       },
       "bidirectional": true,
       "path_points": []
@@ -18851,7 +18858,7 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 624,
-        "y": -3454
+        "y": -3455
       },
       "to_endpoint": {
         "kind": "coord",
@@ -18878,7 +18885,7 @@
       "path_points": []
     },
     {
-      "id": "walk_coord_592_-3475_coord_592_-3454_830",
+      "id": "walk_coord_592_-3475_coord_592_-3454_830_a",
       "kind": "walk",
       "from_endpoint": {
         "kind": "coord",
@@ -18888,7 +18895,23 @@
       "to_endpoint": {
         "kind": "coord",
         "x": 592,
-        "y": -3454
+        "y": -3463
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_592_-3475_coord_592_-3454_830_b",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 592,
+        "y": -3463
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 592,
+        "y": -3455
       },
       "bidirectional": true,
       "path_points": []
@@ -18899,12 +18922,12 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 592,
-        "y": -3454
+        "y": -3455
       },
       "to_endpoint": {
         "kind": "coord",
         "x": 596,
-        "y": -3454
+        "y": -3455
       },
       "bidirectional": true,
       "path_points": []
@@ -18915,7 +18938,7 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 596,
-        "y": -3454
+        "y": -3455
       },
       "to_endpoint": {
         "kind": "coord",
@@ -18931,7 +18954,7 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 596,
-        "y": -3454
+        "y": -3455
       },
       "to_endpoint": {
         "kind": "coord",
@@ -18947,12 +18970,12 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 596,
-        "y": -3454
+        "y": -3455
       },
       "to_endpoint": {
         "kind": "coord",
         "x": 624,
-        "y": -3454
+        "y": -3455
       },
       "bidirectional": true,
       "path_points": []
@@ -19048,7 +19071,7 @@
       "to_endpoint": {
         "kind": "coord",
         "x": 256,
-        "y": -2998
+        "y": -2999
       },
       "bidirectional": true,
       "path_points": []
@@ -19059,12 +19082,12 @@
       "from_endpoint": {
         "kind": "coord",
         "x": 256,
-        "y": -2998
+        "y": -2999
       },
       "to_endpoint": {
         "kind": "coord",
         "x": 278,
-        "y": -2998
+        "y": -2999
       },
       "bidirectional": true,
       "path_points": []
@@ -20140,6 +20163,1302 @@
       },
       "bidirectional": true,
       "path_points": []
+    },
+    {
+      "id": "walk_coord_-265_-830_coord_-216_-830_909",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -265,
+        "y": -830
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -169,
+        "y": -830
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-169_-830_coord_-80_-860_910",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -169,
+        "y": -830
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -80,
+        "y": -860
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-80_-860_coord_-80_-892_911",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -80,
+        "y": -860
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -80,
+        "y": -892
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_89_-524_coord_89_-634_912",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -524
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -674
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-80_-892_coord_132_-892_913",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -80,
+        "y": -892
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 135,
+        "y": -892
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_135_-892_coord_156_-886_914",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 135,
+        "y": -892
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 156,
+        "y": -886
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_156_-886_coord_193_-886_915",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 156,
+        "y": -886
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 193,
+        "y": -886
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_193_-886_coord_193_-825_916",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 193,
+        "y": -886
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 193,
+        "y": -757
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_89_-674_coord_132_-674_917",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 89,
+        "y": -674
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 176,
+        "y": -674
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_193_-757_coord_176_-674_918",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 193,
+        "y": -757
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 176,
+        "y": -674
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_280_321_coord_280_314_919",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 321
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 314
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_280_314_coord_313_281_920",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 280,
+        "y": 314
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 313,
+        "y": 281
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_313_281_coord_313_211_921",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 313,
+        "y": 281
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 313,
+        "y": 211
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_313_211_coord_216_19_922",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 313,
+        "y": 211
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 216,
+        "y": 19
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_216_-155_coord_216_19_923_a",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 216,
+        "y": -155
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 216,
+        "y": -97
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_216_-155_coord_216_19_923_b",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 216,
+        "y": -97
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 216,
+        "y": 19
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_155_-451_coord_155_-359_924",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 155,
+        "y": -451
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 155,
+        "y": -277
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_155_-277_coord_216_-155_925",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 155,
+        "y": -277
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 216,
+        "y": -155
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_313_211_coord_338_211_926",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 313,
+        "y": 211
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 338,
+        "y": 211
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_338_211_coord_681_162_927",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 338,
+        "y": 211
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 681,
+        "y": 162
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_707_162_coord_681_162_928",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 707,
+        "y": 162
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 681,
+        "y": 162
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-179_215_coord_-179_151_929",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -179,
+        "y": 245
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -179,
+        "y": 149
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-161_97_coord_-179_151_930",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -161,
+        "y": 97
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -179,
+        "y": 149
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-161_97_coord_-161_76_931",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -161,
+        "y": 97
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -161,
+        "y": 40
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_13_-97_coord_30_-97_932",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 13,
+        "y": -97
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 216,
+        "y": -97
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-252_256_coord_-278_204_934",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -252,
+        "y": 256
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -278,
+        "y": 204
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-252_256_coord_-225_256_935",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -252,
+        "y": 256
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -225,
+        "y": 256
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-179_245_coord_-225_256_936",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -179,
+        "y": 245
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -225,
+        "y": 256
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-161_40_coord_-127_29_937",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -161,
+        "y": 40
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -73,
+        "y": 11
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_13_-97_coord_0_-63_938",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 13,
+        "y": -97
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -1,
+        "y": -61
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_-1_-61_coord_-73_11_939",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": -1,
+        "y": -61
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": -73,
+        "y": 11
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_107_-1565_coord_107_-892_940",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 107,
+        "y": -1565
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 107,
+        "y": -892
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_107_-892_coord_135_-892_941",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 107,
+        "y": -892
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 135,
+        "y": -892
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_182_-1967_coord_182_-1942_942",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 182,
+        "y": -1967
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 182,
+        "y": -1937
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_154_-1852_coord_154_-1833_943",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 154,
+        "y": -1855
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 154,
+        "y": -1808
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_194_-1661_coord_194_-1672_944",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 194,
+        "y": -1658
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 194,
+        "y": -1690
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_107_-1617_coord_107_-1641_945",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 107,
+        "y": -1617
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 107,
+        "y": -1641
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_194_-1658_coord_107_-1641_946",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 194,
+        "y": -1658
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 107,
+        "y": -1641
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_194_-1690_coord_154_-1806_947",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 194,
+        "y": -1690
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 154,
+        "y": -1808
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_154_-1855_coord_182_-1937_948",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 154,
+        "y": -1855
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 182,
+        "y": -1937
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_730_-2580_coord_734_-2574_949",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 730,
+        "y": -2580
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 734,
+        "y": -2574
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_766_-2574_coord_734_-2574_950",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 766,
+        "y": -2574
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 734,
+        "y": -2574
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_766_-2574_coord_791_-2583_951",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 766,
+        "y": -2574
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 791,
+        "y": -2583
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_802_-2583_coord_791_-2583_952",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 802,
+        "y": -2583
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 791,
+        "y": -2583
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_669_-2501_coord_669_-2483_953",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 669,
+        "y": -2501
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 669,
+        "y": -2483
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_219_-1997_coord_669_-2483_954",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 219,
+        "y": -1997
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 669,
+        "y": -2483
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_766_-2574_coord_741_-2616_955",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 766,
+        "y": -2574
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 742,
+        "y": -2615
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_849_-2759_coord_741_-2733_956",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 849,
+        "y": -2759
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 742,
+        "y": -2733
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_849_-2759_coord_805_-2849_957",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 849,
+        "y": -2759
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 805,
+        "y": -2849
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_742_-2615_coord_742_-2733_958",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 742,
+        "y": -2615
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 742,
+        "y": -2733
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1157_-3072_coord_1029_-3072_959",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1157,
+        "y": -3072
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1029,
+        "y": -3072
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_805_-2849_coord_1029_-3072_960",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 805,
+        "y": -2849
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1029,
+        "y": -3072
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1029_-3072_coord_1018_-3083_961",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1029,
+        "y": -3072
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 729,
+        "y": -3373
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_689_-3455_coord_729_-3373_962",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 689,
+        "y": -3455
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 729,
+        "y": -3373
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_592_-3463_coord_576_-3463_964",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 592,
+        "y": -3463
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 576,
+        "y": -3463
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_576_-3463_coord_558_-3445_965",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 576,
+        "y": -3463
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 558,
+        "y": -3445
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_558_-3445_coord_558_-3423_966",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 558,
+        "y": -3445
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 558,
+        "y": -3339
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_658_-3339_coord_558_-3339_967",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 573,
+        "y": -3264
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 558,
+        "y": -3339
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_573_-3264_coord_558_-3236_968",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 573,
+        "y": -3264
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 543,
+        "y": -3207
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_560_-3124_coord_560_-3094_969",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3124
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3038
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_543_-3207_coord_543_-3127_970",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 543,
+        "y": -3207
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 543,
+        "y": -3127
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_560_-3124_coord_543_-3127_971",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3124
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 543,
+        "y": -3127
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_520_-2999_coord_527_-3014_972",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 520,
+        "y": -2999
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3079
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_560_-3038_coord_560_-3079_973",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3038
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3079
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_560_-3124_coord_560_-3079_974",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3124
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3079
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_278_-2999_coord_520_-2999_975",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 278,
+        "y": -2999
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 520,
+        "y": -2999
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_560_-3038_coord_576_-3006_976",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 560,
+        "y": -3038
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 603,
+        "y": -2950
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_805_-2849_coord_704_-2849_977",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 805,
+        "y": -2849
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 704,
+        "y": -2849
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_665_-2888_coord_704_-2849_978",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 603,
+        "y": -2950
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 704,
+        "y": -2849
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_598_654_coord_566_654_979",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 598,
+        "y": 654
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 566,
+        "y": 654
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_566_745_coord_566_654_980",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 566,
+        "y": 745
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 566,
+        "y": 654
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_612_647_coord_598_654_981",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 672,
+        "y": 617
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 598,
+        "y": 654
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_672_617_coord_698_591_982",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 672,
+        "y": 617
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 749,
+        "y": 540
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_629_420_coord_673_464_983",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 629,
+        "y": 420
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 749,
+        "y": 540
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1108_219_coord_1119_208_984",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1091,
+        "y": 236
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1129,
+        "y": 198
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1129_198_coord_1129_158_985",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1129,
+        "y": 198
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1129,
+        "y": 157
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1091_236_coord_1088_236_986",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1091,
+        "y": 236
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1041,
+        "y": 236
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_961_196_coord_1004_217_987",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 846,
+        "y": 138
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1041,
+        "y": 236
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_774_138_coord_846_138_988",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 774,
+        "y": 138
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 846,
+        "y": 138
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1129_157_coord_1171_137_989",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1129,
+        "y": 157
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1236,
+        "y": 104
+      },
+      "bidirectional": true,
+      "path_points": []
+    },
+    {
+      "id": "walk_coord_1279_104_coord_1236_104_990",
+      "kind": "walk",
+      "from_endpoint": {
+        "kind": "coord",
+        "x": 1279,
+        "y": 104
+      },
+      "to_endpoint": {
+        "kind": "coord",
+        "x": 1236,
+        "y": 104
+      },
+      "bidirectional": true,
+      "path_points": []
     }
   ],
   "path_nodes": [
@@ -20249,12 +21568,12 @@
       "y": 351
     },
     {
-      "id": "node_22_22",
+      "id": "node_14",
       "x": 269,
       "y": 341
     },
     {
-      "id": "node_23_23",
+      "id": "node_16",
       "x": 279,
       "y": 341
     },
@@ -20581,7 +21900,7 @@
     {
       "id": "node_89",
       "x": 1279,
-      "y": 105
+      "y": 104
     },
     {
       "id": "node_90",
@@ -20964,7 +22283,7 @@
       "y": 141
     },
     {
-      "id": "node_166_166",
+      "id": "node_64",
       "x": 57,
       "y": 1284
     },
@@ -21475,11 +22794,11 @@
     },
     {
       "id": "node_268",
-      "x": -1738,
-      "y": -591
+      "x": 156,
+      "y": -886
     },
     {
-      "id": "node_268_268",
+      "id": "node_160",
       "x": -495,
       "y": 246
     },
@@ -21620,13 +22939,13 @@
     },
     {
       "id": "node_296",
-      "x": -404,
+      "x": -403,
       "y": 204
     },
     {
       "id": "node_297",
-      "x": -402,
-      "y": 202
+      "x": -278,
+      "y": 204
     },
     {
       "id": "node_298",
@@ -21844,7 +23163,7 @@
       "y": 679
     },
     {
-      "id": "node_341_341",
+      "id": "node_326",
       "x": -1383,
       "y": 608
     },
@@ -22034,7 +23353,7 @@
       "y": 789
     },
     {
-      "id": "node_379_379",
+      "id": "node_374",
       "x": -1377,
       "y": 738
     },
@@ -22124,7 +23443,7 @@
       "y": 1397
     },
     {
-      "id": "node_397_397",
+      "id": "node_396",
       "x": -1000,
       "y": 1323
     },
@@ -22699,7 +24018,7 @@
       "y": 2834
     },
     {
-      "id": "node_512_512",
+      "id": "node_504",
       "x": -1279,
       "y": 2815
     },
@@ -23400,8 +24719,8 @@
     },
     {
       "id": "node_652",
-      "x": 217,
-      "y": -1996
+      "x": 219,
+      "y": -1997
     },
     {
       "id": "node_653",
@@ -23455,13 +24774,13 @@
     },
     {
       "id": "node_664",
-      "x": 186,
+      "x": 182,
       "y": -1967
     },
     {
       "id": "node_666",
-      "x": 185,
-      "y": -1992
+      "x": 182,
+      "y": -1991
     },
     {
       "id": "node_667",
@@ -23484,12 +24803,12 @@
       "y": -1983
     },
     {
-      "id": "node_669_669",
-      "x": 185,
+      "id": "node_661",
+      "x": 182,
       "y": -1983
     },
     {
-      "id": "node_670_670",
+      "id": "node_665",
       "x": 198,
       "y": -1983
     },
@@ -23664,7 +24983,7 @@
       "y": -2567
     },
     {
-      "id": "node_705_705",
+      "id": "node_697",
       "x": 674,
       "y": -2567
     },
@@ -23714,7 +25033,7 @@
       "y": -2547
     },
     {
-      "id": "node_716_716",
+      "id": "node_715",
       "x": 678,
       "y": -2525
     },
@@ -23864,7 +25183,7 @@
       "y": -3096
     },
     {
-      "id": "node_746_746",
+      "id": "node_736",
       "x": 1215,
       "y": -3096
     },
@@ -23969,7 +25288,7 @@
       "y": -3096
     },
     {
-      "id": "node_766_766",
+      "id": "node_741",
       "x": 1149,
       "y": -3100
     },
@@ -24176,12 +25495,12 @@
     {
       "id": "node_807",
       "x": 592,
-      "y": -3454
+      "y": -3455
     },
     {
       "id": "node_808",
       "x": 596,
-      "y": -3454
+      "y": -3455
     },
     {
       "id": "node_809",
@@ -24191,17 +25510,17 @@
     {
       "id": "node_810",
       "x": 624,
-      "y": -3454
+      "y": -3455
     },
     {
       "id": "node_811",
       "x": 635,
-      "y": -3454
+      "y": -3455
     },
     {
       "id": "node_812",
-      "x": 688,
-      "y": -3454
+      "x": 689,
+      "y": -3455
     },
     {
       "id": "node_813",
@@ -24371,15 +25690,15 @@
     {
       "id": "node_847",
       "x": 256,
-      "y": -2998
+      "y": -2999
     },
     {
       "id": "node_848",
       "x": 278,
-      "y": -2998
+      "y": -2999
     },
     {
-      "id": "node_848_848",
+      "id": "node_846",
       "x": 252,
       "y": -3082
     },
@@ -24389,19 +25708,19 @@
       "y": -3083
     },
     {
-      "id": "monument_850",
+      "id": "node_850",
       "x": 5445,
       "y": 183,
-      "poi_kind": "monument",
       "label": "Unnamed Temple",
+      "poi_kind": "monument",
       "category": "Temple"
     },
     {
-      "id": "monument_851",
+      "id": "node_851",
       "x": 3427,
       "y": 115,
-      "poi_kind": "monument",
       "label": "Unnamed Nether Portal",
+      "poi_kind": "monument",
       "category": "Nether Portal"
     },
     {
@@ -24578,6 +25897,374 @@
       "id": "node_886",
       "x": 2555,
       "y": 642
+    },
+    {
+      "id": "node_887",
+      "x": -323,
+      "y": -889
+    },
+    {
+      "id": "node_888",
+      "x": -169,
+      "y": -830
+    },
+    {
+      "id": "node_889",
+      "x": -80,
+      "y": -860
+    },
+    {
+      "id": "node_890",
+      "x": -80,
+      "y": -892
+    },
+    {
+      "id": "node_891",
+      "x": 89,
+      "y": -674
+    },
+    {
+      "id": "node_892",
+      "x": 135,
+      "y": -892
+    },
+    {
+      "id": "node_893",
+      "x": 193,
+      "y": -886
+    },
+    {
+      "id": "node_894",
+      "x": 193,
+      "y": -757
+    },
+    {
+      "id": "node_895",
+      "x": 176,
+      "y": -674
+    },
+    {
+      "id": "node_896",
+      "x": 137,
+      "y": -871,
+      "label": "Pillager Tower",
+      "poi_kind": "pillager_tower"
+    },
+    {
+      "id": "node_897",
+      "x": 280,
+      "y": 314
+    },
+    {
+      "id": "node_898",
+      "x": 313,
+      "y": 281
+    },
+    {
+      "id": "node_899",
+      "x": 313,
+      "y": 211
+    },
+    {
+      "id": "node_900",
+      "x": 216,
+      "y": 19
+    },
+    {
+      "id": "node_901",
+      "x": 216,
+      "y": -155
+    },
+    {
+      "id": "node_902",
+      "x": 681,
+      "y": 162
+    },
+    {
+      "id": "node_903",
+      "x": 338,
+      "y": 211
+    },
+    {
+      "id": "node_904",
+      "x": -179,
+      "y": 149
+    },
+    {
+      "id": "node_905",
+      "x": -179,
+      "y": 245
+    },
+    {
+      "id": "node_906",
+      "x": -161,
+      "y": 97
+    },
+    {
+      "id": "node_907",
+      "x": -161,
+      "y": 40
+    },
+    {
+      "id": "node_909",
+      "x": 13,
+      "y": -97
+    },
+    {
+      "id": "node_910",
+      "x": 216,
+      "y": -97
+    },
+    {
+      "id": "node_908",
+      "x": -252,
+      "y": 256
+    },
+    {
+      "id": "node_911",
+      "x": -225,
+      "y": 256
+    },
+    {
+      "id": "node_912",
+      "x": -73,
+      "y": 11
+    },
+    {
+      "id": "node_913",
+      "x": -1,
+      "y": -61
+    },
+    {
+      "id": "node_914",
+      "x": 182,
+      "y": -1937
+    },
+    {
+      "id": "node_916",
+      "x": 154,
+      "y": -1808
+    },
+    {
+      "id": "node_917",
+      "x": 194,
+      "y": -1658
+    },
+    {
+      "id": "node_918",
+      "x": 194,
+      "y": -1690
+    },
+    {
+      "id": "node_915",
+      "x": 154,
+      "y": -1855
+    },
+    {
+      "id": "node_919",
+      "x": 107,
+      "y": -1641
+    },
+    {
+      "id": "node_920",
+      "x": 734,
+      "y": -2574
+    },
+    {
+      "id": "node_921",
+      "x": 766,
+      "y": -2574
+    },
+    {
+      "id": "node_922",
+      "x": 791,
+      "y": -2583
+    },
+    {
+      "id": "node_923",
+      "x": 802,
+      "y": -2583
+    },
+    {
+      "id": "node_924",
+      "x": 669,
+      "y": -2483
+    },
+    {
+      "id": "node_925",
+      "x": 742,
+      "y": -2615
+    },
+    {
+      "id": "node_926",
+      "x": 742,
+      "y": -2733
+    },
+    {
+      "id": "node_927",
+      "x": 849,
+      "y": -2759
+    },
+    {
+      "id": "node_928",
+      "x": 805,
+      "y": -2849
+    },
+    {
+      "id": "node_929",
+      "x": 1029,
+      "y": -3072
+    },
+    {
+      "id": "node_930",
+      "x": 729,
+      "y": -3373
+    },
+    {
+      "id": "node_931",
+      "x": 592,
+      "y": -3463
+    },
+    {
+      "id": "node_932",
+      "x": 576,
+      "y": -3463
+    },
+    {
+      "id": "node_933",
+      "x": 558,
+      "y": -3445
+    },
+    {
+      "id": "node_934",
+      "x": 558,
+      "y": -3339
+    },
+    {
+      "id": "node_935",
+      "x": 573,
+      "y": -3264
+    },
+    {
+      "id": "node_936",
+      "x": 543,
+      "y": -3207
+    },
+    {
+      "id": "node_938",
+      "x": 560,
+      "y": -3038
+    },
+    {
+      "id": "node_937",
+      "x": 560,
+      "y": -3124
+    },
+    {
+      "id": "node_939",
+      "x": 543,
+      "y": -3127
+    },
+    {
+      "id": "node_940",
+      "x": 520,
+      "y": -2999
+    },
+    {
+      "id": "node_941",
+      "x": 560,
+      "y": -3079
+    },
+    {
+      "id": "node_943",
+      "x": 704,
+      "y": -2849
+    },
+    {
+      "id": "node_944",
+      "x": 603,
+      "y": -2950
+    },
+    {
+      "id": "node_942",
+      "x": 566,
+      "y": 745,
+      "label": "Old Hub"
+    },
+    {
+      "id": "node_945",
+      "x": 566,
+      "y": 654
+    },
+    {
+      "id": "node_946",
+      "x": 598,
+      "y": 654
+    },
+    {
+      "id": "node_947",
+      "x": 672,
+      "y": 617
+    },
+    {
+      "id": "node_949",
+      "x": 749,
+      "y": 540
+    },
+    {
+      "id": "node_950",
+      "x": 629,
+      "y": 420
+    },
+    {
+      "id": "node_951",
+      "x": 700,
+      "y": 349
+    },
+    {
+      "id": "node_952",
+      "x": -1326,
+      "y": 713
+    },
+    {
+      "id": "node_953",
+      "x": 155,
+      "y": -277
+    },
+    {
+      "id": "node_954",
+      "x": 107,
+      "y": -892
+    },
+    {
+      "id": "node_948",
+      "x": 1091,
+      "y": 236
+    },
+    {
+      "id": "node_955",
+      "x": 1129,
+      "y": 198
+    },
+    {
+      "id": "node_956",
+      "x": 1129,
+      "y": 157
+    },
+    {
+      "id": "node_957",
+      "x": 1041,
+      "y": 236
+    },
+    {
+      "id": "node_958",
+      "x": 846,
+      "y": 138
+    },
+    {
+      "id": "node_959",
+      "x": 1236,
+      "y": 104
     }
   ],
   "railway_finish_progress": {
@@ -24613,212 +26300,364 @@
   },
   "suggested_walking_segments": [
     {
-      "start_key": "coord:-273,3056",
-      "end_key": "coord:-523,3290",
-      "start_label": "Node node_593",
-      "end_label": "Node node_611",
-      "length": 353.37,
-      "cost": 4.58,
+      "start_key": "coord:1245,-3041",
+      "end_key": "coord:1293,-3029",
+      "start_label": "Node node_765",
+      "end_label": "(1293, -3029)",
+      "length": 49.48,
+      "cost": 49.48,
       "path": [
         {
-          "x": -273,
-          "y": 3056
+          "x": 1245,
+          "y": -3041
         },
         {
-          "x": -427,
-          "y": 3254
+          "x": 1293,
+          "y": -3029
+        }
+      ]
+    },
+    {
+      "start_key": "coord:1254,-3068",
+      "end_key": "coord:1293,-3029",
+      "start_label": "Node node_762",
+      "end_label": "(1293, -3029)",
+      "length": 55.15,
+      "cost": 55.15,
+      "path": [
+        {
+          "x": 1254,
+          "y": -3068
         },
         {
-          "x": -523,
-          "y": 3290
+          "x": 1293,
+          "y": -3029
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1376,783",
+      "end_key": "coord:-1451,858",
+      "start_label": "(-1376, 783)",
+      "end_label": "(-1451, 858)",
+      "length": 106.07,
+      "cost": 106.07,
+      "path": [
+        {
+          "x": -1376,
+          "y": 783
+        },
+        {
+          "x": -1451,
+          "y": 858
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-187,2974",
+      "end_key": "coord:37,2946",
+      "start_label": "Node node_590",
+      "end_label": "(37, 2946)",
+      "length": 225.74,
+      "cost": 225.74,
+      "path": [
+        {
+          "x": -187,
+          "y": 2974
+        },
+        {
+          "x": 37,
+          "y": 2946
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1294,3880",
+      "end_key": "P_D6",
+      "start_label": "(-1294, 3880)",
+      "end_label": "East Arendel",
+      "length": 239.17,
+      "cost": 239.17,
+      "path": [
+        {
+          "x": -1294,
+          "y": 3880
+        },
+        {
+          "x": -1294,
+          "y": 3882
+        },
+        {
+          "x": -1461,
+          "y": 4049
+        },
+        {
+          "x": -1461,
+          "y": 4050
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1451,858",
+      "end_key": "coord:-1672,946",
+      "start_label": "(-1451, 858)",
+      "end_label": "(-1672, 946)",
+      "length": 257.45,
+      "cost": 257.45,
+      "path": [
+        {
+          "x": -1451,
+          "y": 858
+        },
+        {
+          "x": -1483,
+          "y": 858
+        },
+        {
+          "x": -1578,
+          "y": 858
+        },
+        {
+          "x": -1666,
+          "y": 946
+        },
+        {
+          "x": -1672,
+          "y": 946
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-269,2931",
+      "end_key": "coord:37,2946",
+      "start_label": "Node node_580",
+      "end_label": "(37, 2946)",
+      "length": 309.79,
+      "cost": 309.79,
+      "path": [
+        {
+          "x": -269,
+          "y": 2931
+        },
+        {
+          "x": 25,
+          "y": 2937
+        },
+        {
+          "x": 28,
+          "y": 2937
+        },
+        {
+          "x": 37,
+          "y": 2946
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1438,732",
+      "end_key": "coord:-1672,946",
+      "start_label": "Node node_355",
+      "end_label": "(-1672, 946)",
+      "length": 322.64,
+      "cost": 322.64,
+      "path": [
+        {
+          "x": -1438,
+          "y": 732
+        },
+        {
+          "x": -1652,
+          "y": 946
+        },
+        {
+          "x": -1672,
+          "y": 946
         }
       ]
     },
     {
       "start_key": "coord:-1026,715",
-      "end_key": "coord:-1326,713",
+      "end_key": "coord:-1330,734",
       "start_label": "Node node_304",
-      "end_label": "(-1326, 713)",
-      "length": 359.79,
-      "cost": 4.83,
+      "end_label": "Node node_366",
+      "length": 326.43,
+      "cost": 326.43,
       "path": [
         {
           "x": -1026,
           "y": 715
         },
         {
-          "x": -1085,
-          "y": 784
+          "x": -1075,
+          "y": 764
         },
         {
-          "x": -1250,
-          "y": 784
+          "x": -1106,
+          "y": 764
         },
         {
-          "x": -1326,
-          "y": 713
+          "x": -1316,
+          "y": 734
+        },
+        {
+          "x": -1330,
+          "y": 734
         }
       ]
     },
     {
-      "start_key": "P_A4",
-      "end_key": "P_A5",
-      "start_label": "Minas Rojas",
-      "end_label": "New Eden",
-      "length": 429.27,
-      "cost": 5.0,
+      "start_key": "coord:-539,-559",
+      "end_key": "P_P2",
+      "start_label": "(-539, -559)",
+      "end_label": "P\u2082",
+      "length": 364.95,
+      "cost": 364.95,
       "path": [
         {
-          "x": 120,
-          "y": -1587
+          "x": -539,
+          "y": -559
         },
         {
-          "x": 153,
-          "y": -2015
+          "x": -822,
+          "y": -559
+        },
+        {
+          "x": -875,
+          "y": -506
+        },
+        {
+          "x": -875,
+          "y": -499
         }
       ]
     },
     {
-      "start_key": "coord:-1272,2762",
-      "end_key": "coord:-832,2418",
-      "start_label": "Node node_479",
-      "end_label": "Node node_542",
-      "length": 579.47,
-      "cost": 6.66,
+      "start_key": "coord:-273,3056",
+      "end_key": "coord:-476,3321",
+      "start_label": "Node node_593",
+      "end_label": "Node node_613",
+      "length": 372.86,
+      "cost": 372.86,
       "path": [
         {
-          "x": -1272,
-          "y": 2762
+          "x": -273,
+          "y": 3056
         },
         {
-          "x": -1168,
-          "y": 2678
+          "x": -256,
+          "y": 3124
         },
         {
-          "x": -1085,
-          "y": 2678
+          "x": -256,
+          "y": 3126
         },
         {
-          "x": -832,
-          "y": 2418
-        }
-      ]
-    },
-    {
-      "start_key": "coord:-912,679",
-      "end_key": "coord:-495,253",
-      "start_label": "Node node_341",
-      "end_label": "Node node_269",
-      "length": 628.38,
-      "cost": 6.66,
-      "path": [
-        {
-          "x": -912,
-          "y": 679
+          "x": -451,
+          "y": 3321
         },
         {
-          "x": -839,
-          "y": 537
-        },
-        {
-          "x": -756,
-          "y": 537
-        },
-        {
-          "x": -495,
-          "y": 253
-        }
-      ]
-    },
-    {
-      "start_key": "coord:-1001,1283",
-      "end_key": "coord:-973,757",
-      "start_label": "Node node_401",
-      "end_label": "Node node_307",
-      "length": 526.74,
-      "cost": 6.75,
-      "path": [
-        {
-          "x": -1001,
-          "y": 1283
-        },
-        {
-          "x": -973,
-          "y": 757
+          "x": -476,
+          "y": 3321
         }
       ]
     },
     {
       "start_key": "coord:-265,-830",
-      "end_key": "coord:89,-524",
+      "end_key": "coord:-539,-559",
       "start_label": "Node node_267",
-      "end_label": "Node node_105",
-      "length": 566.34,
-      "cost": 6.83,
+      "end_label": "(-539, -559)",
+      "length": 386.25,
+      "cost": 386.25,
       "path": [
         {
           "x": -265,
           "y": -830
         },
         {
-          "x": -180,
-          "y": -781
+          "x": -536,
+          "y": -559
         },
         {
-          "x": -180,
-          "y": -616
-        },
-        {
-          "x": -98,
-          "y": -534
-        },
-        {
-          "x": 89,
-          "y": -524
+          "x": -539,
+          "y": -559
         }
       ]
     },
     {
-      "start_key": "coord:-347,1900",
-      "end_key": "coord:-791,2310",
-      "start_label": "Node node_434",
-      "end_label": "Node node_513",
-      "length": 604.35,
-      "cost": 7.07,
+      "start_key": "coord:-1294,4157",
+      "end_key": "P_C6",
+      "start_label": "(-1294, 4157)",
+      "end_label": "Neamegapolis",
+      "length": 448.78,
+      "cost": 448.78,
       "path": [
         {
-          "x": -347,
-          "y": 1900
+          "x": -1294,
+          "y": 4157
         },
         {
-          "x": -791,
-          "y": 2310
+          "x": -1294,
+          "y": 4165
+        },
+        {
+          "x": -1000,
+          "y": 4459
+        },
+        {
+          "x": -1000,
+          "y": 4484
         }
       ]
     },
     {
-      "start_key": "coord:151,1284",
-      "end_key": "coord:617,1344",
-      "start_label": "Node node_181",
-      "end_label": "Node node_152",
-      "length": 568.97,
-      "cost": 7.24,
+      "start_key": "coord:-973,757",
+      "end_key": "coord:-1001,1283",
+      "start_label": "Node node_307",
+      "end_label": "Node node_401",
+      "length": 526.78,
+      "cost": 526.78,
       "path": [
         {
-          "x": 151,
-          "y": 1284
+          "x": -973,
+          "y": 757
         },
         {
-          "x": 231,
-          "y": 1196
+          "x": -1001,
+          "y": 1261
         },
         {
-          "x": 478,
-          "y": 1196
+          "x": -1001,
+          "y": 1283
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-832,2418",
+      "end_key": "coord:-1272,2762",
+      "start_label": "Node node_542",
+      "end_label": "Node node_479",
+      "length": 591.74,
+      "cost": 591.74,
+      "path": [
+        {
+          "x": -832,
+          "y": 2418
         },
         {
-          "x": 617,
-          "y": 1344
+          "x": -973,
+          "y": 2465
+        },
+        {
+          "x": -1011,
+          "y": 2465
+        },
+        {
+          "x": -1272,
+          "y": 2726
+        },
+        {
+          "x": -1272,
+          "y": 2762
         }
       ]
     },
@@ -24827,16 +26666,16 @@
       "end_key": "coord:-1496,1826",
       "start_label": "Node node_400",
       "end_label": "Node node_546",
-      "length": 617.15,
-      "cost": 8.07,
+      "length": 599.61,
+      "cost": 599.61,
       "path": [
         {
           "x": -1101,
           "y": 1390
         },
         {
-          "x": -1085,
-          "y": 1443
+          "x": -1496,
+          "y": 1785
         },
         {
           "x": -1496,
@@ -24845,60 +26684,84 @@
       ]
     },
     {
-      "start_key": "coord:-313,2945",
-      "end_key": "coord:-788,2466",
-      "start_label": "Node node_568",
-      "end_label": "Node node_536",
-      "length": 688.91,
-      "cost": 8.07,
+      "start_key": "coord:151,1284",
+      "end_key": "coord:617,1344",
+      "start_label": "Node node_181",
+      "end_label": "Node node_152",
+      "length": 608.49,
+      "cost": 608.49,
       "path": [
         {
-          "x": -313,
-          "y": 2945
+          "x": 151,
+          "y": 1284
         },
         {
-          "x": -345,
-          "y": 2842
+          "x": 293,
+          "y": 1142
         },
         {
-          "x": -788,
-          "y": 2466
+          "x": 311,
+          "y": 1142
+        },
+        {
+          "x": 406,
+          "y": 1142
+        },
+        {
+          "x": 608,
+          "y": 1344
+        },
+        {
+          "x": 617,
+          "y": 1344
         }
       ]
     },
     {
-      "start_key": "coord:-321,1922",
-      "end_key": "coord:175,2312",
-      "start_label": "Node node_435",
-      "end_label": "Node node_470",
-      "length": 636.51,
-      "cost": 8.07,
+      "start_key": "coord:1293,-3029",
+      "end_key": "P_F7",
+      "start_label": "(1293, -3029)",
+      "end_label": "Skylonisos",
+      "length": 632.7,
+      "cost": 632.7,
       "path": [
         {
-          "x": -321,
-          "y": 1922
+          "x": 1293,
+          "y": -3029
         },
         {
-          "x": -263,
-          "y": 1937
+          "x": 1722,
+          "y": -2600
         },
         {
-          "x": 175,
-          "y": 2312
+          "x": 1748,
+          "y": -2600
         }
       ]
     },
     {
-      "start_key": "coord:-304,1789",
+      "start_key": "coord:-301,1825",
       "end_key": "coord:62,1366",
-      "start_label": "Node node_420",
+      "start_label": "Node node_419",
       "end_label": "Node node_188",
-      "length": 559.36,
-      "cost": 8.13,
+      "length": 637.26,
+      "cost": 637.26,
       "path": [
         {
-          "x": -304,
-          "y": 1789
+          "x": -301,
+          "y": 1825
+        },
+        {
+          "x": -256,
+          "y": 1645
+        },
+        {
+          "x": -256,
+          "y": 1614
+        },
+        {
+          "x": -8,
+          "y": 1366
         },
         {
           "x": 62,
@@ -24907,328 +26770,204 @@
       ]
     },
     {
+      "start_key": "coord:-495,253",
+      "end_key": "coord:-912,679",
+      "start_label": "Node node_269",
+      "end_label": "Node node_341",
+      "length": 649.1,
+      "cost": 649.1,
+      "path": [
+        {
+          "x": -495,
+          "y": 253
+        },
+        {
+          "x": -722,
+          "y": 480
+        },
+        {
+          "x": -728,
+          "y": 480
+        },
+        {
+          "x": -728,
+          "y": 575
+        },
+        {
+          "x": -832,
+          "y": 679
+        },
+        {
+          "x": -912,
+          "y": 679
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-347,1900",
+      "end_key": "coord:-791,2310",
+      "start_label": "Node node_434",
+      "end_label": "Node node_513",
+      "length": 652.75,
+      "cost": 652.75,
+      "path": [
+        {
+          "x": -347,
+          "y": 1900
+        },
+        {
+          "x": -443,
+          "y": 1898
+        },
+        {
+          "x": -444,
+          "y": 1898
+        },
+        {
+          "x": -791,
+          "y": 2245
+        },
+        {
+          "x": -791,
+          "y": 2310
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-321,1922",
+      "end_key": "coord:175,2312",
+      "start_label": "Node node_435",
+      "end_label": "Node node_470",
+      "length": 673.15,
+      "cost": 673.15,
+      "path": [
+        {
+          "x": -321,
+          "y": 1922
+        },
+        {
+          "x": -273,
+          "y": 1898
+        },
+        {
+          "x": -256,
+          "y": 1898
+        },
+        {
+          "x": 122,
+          "y": 2276
+        },
+        {
+          "x": 158,
+          "y": 2312
+        },
+        {
+          "x": 175,
+          "y": 2312
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-788,2466",
+      "end_key": "coord:-313,2945",
+      "start_label": "Node node_536",
+      "end_label": "Node node_568",
+      "length": 675.75,
+      "cost": 675.75,
+      "path": [
+        {
+          "x": -788,
+          "y": 2466
+        },
+        {
+          "x": -313,
+          "y": 2941
+        },
+        {
+          "x": -313,
+          "y": 2945
+        }
+      ]
+    },
+    {
+      "start_key": "coord:37,2946",
+      "end_key": "P_NU6",
+      "start_label": "(37, 2946)",
+      "end_label": "Rack City",
+      "length": 767.77,
+      "cost": 767.77,
+      "path": [
+        {
+          "x": 37,
+          "y": 2946
+        },
+        {
+          "x": 406,
+          "y": 3315
+        },
+        {
+          "x": 500,
+          "y": 3315
+        },
+        {
+          "x": 565,
+          "y": 3380
+        },
+        {
+          "x": 625,
+          "y": 3380
+        }
+      ]
+    },
+    {
       "start_key": "coord:-954,1428",
-      "end_key": "coord:-346,1801",
+      "end_key": "coord:-358,1814",
       "start_label": "Node node_380",
-      "end_label": "Node node_404",
-      "length": 765.94,
-      "cost": 8.66,
+      "end_label": "Node node_402",
+      "length": 768.28,
+      "cost": 768.28,
       "path": [
         {
           "x": -954,
           "y": 1428
         },
         {
-          "x": -674,
-          "y": 1443
+          "x": -729,
+          "y": 1425
         },
         {
-          "x": -346,
-          "y": 1801
+          "x": -728,
+          "y": 1425
+        },
+        {
+          "x": -358,
+          "y": 1795
+        },
+        {
+          "x": -358,
+          "y": 1814
         }
       ]
     },
     {
-      "start_key": "P_E5",
-      "end_key": "coord:-1496,1826",
-      "start_label": "Isthmopol",
-      "end_label": "Node node_546",
-      "length": 761.58,
-      "cost": 9.07,
+      "start_key": "coord:-1438,732",
+      "end_key": "P_E5",
+      "start_label": "Node node_355",
+      "end_label": "Isthmopol",
+      "length": 811.7,
+      "cost": 811.7,
       "path": [
         {
-          "x": -1939,
-          "y": 1262
+          "x": -1438,
+          "y": 732
         },
         {
-          "x": -1743,
-          "y": 1443
+          "x": -1966,
+          "y": 1260
         },
         {
-          "x": -1743,
-          "y": 1525
-        },
-        {
-          "x": -1661,
-          "y": 1607
-        },
-        {
-          "x": -1661,
-          "y": 1690
-        },
-        {
-          "x": -1496,
-          "y": 1826
-        }
-      ]
-    },
-    {
-      "start_key": "P_C6",
-      "end_key": "P_D6",
-      "start_label": "Neamegapolis",
-      "end_label": "D\u2086",
-      "length": 794.33,
-      "cost": 9.66,
-      "path": [
-        {
-          "x": -936,
-          "y": 4488
-        },
-        {
-          "x": -1085,
-          "y": 4489
-        },
-        {
-          "x": -1168,
-          "y": 4407
-        },
-        {
-          "x": -1168,
-          "y": 4324
-        },
-        {
-          "x": -1250,
-          "y": 4242
-        },
-        {
-          "x": -1250,
-          "y": 4160
-        },
-        {
-          "x": -1432,
-          "y": 3992
-        }
-      ]
-    },
-    {
-      "start_key": "coord:1278,154",
-      "end_key": "coord:774,138",
-      "start_label": "Node node_95",
-      "end_label": "Node node_49",
-      "length": 604.34,
-      "cost": 10.14,
-      "path": [
-        {
-          "x": 1278,
-          "y": 154
-        },
-        {
-          "x": 1218,
-          "y": 43
-        },
-        {
-          "x": 889,
-          "y": 43
-        },
-        {
-          "x": 774,
-          "y": 138
-        }
-      ]
-    },
-    {
-      "start_key": "P_A4",
-      "end_key": "coord:-248,-988",
-      "start_label": "Minas Rojas",
-      "end_label": "Node node_265",
-      "length": 850.36,
-      "cost": 10.24,
-      "path": [
-        {
-          "x": 120,
-          "y": -1587
-        },
-        {
-          "x": 149,
-          "y": -1275
-        },
-        {
-          "x": -16,
-          "y": -1110
-        },
-        {
-          "x": -180,
-          "y": -1110
-        },
-        {
-          "x": -248,
-          "y": -988
-        }
-      ]
-    },
-    {
-      "start_key": "P_P2",
-      "end_key": "coord:-326,-904",
-      "start_label": "P\u2082",
-      "end_label": "Node node_239",
-      "length": 916.81,
-      "cost": 10.24,
-      "path": [
-        {
-          "x": -987,
-          "y": -485
-        },
-        {
-          "x": -921,
-          "y": -616
-        },
-        {
-          "x": -509,
-          "y": -616
-        },
-        {
-          "x": -427,
-          "y": -698
-        },
-        {
-          "x": -427,
-          "y": -781
-        },
-        {
-          "x": -326,
-          "y": -904
-        }
-      ]
-    },
-    {
-      "start_key": "P_A5",
-      "end_key": "P_A6",
-      "start_label": "New Eden",
-      "end_label": "Holihill",
-      "length": 765.15,
-      "cost": 12.36,
-      "path": [
-        {
-          "x": 153,
-          "y": -2015
-        },
-        {
-          "x": 642,
-          "y": -2510
-        },
-        {
-          "x": 680,
-          "y": -2568
-        }
-      ]
-    },
-    {
-      "start_key": "coord:155,-451",
-      "end_key": "coord:268,276",
-      "start_label": "Node node_120",
-      "end_label": "Node node_27",
-      "length": 904.5,
-      "cost": 12.47,
-      "path": [
-        {
-          "x": 155,
-          "y": -451
-        },
-        {
-          "x": 149,
-          "y": -204
-        },
-        {
-          "x": 313,
-          "y": -40
-        },
-        {
-          "x": 313,
-          "y": 43
-        },
-        {
-          "x": 395,
-          "y": 125
-        },
-        {
-          "x": 395,
-          "y": 207
-        },
-        {
-          "x": 268,
-          "y": 276
-        }
-      ]
-    },
-    {
-      "start_key": "P_N6",
-      "end_key": "coord:-187,2974",
-      "start_label": "N\u2086",
-      "end_label": "Node node_590",
-      "length": 1015.19,
-      "cost": 12.49,
-      "path": [
-        {
-          "x": 632,
-          "y": 3480
-        },
-        {
-          "x": 231,
-          "y": 3089
-        },
-        {
-          "x": 66,
-          "y": 3089
-        },
-        {
-          "x": -16,
-          "y": 3007
-        },
-        {
-          "x": -187,
-          "y": 2974
-        }
-      ]
-    },
-    {
-      "start_key": "P_D6",
-      "end_key": "coord:-1308,2829",
-      "start_label": "D\u2086",
-      "end_label": "Node node_490",
-      "length": 1210.16,
-      "cost": 14.41,
-      "path": [
-        {
-          "x": -1432,
-          "y": 3992
-        },
-        {
-          "x": -1414,
-          "y": 2925
-        },
-        {
-          "x": -1308,
-          "y": 2829
-        }
-      ]
-    },
-    {
-      "start_key": "P_P2",
-      "end_key": "coord:-495,246",
-      "start_label": "P\u2082",
-      "end_label": "Node node_268_268",
-      "length": 1071.89,
-      "cost": 15.53,
-      "path": [
-        {
-          "x": -987,
-          "y": -485
-        },
-        {
-          "x": -839,
-          "y": -534
-        },
-        {
-          "x": -674,
-          "y": -369
-        },
-        {
-          "x": -674,
-          "y": 43
-        },
-        {
-          "x": -495,
-          "y": 246
+          "x": -1966,
+          "y": 1325
         }
       ]
     },
@@ -25237,36 +26976,40 @@
       "end_key": "coord:2166,127",
       "start_label": "Node node_77",
       "end_label": "Node node_233",
-      "length": 1009.97,
-      "cost": 28.59,
+      "length": 906.16,
+      "cost": 906.16,
       "path": [
         {
           "x": 1350,
           "y": 144
         },
         {
-          "x": 1383,
-          "y": 43
+          "x": 1434,
+          "y": 102
         },
         {
-          "x": 1547,
-          "y": 43
+          "x": 1444,
+          "y": 102
         },
         {
-          "x": 1629,
-          "y": -40
+          "x": 1539,
+          "y": 197
         },
         {
-          "x": 1794,
-          "y": -40
+          "x": 1728,
+          "y": 197
         },
         {
-          "x": 1876,
-          "y": 43
+          "x": 1822,
+          "y": 103
         },
         {
-          "x": 2123,
-          "y": 43
+          "x": 1822,
+          "y": 102
+        },
+        {
+          "x": 2147,
+          "y": 127
         },
         {
           "x": 2166,
@@ -25275,112 +27018,371 @@
       ]
     },
     {
-      "start_key": "P_B5",
-      "end_key": "coord:1350,168",
-      "start_label": "B\u2085",
-      "end_label": "Node node_79",
-      "length": 1844.27,
-      "cost": 29.07,
+      "start_key": "coord:-1267,2881",
+      "end_key": "coord:-1294,3880",
+      "start_label": "Node node_486",
+      "end_label": "(-1294, 3880)",
+      "length": 999.36,
+      "cost": 999.36,
       "path": [
         {
-          "x": 2504,
-          "y": 664
+          "x": -1267,
+          "y": 2881
         },
         {
-          "x": 2370,
-          "y": 866
+          "x": -1294,
+          "y": 3880
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1672,946",
+      "end_key": "P_E6",
+      "start_label": "(-1672, 946)",
+      "end_label": "Mt. Phosphagos",
+      "length": 1048.21,
+      "cost": 1048.21,
+      "path": [
+        {
+          "x": -1672,
+          "y": 946
         },
         {
-          "x": 2041,
-          "y": 866
+          "x": -1672,
+          "y": 953
         },
         {
-          "x": 1876,
-          "y": 701
+          "x": -1956,
+          "y": 953
         },
         {
-          "x": 1794,
-          "y": 701
+          "x": -2333,
+          "y": 1330
         },
         {
-          "x": 1712,
-          "y": 619
+          "x": -2333,
+          "y": 1331
         },
         {
-          "x": 1712,
-          "y": 454
+          "x": -2543,
+          "y": 1352
         },
         {
-          "x": 1465,
-          "y": 207
+          "x": -2555,
+          "y": 1352
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1303,2762",
+      "end_key": "coord:-1294,3880",
+      "start_label": "Node node_478",
+      "end_label": "(-1294, 3880)",
+      "length": 1118.04,
+      "cost": 1118.04,
+      "path": [
+        {
+          "x": -1303,
+          "y": 2762
         },
         {
-          "x": 1465,
-          "y": 125
+          "x": -1294,
+          "y": 3878
         },
         {
-          "x": 1383,
-          "y": 43
+          "x": -1294,
+          "y": 3880
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1267,2881",
+      "end_key": "coord:-1294,4157",
+      "start_label": "Node node_486",
+      "end_label": "(-1294, 4157)",
+      "length": 1276.29,
+      "cost": 1276.29,
+      "path": [
+        {
+          "x": -1267,
+          "y": 2881
         },
+        {
+          "x": -1294,
+          "y": 4150
+        },
+        {
+          "x": -1294,
+          "y": 4157
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1303,2762",
+      "end_key": "coord:-1294,4157",
+      "start_label": "Node node_478",
+      "end_label": "(-1294, 4157)",
+      "length": 1395.03,
+      "cost": 1395.03,
+      "path": [
+        {
+          "x": -1303,
+          "y": 2762
+        },
+        {
+          "x": -1294,
+          "y": 4157
+        }
+      ]
+    },
+    {
+      "start_key": "coord:650,-3543",
+      "end_key": "P_O12",
+      "start_label": "Node node_775",
+      "end_label": "O\u2087",
+      "length": 1467.83,
+      "cost": 1467.83,
+      "path": [
+        {
+          "x": 650,
+          "y": -3543
+        },
+        {
+          "x": 689,
+          "y": -3660
+        },
+        {
+          "x": 689,
+          "y": -3677
+        },
+        {
+          "x": 122,
+          "y": -4244
+        },
+        {
+          "x": 122,
+          "y": -4528
+        },
+        {
+          "x": 216,
+          "y": -4622
+        },
+        {
+          "x": 217,
+          "y": -4622
+        },
+        {
+          "x": 188,
+          "y": -4709
+        },
+        {
+          "x": 188,
+          "y": -4725
+        }
+      ]
+    },
+    {
+      "start_key": "coord:1350,168",
+      "end_key": "coord:2489,598",
+      "start_label": "Node node_79",
+      "end_label": "Node node_854",
+      "length": 1791.62,
+      "cost": 1791.62,
+      "path": [
         {
           "x": 1350,
           "y": 168
+        },
+        {
+          "x": 1416,
+          "y": 102
+        },
+        {
+          "x": 1444,
+          "y": 102
+        },
+        {
+          "x": 1633,
+          "y": 291
+        },
+        {
+          "x": 1633,
+          "y": 480
+        },
+        {
+          "x": 1728,
+          "y": 575
+        },
+        {
+          "x": 1728,
+          "y": 669
+        },
+        {
+          "x": 1822,
+          "y": 763
+        },
+        {
+          "x": 1822,
+          "y": 764
+        },
+        {
+          "x": 2011,
+          "y": 764
+        },
+        {
+          "x": 2105,
+          "y": 858
+        },
+        {
+          "x": 2106,
+          "y": 858
+        },
+        {
+          "x": 2294,
+          "y": 858
+        },
+        {
+          "x": 2489,
+          "y": 663
+        },
+        {
+          "x": 2489,
+          "y": 598
+        }
+      ]
+    },
+    {
+      "start_key": "coord:-1672,946",
+      "end_key": "P_EV2",
+      "start_label": "(-1672, 946)",
+      "end_label": "Krimnos",
+      "length": 2563.6,
+      "cost": 2563.6,
+      "path": [
+        {
+          "x": -1672,
+          "y": 946
+        },
+        {
+          "x": -2141,
+          "y": 953
+        },
+        {
+          "x": -2144,
+          "y": 953
+        },
+        {
+          "x": -2428,
+          "y": 669
+        },
+        {
+          "x": -2711,
+          "y": 669
+        },
+        {
+          "x": -2806,
+          "y": 764
+        },
+        {
+          "x": -2994,
+          "y": 764
+        },
+        {
+          "x": -3088,
+          "y": 858
+        },
+        {
+          "x": -3089,
+          "y": 858
+        },
+        {
+          "x": -3372,
+          "y": 858
+        },
+        {
+          "x": -3467,
+          "y": 953
+        },
+        {
+          "x": -3561,
+          "y": 953
+        },
+        {
+          "x": -3655,
+          "y": 1047
+        },
+        {
+          "x": -3656,
+          "y": 1047
+        },
+        {
+          "x": -3656,
+          "y": 1236
+        },
+        {
+          "x": -3590,
+          "y": 1302
+        },
+        {
+          "x": -3590,
+          "y": 1325
         }
       ]
     }
   ],
   "line_tunneled_stop_vars": {
     "A": [
-      "P_AF",
-      "P_AP",
-      "P_ABCDE",
       "P_A9",
+      "P_A2",
+      "P_A4",
       "P_A6",
       "P_AO8",
-      "P_A4",
-      "P_A2",
-      "P_A5"
+      "P_A5",
+      "P_AF",
+      "P_AP",
+      "P_ABCDE"
     ],
     "B": [
-      "P_BH",
-      "P_BKL",
-      "P_ABCDE",
       "P_B2",
-      "P_B3",
-      "P_BJZ",
       "P_B8",
+      "P_BKL",
+      "P_B4",
+      "P_BH",
+      "P_B3",
       "P_B5",
-      "P_B4"
+      "P_ABCDE",
+      "P_BJZ"
     ],
     "C": [
+      "P_C3",
+      "P_CN",
       "P_C2",
       "P_C5",
-      "P_ABCDE",
-      "P_CN",
-      "P_C3"
+      "P_ABCDE"
     ],
     "D": [
-      "P_D5",
-      "P_ABCDE",
+      "P_D3",
+      "P_CD",
+      "P_D6",
+      "P_D2",
+      "P_DN",
       "P_D7",
       "P_D8",
-      "P_DN",
-      "P_D3",
-      "P_D6",
-      "P_D2"
+      "P_ABCDE",
+      "P_D5"
     ],
     "E": [
-      "P_EV2",
-      "P_E6",
-      "P_ABCDE",
-      "P_E2",
-      "P_EQ10",
-      "P_EN",
       "P_E8",
-      "P_ET",
-      "P_E5",
+      "P_E6",
+      "P_EPR",
+      "P_EQ10",
       "P_E4",
-      "P_EPR"
+      "P_EN",
+      "P_ET",
+      "P_EV2",
+      "P_ABCDE",
+      "P_E5",
+      "P_E2"
     ],
     "F": [
       "P_AF"
@@ -25398,11 +27400,11 @@
       "P_BKL"
     ],
     "N": [
-      "P_N2",
       "P_CN",
+      "P_N3",
       "P_DN",
-      "P_EN",
-      "P_N3"
+      "P_N2",
+      "P_EN"
     ],
     "P": [
       "P_AP"

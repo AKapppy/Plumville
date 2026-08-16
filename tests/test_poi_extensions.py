@@ -50,7 +50,7 @@ class PoiExtensionConsolidationTests(unittest.TestCase):
             written_payload["path_nodes"],
             [
                 {
-                    "id": "monument_1",
+                    "id": "node_1",
                     "x": 30,
                     "y": 40,
                     "label": "Ocean Monument",

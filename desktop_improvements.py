@@ -47,6 +47,8 @@ MMCP_TEXT_DARK = "#091117"
 MMCP_MONO_FONT = "Courier"
 MMCP_SYMBOL_STATION = "◆"
 MMCP_SYMBOL_JUNCTION = "◆◆"
+DESKTOP_HOME_WORLD_COORDINATES = (-2556, 1340)
+DESKTOP_HOME_MARKER_RADIUS = 14
 
 _ORIGINAL_BUILD_ROUTE_PANEL: Callable[..., None] | None = None
 _ORIGINAL_REFRESH_CURRENT_ROUTE: Callable[..., None] | None = None
@@ -305,6 +307,52 @@ def _diamond_marker_points(
         center_y + radius,
         center_x - radius,
         center_y,
+    )
+
+
+def _desktop_home_plot_coordinates() -> tuple[int, int]:
+    home_x, home_y = DESKTOP_HOME_WORLD_COORDINATES
+    return (home_x, -home_y)
+
+
+def _draw_desktop_home_marker(
+    canvas: tk.Canvas,
+    canvas_x: float,
+    canvas_y: float,
+) -> None:
+    radius = DESKTOP_HOME_MARKER_RADIUS
+    canvas.create_polygon(
+        _diamond_marker_points(canvas_x, canvas_y, radius),
+        fill=WEB_GOLD,
+        outline=WEB_BORDER_DARK,
+        width=2.5,
+        tags=("desktop_home_marker",),
+    )
+
+    roof_radius = max(4, radius - 4)
+    canvas.create_line(
+        canvas_x - roof_radius,
+        canvas_y,
+        canvas_x,
+        canvas_y - roof_radius + 1,
+        canvas_x + roof_radius,
+        canvas_y,
+        fill=WEB_BORDER_DARK,
+        width=2,
+        tags=("desktop_home_marker",),
+    )
+    canvas.create_line(
+        canvas_x - roof_radius + 3,
+        canvas_y - 1,
+        canvas_x - roof_radius + 3,
+        canvas_y + roof_radius - 2,
+        canvas_x + roof_radius - 3,
+        canvas_y + roof_radius - 2,
+        canvas_x + roof_radius - 3,
+        canvas_y - 1,
+        fill=WEB_BORDER_DARK,
+        width=2,
+        tags=("desktop_home_marker",),
     )
 
 
@@ -2224,6 +2272,7 @@ def _overlay_web_station_markers(
     if not isinstance(canvas, tk.Canvas):
         return
     canvas.delete("desktop_station_marker")
+    canvas.delete("desktop_home_marker")
     visible_line_names = self._visible_line_names()
     for stop in base.METRO_STOPS:
         position = self.station_canvas_positions.get(stop.var)
@@ -2272,6 +2321,10 @@ def _overlay_web_station_markers(
                 width=1.75,
                 tags=("desktop_station_marker",),
             )
+
+    home_x, home_y = self.world_to_canvas(_desktop_home_plot_coordinates())
+    _draw_desktop_home_marker(canvas, home_x, home_y)
+    canvas.tag_raise("desktop_home_marker")
 
 
 def _patched_redraw(

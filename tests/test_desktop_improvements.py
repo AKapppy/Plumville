@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 import unittest
 from unittest import mock
 
@@ -37,6 +38,23 @@ class FakeStringVar:
 
     def set(self, value: str) -> None:
         self.value = value
+
+
+class FakeMarkerCanvas:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
+
+    def delete(self, tag: str) -> None:
+        self.calls.append(("delete", (tag,), {}))
+
+    def create_polygon(self, *args: object, **kwargs: object) -> None:
+        self.calls.append(("polygon", args, kwargs))
+
+    def create_line(self, *args: object, **kwargs: object) -> None:
+        self.calls.append(("line", args, kwargs))
+
+    def tag_raise(self, tag: str) -> None:
+        self.calls.append(("raise", (tag,), {}))
 
 
 class FakeRouteViewer:
@@ -566,6 +584,63 @@ class DesktopMmcpVisualTests(unittest.TestCase):
             ),
             (10.0, 16.0, 14.0, 20.0, 10.0, 24.0, 6.0, 20.0),
         )
+
+    def test_home_marker_uses_fixed_coordinate_not_station_position(
+        self,
+    ) -> None:
+        phosphagos = base.MetroStop(
+            "P_E6",
+            "Mt. Phosphagos",
+            -2555,
+            1325,
+        )
+        canvas = FakeMarkerCanvas()
+        viewer = SimpleNamespace(
+            canvas=canvas,
+            station_canvas_positions={phosphagos.var: (10.0, 20.0)},
+            selected_stop_var=None,
+            world_to_canvas=mock.Mock(return_value=(33.0, 44.0)),
+            _visible_line_names=mock.Mock(return_value={"E"}),
+            _stop_visible_line_names=mock.Mock(return_value=("E",)),
+            _stop_fill_for_visible_lines=mock.Mock(return_value="#7a4eb2"),
+        )
+
+        with (
+            mock.patch.object(desktop_improvements.tk, "Canvas", FakeMarkerCanvas),
+            mock.patch.object(base, "METRO_STOPS", (phosphagos,)),
+            mock.patch.object(
+                base,
+                "STOP_LINE_NAMES",
+                {phosphagos.var: ("E",)},
+            ),
+        ):
+            desktop_improvements._overlay_web_station_markers(viewer)
+
+        viewer.world_to_canvas.assert_called_once_with((-2556, -1340))
+        home_polygons = [
+            args
+            for kind, args, kwargs in canvas.calls
+            if kind == "polygon"
+            and kwargs.get("tags") == ("desktop_home_marker",)
+        ]
+        self.assertEqual(
+            home_polygons,
+            [
+                (
+                    (
+                        33.0,
+                        30.0,
+                        47.0,
+                        44.0,
+                        33.0,
+                        58.0,
+                        19.0,
+                        44.0,
+                    ),
+                )
+            ],
+        )
+        self.assertIn(("raise", ("desktop_home_marker",), {}), canvas.calls)
 
     def test_button_palette_matches_web_action_tiers(self) -> None:
         self.assertEqual(

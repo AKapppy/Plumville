@@ -70,6 +70,10 @@ assert(appJs.includes('function visibleLineShareParam'), 'app.js is missing shar
 assert(appJs.includes("params.get('lines')"), 'app.js no longer restores visible lines from URL params.');
 assert(appJs.includes("replaceShareParams({ from: routeStartInput.value, to: routeEndInput.value, ...lineShareParams() })"), 'Route planning no longer updates shareable route URL params.');
 assert(appJs.includes('function drawSuggestedWalkingPaths'), 'app.js is missing suggested walking path rendering.');
+assert(appJs.includes("suggestedWalkingPathColor: '#f4d84a'"), 'Suggested walking paths should use the desktop yellow color.');
+assert(appJs.includes('ctx.strokeStyle = CONSTANTS.suggestedWalkingPathColor'), 'Suggested walking paths no longer use their dedicated color.');
+assert(!appJs.includes('ctx.bezierCurveTo'), 'Public suggested walking paths should remain line segments, not Bezier curves.');
+assert(!appJs.includes('ctx.quadraticCurveTo'), 'Public suggested walking paths should remain line segments, not quadratic curves.');
 assert(appJs.includes('function visibleUnderlaySourceBox'), 'app.js is missing desktop-style underlay cropping.');
 assert(appJs.includes('function underlayDrawIsUpscaled'), 'app.js is missing desktop-style sharp underlay sampling.');
 assert(appJs.includes('function drawTerrainBoundaryCompletionEdges'), 'app.js is missing terrain boundary completion strokes.');

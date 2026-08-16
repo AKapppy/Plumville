@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from unittest import mock
 
+from PIL import Image
+
 import legacy_core as base
 from plumville.core import public_export
 
@@ -145,7 +147,76 @@ class PublicExportTests(unittest.TestCase):
         self.assertEqual(viewer.height, 480)
         self.assertEqual(build.call_args.kwargs["visible_line_names"], {"A"})
 
-    def test_legacy_current_map_png_export_rasterizes_validated_svg(self) -> None:
+    def test_legacy_current_map_png_export_writes_visible_block_crop(self) -> None:
+        options = base.SvgExportOptions(
+            include_world_map=True,
+            include_grid=False,
+            include_metro_lines=True,
+            include_stations=False,
+            include_labels=False,
+            include_path_nodes=False,
+            include_walking_paths=False,
+            include_connector_paths=False,
+            include_current_route=False,
+            include_planning_circle=False,
+            include_connected_area=False,
+            include_alignment_ellipses=False,
+            include_frontier_highlights=False,
+            include_railway_finishing=False,
+        )
+        viewer = object.__new__(base.MetroMapViewer)
+        viewer.root = mock.Mock()
+        viewer.canvas = mock.Mock()
+        viewer.canvas.winfo_width.return_value = 4
+        viewer.canvas.winfo_height.return_value = 4
+        viewer.world_to_canvas = lambda point: (point[0], -point[1])
+        viewer._plot_transform = mock.Mock(return_value=(0, 3, 0, 3, 1.0))
+        viewer._visible_line_names = mock.Mock(return_value={"A"})
+        viewer.current_route = None
+        source_image = Image.new("RGBA", (4, 4), (0, 255, 0, 255))
+        source_image.putpixel((2, 2), (255, 0, 0, 255))
+        payload = {
+            "min_x": 0,
+            "max_x": 3,
+            "min_z": 0,
+            "max_z": 3,
+        }
+        viewer._current_world_map_render_underlay = mock.Mock(
+            return_value=(payload, source_image),
+        )
+        viewer._selected_world_map_mode_key = mock.Mock(return_value=None)
+
+        original_import = __import__
+
+        def guarded_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "cairosvg":
+                raise AssertionError("cairosvg should not be imported")
+            return original_import(name, *args, **kwargs)
+
+        with (
+            mock.patch("builtins.__import__", side_effect=guarded_import),
+            mock.patch.object(
+                base,
+                "_all_metro_segments",
+                return_value=(
+                    SimpleNamespace(
+                        line_name="A",
+                        plot_points=((0, 0), (3, 0)),
+                    ),
+                ),
+            ),
+            mock.patch.object(base, "_metro_segment_style", return_value=(1, None)),
+            tempfile.TemporaryDirectory() as temporary_dir,
+        ):
+            png_path = Path(temporary_dir) / "export.png"
+            png_path.write_bytes(viewer._build_current_map_png_export_bytes(options))
+            with Image.open(png_path) as exported_image:
+                exported_image.load()
+                self.assertEqual(exported_image.size, (4, 4))
+                self.assertEqual(exported_image.getpixel((2, 2)), (255, 0, 0, 255))
+                self.assertNotEqual(exported_image.getpixel((1, 0)), (0, 255, 0, 255))
+
+    def test_legacy_current_map_png_export_requires_world_map(self) -> None:
         options = base.SvgExportOptions(
             include_world_map=False,
             include_grid=False,
@@ -163,31 +234,9 @@ class PublicExportTests(unittest.TestCase):
             include_railway_finishing=False,
         )
         viewer = object.__new__(base.MetroMapViewer)
-        viewer.width = 640
-        viewer.height = 480
-        svg2png = mock.Mock(return_value=b"png-bytes")
 
-        with (
-            mock.patch.object(
-                viewer,
-                "_build_current_map_svg_export_text",
-                return_value="<svg />\n",
-            ),
-            mock.patch.dict(
-                "sys.modules",
-                {"cairosvg": SimpleNamespace(svg2png=svg2png)},
-            ),
-        ):
-            self.assertEqual(
-                viewer._build_current_map_png_export_bytes(options),
-                b"png-bytes",
-            )
-
-        svg2png.assert_called_once_with(
-            bytestring=b"<svg />\n",
-            output_width=640,
-            output_height=480,
-        )
+        with self.assertRaisesRegex(ValueError, "World map image"):
+            viewer._build_current_map_png_export_bytes(options)
 
 
 if __name__ == "__main__":

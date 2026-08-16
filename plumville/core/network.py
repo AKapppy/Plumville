@@ -9,6 +9,7 @@ from typing import Any, Sequence
 
 
 JsonObject = dict[str, Any]
+PATH_NODE_ID_RE = re.compile(r"node_([1-9]\d*)")
 
 
 def coordinate_endpoint_key(x: int, y: int) -> str:
@@ -219,10 +220,38 @@ def normalize_path_nodes(payload: JsonObject) -> bool:
         and "y" in stop_record
     }
     normalized_nodes: list[JsonObject] = []
-    seen_ids: set[str] = set()
+    reserved_node_numbers = {
+        int(match.group(1))
+        for raw_node in raw_path_nodes
+        if isinstance(raw_node, dict)
+        for match in [
+            PATH_NODE_ID_RE.fullmatch(str(raw_node.get("id", "")).strip())
+        ]
+        if match is not None
+    }
+    assigned_node_numbers: set[int] = set()
     seen_coordinates: set[tuple[int, int]] = set()
 
-    for index, raw_node in enumerate(raw_path_nodes, start=1):
+    def assign_node_id(raw_id: object) -> str:
+        raw_text = str(raw_id).strip()
+        exact_match = PATH_NODE_ID_RE.fullmatch(raw_text)
+        if exact_match is not None:
+            node_number = int(exact_match.group(1))
+            if node_number not in assigned_node_numbers:
+                assigned_node_numbers.add(node_number)
+                return raw_text
+
+        embedded_number = _path_node_embedded_number(raw_text)
+        unavailable_numbers = reserved_node_numbers | assigned_node_numbers
+        if embedded_number is not None and embedded_number not in unavailable_numbers:
+            assigned_node_numbers.add(embedded_number)
+            return f"node_{embedded_number}"
+
+        node_number = _first_available_node_number(unavailable_numbers)
+        assigned_node_numbers.add(node_number)
+        return f"node_{node_number}"
+
+    for raw_node in raw_path_nodes:
         if not isinstance(raw_node, dict):
             payload_changed = True
             continue
@@ -238,10 +267,7 @@ def normalize_path_nodes(payload: JsonObject) -> bool:
             payload_changed = True
             continue
 
-        node_id = str(raw_node.get("id", "")).strip() or f"node_{index}"
-        if node_id in seen_ids:
-            node_id = f"{node_id}_{index}"
-            payload_changed = True
+        node_id = assign_node_id(raw_node.get("id", ""))
 
         normalized_node: JsonObject = {
             "id": node_id,
@@ -261,14 +287,89 @@ def normalize_path_nodes(payload: JsonObject) -> bool:
         if raw_node != normalized_node:
             payload_changed = True
         normalized_nodes.append(normalized_node)
-        seen_ids.add(node_id)
         seen_coordinates.add(coordinates)
+
+    for coordinates in _referenced_path_node_coordinates(payload):
+        if coordinates in stop_coordinates or coordinates in seen_coordinates:
+            continue
+        node_number = _first_available_node_number(reserved_node_numbers | assigned_node_numbers)
+        assigned_node_numbers.add(node_number)
+        normalized_nodes.append(
+            {
+                "id": f"node_{node_number}",
+                "x": coordinates[0],
+                "y": coordinates[1],
+            }
+        )
+        seen_coordinates.add(coordinates)
+        payload_changed = True
 
     if raw_path_nodes != normalized_nodes:
         payload["path_nodes"] = normalized_nodes
         payload_changed = True
 
     return payload_changed
+
+
+def _path_node_embedded_number(node_id: str) -> int | None:
+    numbers = [int(match.group(0)) for match in re.finditer(r"[1-9]\d*", node_id)]
+    return numbers[-1] if numbers else None
+
+
+def _first_available_node_number(used_node_numbers: set[int]) -> int:
+    node_number = 1
+    while node_number in used_node_numbers:
+        node_number += 1
+    return node_number
+
+
+def next_path_node_id(payload: JsonObject) -> str:
+    raw_path_nodes = payload.get("path_nodes", [])
+    used_node_numbers = {
+        int(match.group(1))
+        for raw_node in raw_path_nodes
+        if isinstance(raw_node, dict)
+        for match in [
+            PATH_NODE_ID_RE.fullmatch(str(raw_node.get("id", "")).strip())
+        ]
+        if match is not None
+    }
+    return f"node_{_first_available_node_number(used_node_numbers)}"
+
+
+def _referenced_path_node_coordinates(payload: JsonObject) -> tuple[tuple[int, int], ...]:
+    coordinates: list[tuple[int, int]] = []
+
+    for raw_edge in payload.get("extra_edges", []):
+        if not isinstance(raw_edge, dict):
+            continue
+        for field_name in ("from_endpoint", "to_endpoint"):
+            raw_endpoint = raw_edge.get(field_name)
+            if not isinstance(raw_endpoint, dict):
+                continue
+            if str(raw_endpoint.get("kind", "")).strip().lower() not in {"coord", "coordinate"}:
+                continue
+            endpoint_x = coerce_int(raw_endpoint.get("x"))
+            endpoint_y = coerce_int(raw_endpoint.get("y"))
+            if endpoint_x is None or endpoint_y is None:
+                continue
+            coordinates.append((endpoint_x, endpoint_y))
+
+    for raw_stop_record in payload.get("stops", []):
+        if not isinstance(raw_stop_record, dict):
+            continue
+        raw_node_keys = raw_stop_record.get("city_limit_node_keys")
+        if not isinstance(raw_node_keys, list):
+            continue
+        for raw_node_key in raw_node_keys:
+            node_key = str(raw_node_key).strip()
+            if not node_key.startswith("coord:"):
+                continue
+            parsed_coordinates = parse_coordinate_text(node_key.removeprefix("coord:"))
+            if parsed_coordinates is not None:
+                coordinates.append(parsed_coordinates)
+
+    return tuple(dict.fromkeys(coordinates))
 
 
 def resolve_stop_key(payload: JsonObject, identifier: str) -> str | None:

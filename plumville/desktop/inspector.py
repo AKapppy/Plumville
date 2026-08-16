@@ -349,12 +349,10 @@ def _render_selected_path_node(
     actions = _make_section(shell.inspector_body, title="Actions")
     actions.pack(fill="x")
     action_items = [
-        ("Walk Path", lambda: viewer._add_path_for_selected_node("walk")),
-        ("Metro Path", lambda: viewer._add_path_for_selected_node("connector")),
-        ("Edit Node", viewer._edit_selected_path_node_coordinates),
+        ("Connect", lambda: viewer._add_path_for_selected_node("walk")),
+        ("Edit", viewer._edit_selected_path_node_coordinates),
+        ("Remove", viewer._remove_selected_path_node),
     ]
-    if path_node.is_explicit:
-        action_items.append(("Remove", viewer._remove_selected_path_node))
     _action_section(
         viewer,
         actions,
@@ -365,17 +363,24 @@ def _render_selected_path_node(
     if extra_edges:
         edges = _make_section(shell.inspector_body, title="Path Edges")
         edges.pack(fill="x", pady=(SECTION_GAP, 0))
-        for extra_edge in extra_edges[:6]:
+        for extra_edge in extra_edges:
+            edge_row = tk.Frame(edges, bg=workspace.PANEL_BG)
+            edge_row.pack(fill="x", pady=(0, 6))
             tk.Label(
-                edges,
+                edge_row,
                 text=base._extra_edge_full_summary(extra_edge),
                 bg=workspace.PANEL_BG,
                 fg=workspace.TEXT,
                 font=("Helvetica", 10),
                 anchor="w",
                 justify="left",
-                wraplength=workspace.INSPECTOR_WIDTH - 78,
-            ).pack(anchor="w", pady=(0, 4))
+                wraplength=workspace.INSPECTOR_WIDTH - 132,
+            ).pack(side="left", fill="x", expand=True)
+            viewer._make_info_button(
+                edge_row,
+                text="Remove",
+                command=lambda edge=extra_edge: viewer._remove_path_edge(edge),
+            ).pack(side="right", padx=(8, 0))
 
 
 def _render_pathing_context(

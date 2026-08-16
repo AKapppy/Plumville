@@ -18,7 +18,7 @@ from math import ceil, dist, floor, log
 from pathlib import Path
 from typing import Any, Callable, ClassVar, Final, Iterable, Literal, NotRequired, Sequence, TypedDict, cast
 
-from PIL import Image, ImageDraw, ImageTk
+from PIL import Image, ImageDraw, ImageFont, ImageTk
 
 from plumville.core import geometry, network, public_export, routing, text as core_text, travel_time
 
@@ -121,6 +121,7 @@ FRONTIER_SEGMENT_OUTLINE_WIDTH: Final[int] = 12
 FRONTIER_SEGMENT_WIDTH: Final[int] = 8
 CONNECTOR_ROUTE_COLOR: Final[str] = '#f0f0f0'
 WALK_ROUTE_COLOR: Final[str] = '#f7c7db'
+SUGGESTED_WALK_ROUTE_COLOR: Final[str] = '#f4d84a'
 FLY_ROUTE_COLOR: Final[str] = '#8ad4ff'
 CURSOR_GUIDE_COLOR: Final[str] = '#8ad4ff'
 CURSOR_GUIDE_WIDTH: Final[int] = 1
@@ -605,6 +606,7 @@ def add_custom_point_of_interest(
     if any((int(stop_record['x']), int(stop_record['y'])) == coordinates for stop_record in payload['stops']):
         raise ValueError('A station already exists at those coordinates.')
 
+    _normalize_path_nodes(payload)
     raw_nodes = payload.setdefault('path_nodes', [])
     for node in raw_nodes:
         if not isinstance(node, dict):
@@ -619,9 +621,8 @@ def add_custom_point_of_interest(
     if kind == 'pillager_tower' and normalized_label is None:
         normalized_label = 'Pillager Tower'
 
-    node_id_prefix = 'monument' if kind == 'monument' else 'pillager_tower'
     node_record: PathNodeRecord = {
-        'id': f'{node_id_prefix}_{len(raw_nodes) + 1}',
+        'id': _next_path_node_id(payload),
         'x': int(coordinates[0]),
         'y': int(coordinates[1]),
         'poi_kind': kind,
@@ -3442,6 +3443,119 @@ def _world_map_alpha_limited_copy(image: Image.Image) -> Image.Image:
     alpha = underlay.getchannel('A').point(_limit_world_map_alpha)
     underlay.putalpha(alpha)
     return underlay
+
+
+def _block_png_font(font_size: int) -> ImageFont.ImageFont:
+    for font_name in (
+        'Helvetica.ttc',
+        'Arial.ttf',
+        '/System/Library/Fonts/Helvetica.ttc',
+        '/System/Library/Fonts/Supplemental/Arial.ttf',
+    ):
+        try:
+            return ImageFont.truetype(font_name, font_size)
+        except OSError:
+            continue
+    return ImageFont.load_default()
+
+
+def _draw_block_png_text(
+    draw: ImageDraw.ImageDraw,
+    position: tuple[float, float],
+    text: str,
+    *,
+    fill: str,
+    font_size: int,
+    anchor: str,
+) -> None:
+    if not text:
+        return
+    draw.text(
+        position,
+        text,
+        fill=fill,
+        font=_block_png_font(font_size),
+        anchor=anchor,
+    )
+
+
+def _draw_block_png_circle(
+    draw: ImageDraw.ImageDraw,
+    center_x: float,
+    center_y: float,
+    radius: int,
+    *,
+    fill: str,
+    outline: str | None = None,
+    width: int = 1,
+) -> None:
+    draw.ellipse(
+        (
+            center_x - radius,
+            center_y - radius,
+            center_x + radius,
+            center_y + radius,
+        ),
+        fill=fill,
+        outline=outline,
+        width=width,
+    )
+
+
+def _draw_block_png_dashed_ellipse(
+    draw: ImageDraw.ImageDraw,
+    bounds: tuple[float, float, float, float],
+    *,
+    outline: str,
+    width: int,
+) -> None:
+    draw.ellipse(bounds, outline=outline, width=width)
+
+
+def _draw_block_png_polyline(
+    draw: ImageDraw.ImageDraw,
+    points: Sequence[tuple[float, float]],
+    *,
+    fill: str,
+    width: int,
+    dash: tuple[int, int] | None = None,
+) -> None:
+    if len(points) < 2:
+        return
+    if dash is None:
+        draw.line(points, fill=fill, width=width, joint='curve')
+        return
+
+    dash_length, gap_length = dash
+    period = max(1, dash_length + gap_length)
+    distance_cursor = 0.0
+    for start, end in zip(points, points[1:]):
+        segment_dx = end[0] - start[0]
+        segment_dy = end[1] - start[1]
+        segment_length = (segment_dx * segment_dx + segment_dy * segment_dy) ** 0.5
+        if segment_length <= 0:
+            continue
+        segment_offset = 0.0
+        while segment_offset < segment_length:
+            cycle_offset = distance_cursor % period
+            draw_remaining = max(0.0, dash_length - cycle_offset)
+            gap_remaining = period - cycle_offset
+            run_length = draw_remaining if draw_remaining > 0 else gap_remaining
+            next_offset = min(segment_length, segment_offset + run_length)
+            if draw_remaining > 0:
+                start_ratio = segment_offset / segment_length
+                end_ratio = next_offset / segment_length
+                dash_start = (
+                    start[0] + (segment_dx * start_ratio),
+                    start[1] + (segment_dy * start_ratio),
+                )
+                dash_end = (
+                    start[0] + (segment_dx * end_ratio),
+                    start[1] + (segment_dy * end_ratio),
+                )
+                draw.line((dash_start, dash_end), fill=fill, width=width)
+            distance_cursor += next_offset - segment_offset
+            segment_offset = next_offset
 
 
 def _world_map_alpha_limited_source(viewer: "MetroMapViewer", source_image: Image.Image) -> Image.Image:
@@ -7245,6 +7359,23 @@ class MetroMapViewer:
                 command=lambda value=path_kind_label: self.path_drag_kind_var.set(value),
             )
 
+        self._make_sidebar_caption(
+            'Overlays',
+            parent=pathing_section,
+        ).pack(anchor='w', padx=16)
+        self._make_sidebar_checkbox(
+            pathing_section,
+            text='Path nodes',
+            variable=self.show_path_nodes_var,
+            command=self.redraw,
+        ).pack(anchor='w', padx=16, pady=(4, 6))
+        self._make_sidebar_checkbox(
+            pathing_section,
+            text='Suggested paths',
+            variable=self.show_suggested_walking_paths_var,
+            command=self.redraw,
+        ).pack(anchor='w', padx=16, pady=(0, 8))
+
         tk.Label(
             pathing_section,
             textvariable=self.path_click_status_var,
@@ -9104,36 +9235,11 @@ class MetroMapViewer:
     def _export_visible_block_png(self) -> None:
         from tkinter import messagebox
 
-        self.root.update_idletasks()
-        self.width = self.canvas.winfo_width()
-        self.height = self.canvas.winfo_height()
-
-        render_underlay = self._current_world_map_render_underlay()
-        if render_underlay is None:
-            messagebox.showerror(
-                'Export Failed',
-                'Render the world map first, then export the visible block-level PNG.',
-                parent=self.root,
-            )
-            return
-
-        payload, source_image = render_underlay
-        source_image = _world_map_full_resolution_render_source(self, payload, source_image)
-        draw_plan = _world_map_underlay_draw_plan(self, payload, source_image)
-        if draw_plan is None:
-            messagebox.showerror(
-                'Export Failed',
-                'No rendered world-map blocks are visible in the current view.',
-                parent=self.root,
-            )
-            return
-
-        _draw_left, _draw_top, _target_width, _target_height, source_box = draw_plan
         try:
-            block_image = _world_map_alpha_limited_copy(source_image.crop(source_box))
+            png_bytes = MetroMapViewer._build_visible_block_png_export_bytes(self)
             EXPORTS_DIR.mkdir(parents=True, exist_ok=True)
             export_path = EXPORTS_DIR / f"world-map-blocks-{datetime.now().strftime('%Y%m%d-%H%M%S')}.png"
-            block_image.save(export_path, format='PNG')
+            export_path.write_bytes(png_bytes)
         except Exception as exc:
             messagebox.showerror(
                 'Export Failed',
@@ -9250,7 +9356,7 @@ class MetroMapViewer:
             return
 
         new_coordinates = simpledialog.askstring(
-            'Edit Node',
+            'Edit',
             'Enter new Minecraft coordinates as x, y:',
             initialvalue=f'{path_node.x}, {path_node.y}',
             parent=self.root,
@@ -9552,7 +9658,7 @@ class MetroMapViewer:
         return _all_path_nodes_by_key().get(self.selected_path_node_key)
 
     def _path_nodes_should_show(self) -> bool:
-        return bool(self.path_click_mode_var.get())
+        return bool(self.show_path_nodes_var.get())
 
     def _current_visible_world_bounds(self) -> tuple[float, float, float, float] | None:
         if self.width <= 0 or self.height <= 0:
@@ -10089,18 +10195,13 @@ class MetroMapViewer:
         actions_row.pack(anchor='w', padx=INFO_BOX_PAD_X, pady=(0, INFO_BOX_SECTION_GAP))
         self._make_info_button(
             actions_row,
-            text='Add Walk Path',
+            text='Connect',
             command=lambda: self._add_path_for_selected_node('walk'),
         ).pack(side='left')
         self._make_info_button(
             actions_row,
-            text='Edit Node',
+            text='Edit',
             command=self._edit_selected_path_node_coordinates,
-        ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
-        self._make_info_button(
-            actions_row,
-            text='Add Metro Path',
-            command=lambda: self._add_path_for_selected_node('connector'),
         ).pack(side='left', padx=(INFO_BOX_SECTION_GAP, 0))
         if path_node.is_explicit:
             self._make_info_button(
@@ -12577,19 +12678,478 @@ class MetroMapViewer:
         )
 
     def _build_current_map_png_export_bytes(self, export_options: SvgExportOptions) -> bytes:
-        svg_text = self._build_current_map_svg_export_text(export_options)
-        try:
-            import cairosvg
-        except ImportError as exc:
-            raise ValueError('PNG export requires CairoSVG to rasterize the map.') from exc
-        png_bytes = cairosvg.svg2png(
-            bytestring=svg_text.encode('utf-8'),
-            output_width=self.width,
-            output_height=self.height,
+        if not export_options.include_world_map:
+            raise ValueError(
+                'Block-level PNG export requires the World map image option.'
+            )
+        return self._build_visible_block_png_export_bytes(export_options)
+
+    def _build_visible_block_png_export_bytes(
+        self,
+        export_options: SvgExportOptions | None = None,
+    ) -> bytes:
+        self.root.update_idletasks()
+        self.width = self.canvas.winfo_width()
+        self.height = self.canvas.winfo_height()
+        if self.width < 2 or self.height < 2:
+            raise ValueError('The map canvas is not ready to export yet.')
+
+        render_underlay = self._current_world_map_render_underlay()
+        if render_underlay is None:
+            raise ValueError(
+                'Render the world map first, then export the visible block-level PNG.'
+            )
+
+        payload, source_image = render_underlay
+        source_image = _world_map_full_resolution_render_source(
+            self,
+            payload,
+            source_image,
         )
-        if not isinstance(png_bytes, bytes):
-            raise ValueError('PNG export did not produce image bytes.')
-        return png_bytes
+        if not _world_map_image_is_native_block_resolution(payload, source_image):
+            raise ValueError(
+                'Block-level PNG export could not find the full-resolution '
+                'world map image. Render the world map again before exporting.'
+            )
+        draw_plan = _world_map_underlay_draw_plan(self, payload, source_image)
+        if draw_plan is None:
+            raise ValueError(
+                'No rendered world-map blocks are visible in the current view.'
+            )
+
+        _draw_left, _draw_top, _target_width, _target_height, source_box = draw_plan
+        block_image = source_image.crop(source_box).convert('RGBA')
+        if export_options is not None:
+            self._draw_block_png_export_overlays(
+                block_image,
+                payload=payload,
+                source_box=source_box,
+                export_options=export_options,
+            )
+        buffer = io.BytesIO()
+        block_image.save(buffer, format='PNG')
+        return buffer.getvalue()
+
+    def _draw_block_png_export_overlays(
+        self,
+        image: Image.Image,
+        *,
+        payload: dict[str, object],
+        source_box: tuple[int, int, int, int],
+        export_options: SvgExportOptions,
+    ) -> None:
+        visible_line_names = self._visible_line_names()
+        draw = ImageDraw.Draw(image, 'RGBA')
+
+        try:
+            render_min_x = _render_cache_int(payload, 'min_x')
+            render_min_z = _render_cache_int(payload, 'min_z')
+        except (KeyError, TypeError, ValueError):
+            return
+
+        source_left, source_top, _source_right, _source_bottom = source_box
+
+        def to_export(point: tuple[float, float]) -> tuple[float, float]:
+            return (
+                point[0] - render_min_x - source_left,
+                -point[1] - render_min_z - source_top,
+            )
+
+        def draw_polyline(
+            points: Sequence[tuple[float, float]],
+            *,
+            fill: str,
+            width: int,
+            dash: tuple[int, int] | None = None,
+        ) -> None:
+            export_points = [to_export(point) for point in points]
+            _draw_block_png_polyline(
+                draw,
+                export_points,
+                fill=fill,
+                width=width,
+                dash=dash,
+            )
+
+        min_x, max_x, min_y, max_y, _scale = self._plot_transform()
+        if export_options.include_grid:
+            if min_x <= 0 <= max_x:
+                draw_polyline(
+                    ((0, min_y), (0, max_y)),
+                    fill=GRID_COLOR,
+                    width=1,
+                    dash=(4, 4),
+                )
+            if min_y <= 0 <= max_y:
+                draw_polyline(
+                    ((min_x, 0), (max_x, 0)),
+                    fill=GRID_COLOR,
+                    width=1,
+                    dash=(4, 4),
+                )
+
+        if export_options.include_planning_circle:
+            planning_radius = _planning_radius_distance()
+            if planning_radius > 0:
+                center_x, center_y = to_export(_blackport_stop().plot_coordinates)
+                draw.ellipse(
+                    (
+                        center_x - planning_radius,
+                        center_y - planning_radius,
+                        center_x + planning_radius,
+                        center_y + planning_radius,
+                    ),
+                    fill=CIRCLE_OVERLAY_RGBA,
+                )
+
+        if export_options.include_connected_area:
+            for area_loop in _connected_route_area_world_loops():
+                polygon_points = [to_export(point) for point in area_loop]
+                if len(polygon_points) >= 3:
+                    draw.polygon(polygon_points, fill=AREA_OVERLAY_RGBA)
+
+        if export_options.include_metro_lines:
+            for segment in _all_metro_segments():
+                if segment.line_name not in visible_line_names:
+                    continue
+                width, dash = _metro_segment_style(segment)
+                draw_polyline(
+                    segment.plot_points,
+                    fill=LINE_COLORS[segment.line_name],
+                    width=width,
+                    dash=dash,
+                )
+
+        for extra_edge in EXTRA_EDGES:
+            if extra_edge.kind == 'walk' and not export_options.include_walking_paths:
+                continue
+            if extra_edge.kind == 'connector' and not export_options.include_connector_paths:
+                continue
+            draw_polyline(
+                extra_edge.plot_points,
+                fill=CONNECTOR_ROUTE_COLOR if extra_edge.kind == 'connector' else WALK_ROUTE_COLOR,
+                width=3,
+                dash=(6, 4) if extra_edge.kind == 'walk' else None,
+            )
+
+        if export_options.include_current_route and self.current_route is not None:
+            for step in self.current_route.steps:
+                if not step.path_points:
+                    continue
+                draw_polyline(
+                    step.path_points,
+                    fill=ROUTE_HIGHLIGHT_OUTLINE,
+                    width=ROUTE_HIGHLIGHT_OUTLINE_WIDTH,
+                )
+                draw_polyline(
+                    step.path_points,
+                    fill=_route_step_color(step),
+                    width=ROUTE_HIGHLIGHT_WIDTH,
+                )
+
+        if export_options.include_railway_finishing:
+            for line_name in _railway_finish_line_names():
+                if line_name not in visible_line_names:
+                    continue
+                for start_distance, end_distance in _line_unfinished_connected_intervals(line_name):
+                    highlight_points = _polyline_slice_between_distances(
+                        METRO_LINE_PLOT_PATHS[line_name],
+                        start_distance,
+                        end_distance,
+                    )
+                    draw_polyline(
+                        highlight_points,
+                        fill=FINISHED_RAILWAY_HIGHLIGHT_OUTLINE,
+                        width=FINISHED_RAILWAY_HIGHLIGHT_OUTLINE_WIDTH,
+                    )
+                    draw_polyline(
+                        highlight_points,
+                        fill=LINE_COLORS[line_name],
+                        width=FINISHED_RAILWAY_HIGHLIGHT_WIDTH,
+                    )
+        elif export_options.include_frontier_highlights:
+            for line_name, frontier_var, target_var in _frontier_highlight_segments():
+                if line_name not in visible_line_names:
+                    continue
+                try:
+                    highlight_points = _line_segment_plot_points(
+                        line_name,
+                        frontier_var,
+                        target_var,
+                    )
+                except (KeyError, ValueError):
+                    continue
+                draw_polyline(
+                    highlight_points,
+                    fill=FRONTIER_HIGHLIGHT_OUTLINE,
+                    width=FRONTIER_SEGMENT_OUTLINE_WIDTH,
+                )
+                draw_polyline(
+                    highlight_points,
+                    fill=LINE_COLORS[line_name],
+                    width=FRONTIER_SEGMENT_WIDTH,
+                )
+
+        if export_options.include_alignment_ellipses:
+            self._draw_block_png_alignment_overlays(draw, to_export)
+
+        station_items: list[tuple[MetroStop, float, float, float]] = []
+        if export_options.include_stations or export_options.include_labels:
+            for stop in METRO_STOPS:
+                stop_visible_line_names = _visible_stop_line_names(
+                    stop,
+                    visible_line_names,
+                )
+                if not stop_visible_line_names and STOP_LINE_NAMES[stop.var]:
+                    continue
+                export_x, export_y = to_export(stop.plot_coordinates)
+                station_items.append((stop, export_x, export_y, float(STATION_RADIUS)))
+
+        if export_options.include_stations:
+            for stop, export_x, export_y, _radius in station_items:
+                stop_visible_line_names = _visible_stop_line_names(
+                    stop,
+                    visible_line_names,
+                )
+                fill = _fill_for_visible_line_names(stop_visible_line_names)
+                outline = UNASSOCIATED_STATION_OUTLINE if not stop_visible_line_names else None
+                _draw_block_png_circle(
+                    draw,
+                    export_x,
+                    export_y,
+                    STATION_RADIUS,
+                    fill=fill,
+                    outline=outline,
+                    width=2 if not stop_visible_line_names else 1,
+                )
+
+        if export_options.include_stations and export_options.include_metro_lines:
+            self._draw_block_png_line_markers(draw, to_export, visible_line_names)
+
+        if export_options.include_path_nodes:
+            self._draw_block_png_path_nodes(draw, to_export, export_options)
+
+        if export_options.include_labels:
+            self._draw_block_png_station_labels(
+                draw,
+                station_items,
+                visible_line_names=visible_line_names,
+            )
+
+    def _draw_block_png_alignment_overlays(
+        self,
+        draw: ImageDraw.ImageDraw,
+        to_export: Callable[[tuple[float, float]], tuple[float, float]],
+    ) -> None:
+        for reminder in ALIGNMENT_REMINDERS:
+            if reminder.is_aligned:
+                continue
+            points = [to_export(stop.plot_coordinates) for stop in reminder.included_stops]
+            if not points:
+                continue
+            xs = [point[0] for point in points]
+            ys = [point[1] for point in points]
+            padding = ALIGNMENT_REMINDER_PADDING
+            left = min(xs) - padding
+            right = max(xs) + padding
+            top = min(ys) - padding
+            bottom = max(ys) + padding
+            if right - left < ALIGNMENT_REMINDER_MIN_SIZE:
+                center_x = (left + right) / 2
+                left = center_x - (ALIGNMENT_REMINDER_MIN_SIZE / 2)
+                right = center_x + (ALIGNMENT_REMINDER_MIN_SIZE / 2)
+            if bottom - top < ALIGNMENT_REMINDER_MIN_SIZE:
+                center_y = (top + bottom) / 2
+                top = center_y - (ALIGNMENT_REMINDER_MIN_SIZE / 2)
+                bottom = center_y + (ALIGNMENT_REMINDER_MIN_SIZE / 2)
+            _draw_block_png_dashed_ellipse(
+                draw,
+                (left, top, right, bottom),
+                outline=ALIGNMENT_REMINDER_OUTLINE,
+                width=ALIGNMENT_REMINDER_WIDTH,
+            )
+            _draw_block_png_text(
+                draw,
+                ((left + right) / 2, max(0, top - ALIGNMENT_REMINDER_LABEL_FONT_SIZE)),
+                reminder.debug_label,
+                fill=ALIGNMENT_REMINDER_OUTLINE,
+                font_size=ALIGNMENT_REMINDER_LABEL_FONT_SIZE,
+                anchor='mm',
+            )
+
+    def _draw_block_png_line_markers(
+        self,
+        draw: ImageDraw.ImageDraw,
+        to_export: Callable[[tuple[float, float]], tuple[float, float]],
+        visible_line_names: set[str],
+    ) -> None:
+        used_segment_keys: set[tuple[str, str, str]] = set()
+        for stop in sorted(
+            METRO_STOPS,
+            key=lambda item: _station_label_priority(
+                item,
+                selected_stop_var=self.selected_stop_var,
+                current_route=self.current_route,
+            ),
+        ):
+            for line_name in self._line_marker_names_for_stop(stop, visible_line_names):
+                candidates = [
+                    segment
+                    for segment in _all_metro_segments()
+                    if (
+                        segment.line_name == line_name
+                        and stop.var in {segment.start_var, segment.end_var}
+                        and len(segment.plot_points) >= 2
+                    )
+                ]
+                if not candidates:
+                    continue
+                stop_vars = LINE_STOP_VARS.get(line_name, ())
+                if stop.var not in stop_vars:
+                    continue
+                stop_index = stop_vars.index(stop.var)
+                neighbor_var = (
+                    stop_vars[1]
+                    if stop_index == 0 and len(stop_vars) > 1
+                    else stop_vars[-2]
+                    if stop_index == len(stop_vars) - 1 and len(stop_vars) > 1
+                    else ''
+                )
+                segment_key = tuple(sorted((stop.var, neighbor_var)))
+                dedupe_key = (line_name, segment_key[0], segment_key[1])
+                if dedupe_key in used_segment_keys:
+                    continue
+                used_segment_keys.add(dedupe_key)
+                segment = max(candidates, key=lambda item: _polyline_distance(item.plot_points))
+                marker_point = _polyline_midpoint(tuple(to_export(point) for point in segment.plot_points))
+                _draw_block_png_circle(
+                    draw,
+                    marker_point[0],
+                    marker_point[1],
+                    LINE_MARKER_RADIUS,
+                    fill=LINE_COLORS[line_name],
+                    outline=BACKGROUND_COLOR,
+                    width=2,
+                )
+                _draw_block_png_text(
+                    draw,
+                    (marker_point[0], marker_point[1]),
+                    line_name,
+                    fill=LINE_MARKER_TEXT_COLOR,
+                    font_size=max(10, LINE_MARKER_RADIUS + 2),
+                    anchor='mm',
+                )
+
+    def _draw_block_png_path_nodes(
+        self,
+        draw: ImageDraw.ImageDraw,
+        to_export: Callable[[tuple[float, float]], tuple[float, float]],
+        export_options: SvgExportOptions,
+    ) -> None:
+        label_font_size = max(10, _label_font_size(self.zoom) - 1)
+        label_offset_x, label_offset_y = self._label_offset()
+        for path_node in _all_path_nodes():
+            export_x, export_y = to_export(path_node.plot_coordinates)
+            radius = SELECTED_PATH_NODE_RADIUS if path_node.key == self.selected_path_node_key else PATH_NODE_RADIUS
+            bounds = (
+                export_x - radius,
+                export_y - radius,
+                export_x + radius,
+                export_y + radius,
+            )
+            if path_node.poi_kind == 'monument':
+                draw.polygon(
+                    (
+                        (export_x, export_y - radius),
+                        (export_x - radius, export_y + radius),
+                        (export_x + radius, export_y + radius),
+                    ),
+                    fill=PATH_NODE_FILL,
+                    outline=PATH_NODE_OUTLINE,
+                )
+            elif path_node.poi_kind == 'pillager_tower':
+                half_width = max(3, radius // 2)
+                draw.rectangle(
+                    (
+                        export_x - half_width,
+                        export_y - radius,
+                        export_x + half_width,
+                        export_y + radius,
+                    ),
+                    fill=PATH_NODE_FILL,
+                    outline=PATH_NODE_OUTLINE,
+                    width=2,
+                )
+            else:
+                draw.rectangle(
+                    bounds,
+                    fill=PATH_NODE_FILL,
+                    outline=PATH_NODE_OUTLINE,
+                    width=2,
+                )
+            if export_options.include_labels and (path_node.label or path_node.poi_kind is not None):
+                _draw_block_png_text(
+                    draw,
+                    (export_x + label_offset_x, export_y - label_offset_y),
+                    path_node.display_label,
+                    fill=PATH_NODE_LABEL_COLOR,
+                    font_size=label_font_size,
+                    anchor='lb',
+                )
+
+    def _draw_block_png_station_labels(
+        self,
+        draw: ImageDraw.ImageDraw,
+        station_items: Sequence[tuple[MetroStop, float, float, float]],
+        *,
+        visible_line_names: set[str],
+    ) -> None:
+        label_font_size = _label_font_size(self.zoom)
+        label_offset_x, label_offset_y = self._label_offset()
+        frontier_label_stop_vars = (
+            _frontier_highlight_stop_vars()
+            if self.show_frontier_highlights_var.get()
+            else frozenset()
+        )
+        label_layout = _station_label_layout(
+            station_items,
+            font_size=label_font_size,
+            label_offset_x=label_offset_x,
+            label_offset_y=label_offset_y,
+            zoom=self.zoom,
+            selected_stop_var=self.selected_stop_var,
+            current_route=self.current_route,
+        )
+        for stop, _export_x, _export_y, _radius in station_items:
+            label = label_layout.get(stop.var)
+            if label is None:
+                continue
+            stop_visible_line_names = _visible_stop_line_names(
+                stop,
+                visible_line_names,
+            )
+            active_label_font_size = label_font_size + (
+                FRONTIER_LABEL_SIZE_BOOST if stop.var in frontier_label_stop_vars else 0
+            )
+            text_position = (label.x, label.y)
+            label_fill = _label_fill_for_visible_line_names(stop_visible_line_names)
+            for offset_x, offset_y in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                _draw_block_png_text(
+                    draw,
+                    (text_position[0] + offset_x, text_position[1] + offset_y),
+                    label.text,
+                    fill=LABEL_CASING_COLOR,
+                    font_size=active_label_font_size,
+                    anchor='lb',
+                )
+            _draw_block_png_text(
+                draw,
+                text_position,
+                label.text,
+                fill=label_fill,
+                font_size=active_label_font_size,
+                anchor='lb',
+            )
 
     def _export_current_map(self, export_options: SvgExportOptions) -> None:
         from tkinter import messagebox
@@ -13806,12 +14366,11 @@ class MetroMapViewer:
                 continue
             self.canvas.create_line(
                 *canvas_points,
-                fill=WALK_ROUTE_COLOR,
+                fill=SUGGESTED_WALK_ROUTE_COLOR,
                 width=4,
                 dash=(8, 6),
                 capstyle='round',
                 joinstyle='round',
-                smooth=True,
             )
 
     def _draw_extra_edges(self) -> None:
@@ -14602,6 +15161,10 @@ def _payload_endpoint_coordinates(
 
 def _normalize_path_nodes(payload: MetroNetworkPayload) -> bool:
     return network.normalize_path_nodes(payload)
+
+
+def _next_path_node_id(payload: MetroNetworkPayload) -> str:
+    return network.next_path_node_id(payload)
 
 
 def _normalize_alignment_reminders(payload: MetroNetworkPayload) -> bool:
@@ -16013,6 +16576,196 @@ def _find_extra_edge_record(payload: MetroNetworkPayload, edge_id: str) -> Extra
     raise ValueError(f'Unknown path edge: {edge_id}')
 
 
+def _extra_edge_payload_points(
+    payload: MetroNetworkPayload,
+    edge_record: ExtraEdgeRecord,
+) -> tuple[tuple[int, int], ...]:
+    from_endpoint = _required_extra_edge_endpoint(edge_record, 'from_endpoint')
+    to_endpoint = _required_extra_edge_endpoint(edge_record, 'to_endpoint')
+    raw_path_points = edge_record.get('path_points', [])
+    if not raw_path_points:
+        return (
+            _payload_endpoint_coordinates(payload, from_endpoint),
+            _payload_endpoint_coordinates(payload, to_endpoint),
+        )
+
+    points: list[tuple[int, int]] = []
+    for raw_point in raw_path_points:
+        point_x = _coerce_int(raw_point.get('x'))
+        point_y = _coerce_int(raw_point.get('y'))
+        if point_x is None or point_y is None:
+            continue
+        coordinates = (point_x, point_y)
+        if points and points[-1] == coordinates:
+            continue
+        points.append(coordinates)
+    return tuple(points)
+
+
+def _point_lies_on_segment(
+    point: tuple[int, int],
+    segment_start: tuple[int, int],
+    segment_end: tuple[int, int],
+) -> bool:
+    if point == segment_start or point == segment_end:
+        return True
+    cross_product = (
+        (point[0] - segment_start[0]) * (segment_end[1] - segment_start[1])
+        - (point[1] - segment_start[1]) * (segment_end[0] - segment_start[0])
+    )
+    if cross_product != 0:
+        return False
+    return (
+        min(segment_start[0], segment_end[0]) <= point[0] <= max(segment_start[0], segment_end[0])
+        and min(segment_start[1], segment_end[1]) <= point[1] <= max(segment_start[1], segment_end[1])
+    )
+
+
+def _split_points_at_coordinate(
+    points: Sequence[tuple[int, int]],
+    coordinates: tuple[int, int],
+) -> tuple[tuple[tuple[int, int], ...], tuple[tuple[int, int], ...]] | None:
+    if len(points) < 2 or coordinates == points[0] or coordinates == points[-1]:
+        return None
+    if coordinates in points[1:-1]:
+        split_index = tuple(points).index(coordinates)
+        return (tuple(points[:split_index + 1]), tuple(points[split_index:]))
+
+    for index, (segment_start, segment_end) in enumerate(zip(points, points[1:])):
+        if coordinates in {segment_start, segment_end}:
+            continue
+        if not _point_lies_on_segment(coordinates, segment_start, segment_end):
+            continue
+        return (
+            (*points[:index + 1], coordinates),
+            (coordinates, *points[index + 1:]),
+        )
+    return None
+
+
+def _unique_split_edge_id(
+    payload: MetroNetworkPayload,
+    preferred_id: str,
+    *,
+    replaced_edge_id: str,
+    reserved_ids: set[str],
+) -> str:
+    existing_ids = {
+        str(raw_edge.get('id', '')).strip()
+        for raw_edge in payload.get('extra_edges', [])
+        if isinstance(raw_edge, dict)
+    }
+    existing_ids.discard(replaced_edge_id)
+    if preferred_id not in existing_ids and preferred_id not in reserved_ids:
+        reserved_ids.add(preferred_id)
+        return preferred_id
+
+    suffix = 2
+    while True:
+        candidate_id = f'{preferred_id}_{suffix}'
+        if candidate_id not in existing_ids and candidate_id not in reserved_ids:
+            reserved_ids.add(candidate_id)
+            return candidate_id
+        suffix += 1
+
+
+def _path_points_record(points: Sequence[tuple[int, int]]) -> list[PathPointRecord]:
+    return [{'x': int(point[0]), 'y': int(point[1])} for point in points]
+
+
+def _edge_split_record(
+    edge_record: ExtraEdgeRecord,
+    *,
+    edge_id: str,
+    from_endpoint: PathEndpointRecord,
+    to_endpoint: PathEndpointRecord,
+    points: Sequence[tuple[int, int]],
+) -> ExtraEdgeRecord:
+    split_record = cast(
+        ExtraEdgeRecord,
+        {
+            'id': edge_id,
+            'kind': 'walk',
+            'from_endpoint': dict(from_endpoint),
+            'to_endpoint': dict(to_endpoint),
+            'bidirectional': bool(edge_record.get('bidirectional', True)),
+            'path_points': _path_points_record(points),
+        },
+    )
+    label = str(edge_record.get('label', '')).strip()
+    if label:
+        split_record['label'] = label
+    return split_record
+
+
+def _split_walk_edges_for_new_path_node(
+    payload: MetroNetworkPayload,
+    coordinates: tuple[int, int],
+) -> bool:
+    _normalize_extra_edges(payload)
+    raw_extra_edges = payload.get('extra_edges', [])
+    if not isinstance(raw_extra_edges, list):
+        return False
+
+    node_endpoint = cast(PathEndpointRecord, {'kind': 'coord', 'x': coordinates[0], 'y': coordinates[1]})
+    updated_edges: list[ExtraEdgeRecord] = []
+    split_occurred = False
+    reserved_ids: set[str] = set()
+
+    for raw_edge in raw_extra_edges:
+        if not isinstance(raw_edge, dict):
+            continue
+        edge_record = cast(ExtraEdgeRecord, raw_edge)
+        if str(edge_record.get('kind', '')).strip().lower() != 'walk':
+            updated_edges.append(edge_record)
+            continue
+
+        points = _extra_edge_payload_points(payload, edge_record)
+        split_points = _split_points_at_coordinate(points, coordinates)
+        if split_points is None:
+            updated_edges.append(edge_record)
+            continue
+
+        edge_id = str(edge_record.get('id', '')).strip() or 'walk_edge'
+        from_endpoint = _required_extra_edge_endpoint(edge_record, 'from_endpoint')
+        to_endpoint = _required_extra_edge_endpoint(edge_record, 'to_endpoint')
+        first_points, second_points = split_points
+        _remove_alignment_reminder_for_edge_record(payload, edge_record)
+        updated_edges.extend(
+            (
+                _edge_split_record(
+                    edge_record,
+                    edge_id=_unique_split_edge_id(
+                        payload,
+                        f'{edge_id}_a',
+                        replaced_edge_id=edge_id,
+                        reserved_ids=reserved_ids,
+                    ),
+                    from_endpoint=from_endpoint,
+                    to_endpoint=node_endpoint,
+                    points=first_points,
+                ),
+                _edge_split_record(
+                    edge_record,
+                    edge_id=_unique_split_edge_id(
+                        payload,
+                        f'{edge_id}_b',
+                        replaced_edge_id=edge_id,
+                        reserved_ids=reserved_ids,
+                    ),
+                    from_endpoint=node_endpoint,
+                    to_endpoint=to_endpoint,
+                    points=second_points,
+                ),
+            )
+        )
+        split_occurred = True
+
+    if split_occurred:
+        payload['extra_edges'] = updated_edges
+    return split_occurred
+
+
 def add_path_node(identifier: str, *, label: str | None = None) -> None:
     payload = _load_network_payload()
     coordinates = _parse_coordinate_text(identifier)
@@ -16026,6 +16779,7 @@ def add_path_node(identifier: str, *, label: str | None = None) -> None:
     if coordinates in stop_coordinates:
         raise ValueError('Path nodes cannot overlap a station coordinate.')
 
+    _normalize_path_nodes(payload)
     existing_nodes = payload.get('path_nodes', [])
     if not isinstance(existing_nodes, list):
         payload['path_nodes'] = []
@@ -16037,9 +16791,8 @@ def add_path_node(identifier: str, *, label: str | None = None) -> None:
         if (int(raw_node.get('x', 0)), int(raw_node.get('y', 0))) == coordinates:
             raise ValueError('A path node already exists at those coordinates.')
 
-    next_index = len(existing_nodes) + 1
     node_record: PathNodeRecord = {
-        'id': f'node_{next_index}',
+        'id': _next_path_node_id(payload),
         'x': coordinates[0],
         'y': coordinates[1],
     }
@@ -16049,6 +16802,9 @@ def add_path_node(identifier: str, *, label: str | None = None) -> None:
 
     existing_nodes.append(node_record)
     _normalize_path_nodes(payload)
+    _split_walk_edges_for_new_path_node(payload, coordinates)
+    _normalize_extra_edges(payload)
+    _normalize_alignment_reminders(payload)
     _write_network_payload(payload)
     _apply_network_payload(payload)
 
@@ -16090,6 +16846,18 @@ def remove_path_node(identifier: str) -> None:
         if isinstance(raw_node, dict)
         and (int(raw_node.get('x', 0)), int(raw_node.get('y', 0))) != coordinates
     ]
+    removed_key = _coordinate_endpoint_key(coordinates[0], coordinates[1])
+    for stop_record in payload.get('stops', []):
+        if not isinstance(stop_record, dict):
+            continue
+        raw_node_keys = stop_record.get('city_limit_node_keys')
+        if not isinstance(raw_node_keys, list):
+            continue
+        stop_record['city_limit_node_keys'] = [
+            str(node_key).strip()
+            for node_key in raw_node_keys
+            if str(node_key).strip() != removed_key
+        ]
     _normalize_path_nodes(payload)
     _normalize_extra_edges(payload)
     _normalize_alignment_reminders(payload)
@@ -16123,15 +16891,18 @@ def move_path_node(identifier: str, coordinates: tuple[int, int]) -> None:
     new_key = _coordinate_endpoint_key(new_coordinates[0], new_coordinates[1])
     occupied_keys = _path_node_keys_in_payload(payload)
     occupied_keys.discard(old_key)
-    if new_key in occupied_keys:
-        raise ValueError('A path node already exists at those coordinates.')
+    merge_with_existing_node = new_key in occupied_keys
 
+    found_explicit_node = False
     moved_explicit_node = False
     for raw_node in payload.get('path_nodes', []):
         if not isinstance(raw_node, dict):
             continue
         if (int(raw_node.get('x', 0)), int(raw_node.get('y', 0))) != old_coordinates:
             continue
+        found_explicit_node = True
+        if merge_with_existing_node:
+            break
         raw_node['x'] = new_coordinates[0]
         raw_node['y'] = new_coordinates[1]
         moved_explicit_node = True
@@ -16170,8 +16941,16 @@ def move_path_node(identifier: str, coordinates: tuple[int, int]) -> None:
                 target_point['x'] = new_coordinates[0]
                 target_point['y'] = new_coordinates[1]
 
-    if not moved_explicit_node and not updated_endpoint:
+    if not found_explicit_node and not moved_explicit_node and not updated_endpoint:
         raise ValueError(f'Unknown path node: {identifier}')
+
+    if merge_with_existing_node and found_explicit_node:
+        payload['path_nodes'] = [
+            cast(PathNodeRecord, raw_node)
+            for raw_node in payload.get('path_nodes', [])
+            if isinstance(raw_node, dict)
+            and (int(raw_node.get('x', 0)), int(raw_node.get('y', 0))) != old_coordinates
+        ]
 
     for stop_record in payload.get('stops', []):
         if not isinstance(stop_record, dict):

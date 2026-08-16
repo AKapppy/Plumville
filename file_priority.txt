@@ -87,7 +87,38 @@ Current desktop pathing state:
   lists;
 - station inspector actions now order Edit as Name, Coords, Station Entry and
   Manage as Lines, Paths, Alignments;
-- map pathing mode automatically owns path-node visibility;
+- the Pathing sidebar now exposes Path nodes and Suggested paths overlay
+  toggles; pathing mode still turns nodes on by default, but the node overlay
+  can be hidden while pathing remains active;
+- suggested walking paths now reuse cached terrain metadata between unchanged
+  redraws, avoiding repeated terrain-grid rebuilds after the first suggestion
+  pass;
+- adding a path node on an existing drawn walking path now splits that walk
+  edge into two walk edges through the new node, while connector edges are
+  preserved;
+- selected path-node actions now show Connect, Edit, and Remove without the
+  Metro Path action, and coordinate edits merge into an existing node while
+  keeping the pre-existing node label;
+- saved path-node IDs now normalize to positive numeric `node_<number>` values
+  with labels, PoI names, categories, and coordinates kept separate; referenced
+  coordinate endpoints are materialized as saved numeric nodes, new nodes reuse
+  the lowest open numeric slot, and the selected-node inspector can remove
+  individual path connections;
+- suggested walking paths now show the immediate frontier around the existing
+  walking-path network, search a larger direct-frontier endpoint pool for
+  lower-water routes, and draw in yellow for clearer contrast;
+- suggested walking paths now keep one best direct route per frontier village,
+  split useful alternates into shared trunks, can connect into drawn path
+  midpoints, and can route through isolated existing walk segments when those
+  reduce the missing pathing needed;
+- desktop and public web suggested walking paths now share the same generated
+  segment data and yellow line-segment styling; generated sloped suggestions
+  keep only integer or reciprocal-integer slopes, splitting rational slopes
+  into Minecraft-buildable segments;
+- suggested walking paths now grow as a branch tree from the existing walking
+  network, using walk-ready intermediate villages as later branch sources,
+  keeping non-walk-ready villages as leaves, and consolidating close coordinate
+  branch points so nearby suggestions share a clear path source;
 - city-limit editing uses inspector controls, inferred/correctable town
   context, pending node selection, and confirm-to-save convex polygons.
 
@@ -160,12 +191,16 @@ Current priority-list state:
 - the Show/Hide section has an off-by-default non-orthogonal segment
   highlight to help find metro geometry that still needs turns.
 - the desktop map export button/dialog now says Export PNG and writes
-  `metro-map-*.png` by rasterizing the validated map SVG bytes through CairoSVG.
+  `metro-map-*.png` from the visible full-resolution world-map crop, then draws
+  selected overlays into the block-native PNG with one PNG pixel per source
+  block and no native Cairo/CairoSVG dependency.
 - desktop map labels now use a web-inspired priority order and abbreviation
   fallback before full labels away from close zoom; selected stations, route
   endpoints, junctions, and terminals are kept ahead of ordinary crowded labels.
 - desktop metro lines now draw circular line-letter markers for terminal line
   identity and zoomed-in junction identity.
+- desktop map decoration now draws a separate home landmark at `-2556,1340`,
+  independent of the nearby Mt. Phosphagos station marker.
 - station name detection now treats uppercase station-letter/position labels
   such as `Z_2` and `UW` as unnamed placeholders.
 - station Name editing now saves both `lbl` and optional `abbr`; blank
@@ -358,12 +393,14 @@ desktop_improvements.py
 - mode filtering
 - first-pass MMCP styling
 - popup and marker decoration
+- separate desktop home landmark
 
 legacy_core.py
 - abbreviation load/search/display
 - alignment manager
 - metro-turn editor
 - endpoint editor
+- walking path-node mutation and edge splitting
 - compatibility fixes
 
 docs/
