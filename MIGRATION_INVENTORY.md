@@ -56,19 +56,28 @@ The symbol appendix below inventories every top-level core function/class.
 | `docs/metro_network.json` | `legacy_core.py:36,15486,15520`; current desktop canonical network AND public viewer data | KEEP AS DATA FORMAT; preserve current authority until a separately tested migration |
 | JSON serialization / validation | `plumville/core/network.py:1119` onward, legacy adapters around 15333 | Preserve fields, optional defaults and normalization semantics; separate read, normalize and explicit commit |
 | Backup and snapshots | `metro_network.last.json`, `metro_network.history/`; core `write_network_payload`, `record_history_snapshot`, `restore_last_network_snapshot` | Private, preserve; future transaction/undo repository, not UI globals |
-| Priority CSV | `priority_list.csv`, legacy `_write_priority_list_csv:4419` | Derived export; retain format and explicit export behavior |
+| Priority CSV | `priority_list.csv`, legacy `_write_priority_list_csv` via explicit Export Priority CSV | Derived export; refresh/filtering now computes rows only |
 | Line text | `metro_lines.txt` | Retain as reference; active runtime loads JSON, do not promote text into canonical data |
 | Local world settings | `worldgen_config.toml`; `worldgen/config.py`, `paths.py` | Keep configuration contract; separate user configuration from shareable world model |
 | Runtime caches / detection state | `.worldgen/`, worldgen data/output, `path_detection_state.json` | Private device/backend state; never bundle into public exports or Swift fixtures |
 | PNG / SVG and public render metadata | legacy export builders; `worldgen/render.py`; `docs/assets/` | KEEP AS DATA FORMAT; preserve bounds, sample step, dimensions and coordinate convention |
 | UI state | viewer variables, selection/task state and camera | Recreate scoped view state; not an existing account/cloud schema |
 
-**Observed readiness defect:** `legacy_core.py` calls `_reload_network_data()` at
-module import. `_load_network_payload()` may write normalized data. In particular,
-`_normalize_line_tunneled_stop_vars:15473` converts frozensets to lists, causing
-order-only changes across Python hash seeds. Writes update backups and prune
-history at 100 snapshots. Imports/test discovery are therefore not read-only.
-See the audit report's safety incident; do not run future probes against real data.
+**M02 persistence update (2026-09-14):** importing still calls
+`_reload_network_data()`, but `_load_network_payload()` now parses and normalizes
+only in memory. Both tunneled-membership paths use semantic `line_stop_vars`
+sequence order. Explicit `_write_network_payload()` normalizes, validates without
+installing globals, then stages the canonical file, retains backup/history and
+atomically replaces the destination. An unchanged save touches no files. Backup,
+history and canonical replacement are not a multi-file transaction.
+
+Priority refresh no longer writes CSV; the explicit Export Priority CSV action
+retains that output. Generated terrain display previews now live in memory;
+existing disk previews remain readable. Use `scripts/run_isolated_tests.py` for
+source/public fixtures, synthetic config and guarded temporary persistence.
+See `M02_PERSISTENCE_REPORT.md` for regression evidence and limits. M01's data
+incident remains historical; no recovery was attempted. Worldgen live/CLI status
+still writes through `ensure_layout` and is deferred to M03.
 
 ## 4. Desktop UI
 
@@ -253,6 +262,7 @@ Package marker; no functions or classes.
 | `validate_extra_edges`:1063 | Portable JSON/network rule; KEEP AS DATA FORMAT and PORT ALGORITHM/LOGIC TO SWIFT |
 | `validate_stop_line_names`:1091 | Portable JSON/network rule; KEEP AS DATA FORMAT and PORT ALGORITHM/LOGIC TO SWIFT |
 | `validate_stop_records`:1100 | Portable JSON/network rule; KEEP AS DATA FORMAT and PORT ALGORITHM/LOGIC TO SWIFT |
+| `validate_network_payload` (M02) | Portable aggregate validation before explicit save; no global installation or filesystem access |
 | `serialize_network_payload`:1119 | JSON serialization contract; KEEP AS DATA FORMAT |
 | `history_snapshot_paths`:1123 | Filesystem/history adapter; preserve semantics, replace Python Path I/O; possible backend responsibility |
 | `record_history_snapshot`:1129 | Filesystem/history adapter; preserve semantics, replace Python Path I/O; possible backend responsibility |

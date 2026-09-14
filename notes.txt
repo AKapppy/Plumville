@@ -30,6 +30,18 @@ CHECKLIST RULES
 - Do not commit or push unless Andrew explicitly requests it.
 
 ----------------------------------------------------------------------
+M02 — READ-ONLY LOADING AND TEST ISOLATION
+----------------------------------------------------------------------
+
+[x] Separate in-memory network loading from explicit persistence.
+[x] Stabilize tunneled membership ordering and atomic explicit saves.
+[x] Prove import/load/repeated-read safety and isolate persistence tests.
+[x] Remove automatic CSV/terrain-preview writes from desktop refresh.
+[ ] User: verify opening/reading leaves persistence unchanged on test data.
+[ ] User: verify explicit save, undo, and CSV export on test data.
+[deferred] M03 candidate — read-only worldgen status.
+
+----------------------------------------------------------------------
 M01 — MIGRATION READINESS CLEANUP AND ARCHITECTURE INVENTORY
 ----------------------------------------------------------------------
 
@@ -1566,3 +1578,23 @@ NONNEGOTIABLE SAFETY
   loading and isolated test discovery before another real-data test run.
 - User verification remains unchecked; use a disposable/backed-up world copy.
 - No commit, push, branch change or history rewrite.
+
+2026-09-14 — M02 Read-Only Loading and Test Isolation
+
+- Initial checkout: main / 309f8b9; clean. M02 supersedes historical visual scope.
+- Read/parse/normalize is memory-only; load/import never calls persistence.
+  Explicit saves normalize deterministic line-sequence memberships, validate,
+  stage/flush and atomically replace canonical JSON after existing backup/history.
+  Unchanged saves do nothing; genuine save retention and undo remain intact.
+- Priority refresh no longer exports CSV automatically; Export Priority CSV is
+  explicit. Generated terrain thumbnails stay in memory, preserving async work.
+- Added isolated runner with source/public copies, synthetic config and Python
+  filesystem/service guard. No private runtime copied or executed against.
+- 13 new regression tests; 54 focused checks pass. Full suite: 304 tests,
+  unchanged 2 signage failures and 2 signage errors. Compile, 5 npm path tests,
+  npm public checks and diff check pass. GUI tests skipped; imports/reapply
+  proven with synthetic data. Worldgen status not executed (M03 candidate).
+- Protected ignored metadata: zero changed/missing/added; tracked data/config
+  unchanged. No M01 history recovery, no commit/push/pull/branch/history rewrite.
+- See M02_PERSISTENCE_REPORT.md for call graph, exact commands and caveats.
+- Manual checks remain unchecked. Next: M03 worldgen read-only/status safety.

@@ -3,6 +3,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from datetime import datetime
 import json
+import os
+import stat
+import tempfile
 from pathlib import Path
 import re
 from typing import Any, Sequence
@@ -1116,6 +1119,48 @@ def validate_stop_records(
             raise ValueError(f"Stop {stop['var']} must have a non-empty label.")
 
 
+def validate_network_payload(
+    payload: JsonObject, *, unassociated_station_label: str,
+) -> None:
+    """Validate a normalized save without installing it into application globals."""
+    stops = payload['stops']
+    stop_keys = tuple(str(stop['var']) for stop in stops)
+    lines = line_stop_vars_from_payload(payload)
+    validate_stop_records(stops, unassociated_station_label=unassociated_station_label)
+    validate_line_sequences(stop_keys, lines)
+    validate_line_path_specs(
+        line_path_spec_records_from_payload(payload), lines, set(stop_keys),
+    )
+    validate_line_colors(line_colors_from_payload(payload), lines)
+    validate_path_nodes(
+        path_node_records_from_payload(payload),
+        {(int(stop['x']), int(stop['y'])) for stop in stops},
+    )
+    def endpoint_for_validation(endpoint: JsonObject) -> JsonObject:
+        coordinates = payload_endpoint_coordinates(payload, endpoint)
+        return {
+            'kind': endpoint['kind'],
+            'key': (
+                endpoint['stop_var'] if endpoint['kind'] == 'stop'
+                else coordinate_endpoint_key(*coordinates)
+            ),
+            'coordinates': coordinates,
+        }
+
+    validate_extra_edges(
+        tuple({
+            'id': edge['id'],
+            'from_endpoint': endpoint_for_validation(edge['from_endpoint']),
+            'to_endpoint': endpoint_for_validation(edge['to_endpoint']),
+            'path_points': tuple(
+                (point['x'], point['y']) for point in edge['path_points']
+            ),
+        } for edge in extra_edge_records_from_payload(payload)),
+        set(stop_keys),
+    )
+    validate_stop_line_names(stop_keys, stop_line_names(stop_keys, lines))
+
+
 def serialize_network_payload(payload: JsonObject) -> str:
     return json.dumps(payload, indent=2) + "\n"
 
@@ -1168,16 +1213,35 @@ def write_network_payload(
     if network_path.exists():
         current_payload_text = network_path.read_text(encoding="utf-8")
 
-    if current_payload_text and current_payload_text != serialized_payload:
-        record_history_snapshot(
-            current_payload_text,
-            history_dir=history_dir,
-            max_history_snapshots=max_history_snapshots,
-            now=now,
-        )
-        backup_path.write_text(current_payload_text, encoding="utf-8")
+    if current_payload_text == serialized_payload:
+        return
 
-    network_path.write_text(serialized_payload, encoding="utf-8")
+    # Stage beside the destination so replacement is atomic on its filesystem.
+    # Stage failures must not rotate history or touch the existing canonical file.
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w", encoding="utf-8", dir=network_path.parent,
+            prefix=f".{network_path.name}.", suffix=".tmp", delete=False,
+        ) as staged:
+            temporary_path = Path(staged.name)
+            staged.write(serialized_payload)
+            staged.flush()
+            os.fsync(staged.fileno())
+        if network_path.exists():
+            temporary_path.chmod(stat.S_IMODE(network_path.stat().st_mode))
+        if current_payload_text:
+            record_history_snapshot(
+                current_payload_text,
+                history_dir=history_dir,
+                max_history_snapshots=max_history_snapshots,
+                now=now,
+            )
+            backup_path.write_text(current_payload_text, encoding="utf-8")
+        temporary_path.replace(network_path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
 
 
 def restore_last_network_snapshot(

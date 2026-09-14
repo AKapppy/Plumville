@@ -1,3 +1,21 @@
+M02 LOCAL UPDATE — 2026-09-14
+
+1. M03 — worldgen read-only/status safety. Live/CLI status still calls
+   ensure_layout and writes environment state. Do not probe real runtime yet.
+2. M02 automated acceptance passes: read-only network import/load, deterministic
+   memberships, validated atomic canonical saves, preserved explicit history,
+   explicit CSV export and in-memory terrain previews. GUI checks stay pending.
+3. Run checks via scripts/run_isolated_tests.py from the repository root. It
+   creates disposable source/public fixtures and synthetic config; private data
+   is excluded. Do not use M01's old /tmp copy as a source of truth.
+4. Later: stable Swift interchange contract. No Swift work in this repository.
+
+M02 baseline: 291 tests, 2 signage failures/2 errors. Final: 304 tests, the same
+four problems. 54 focused tests, compile, npm path/public checks and diff check
+pass. No real/private runtime data changed. See M02_PERSISTENCE_REPORT.md.
+
+Historical M01 priorities and visual notes below are retained for context.
+
 M01 LOCAL AUDIT — 2026-09-14
 
 This section supersedes the historical visual ordering below for migration

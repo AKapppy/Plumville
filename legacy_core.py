@@ -266,8 +266,8 @@ WorldMapTaskQueueItem = tuple[
     bool,
     str,
 ]
-WorldMapPreviewQueueItem = tuple[bool, str, str]
 FileStatKey = tuple[str, int, int]
+WorldMapPreviewQueueItem = tuple[bool, str, str | tuple[FileStatKey, Image.Image]]
 
 
 class StopRecord(TypedDict):
@@ -7168,6 +7168,11 @@ class MetroMapViewer:
             self.priority_line_filter_var,
         )
         self.priority_line_filter_menu.pack(side='left', fill='x', expand=True)
+        self._make_sidebar_button(
+            priority_section,
+            text='Export Priority CSV',
+            command=self._export_priority_list_csv,
+        ).pack(anchor='w', padx=16, pady=(0, 8))
         priority_panel = tk.Frame(
             priority_section,
             bg=INFO_BOX_BACKGROUND,
@@ -8663,10 +8668,19 @@ class MetroMapViewer:
             f'From {origin_label}. Click a station below.'
         )
         entries = _priority_list_entries(origin_key, **self._route_graph_options())
-        _write_priority_list_csv(entries)
+        self._priority_csv_entries = entries
         self._refresh_priority_filter_menu(entries)
         self._refresh_priority_line_filter_menu()
         self._populate_priority_list(self._priority_filter_entries(entries))
+
+    def _export_priority_list_csv(self) -> None:
+        # Refresh computes the same unfiltered export rows, but never saves them.
+        self._refresh_priority_list()
+        try:
+            _write_priority_list_csv(self._priority_csv_entries)
+        except OSError as exc:
+            from tkinter import messagebox
+            messagebox.showerror('Could Not Export Priority CSV', str(exc), parent=self.root)
 
     def _select_railway_finish_line(self, line_name: str) -> None:
         self.railway_finish_line_var.set(line_name)
@@ -13655,6 +13669,10 @@ class MetroMapViewer:
         if max(source_width, source_height) <= WORLD_MAP_PREVIEW_MAX_DIMENSION:
             return (source_image_path, source_stat)
 
+        memory_preview = getattr(self, '_world_map_memory_preview', None)
+        if memory_preview is not None and memory_preview[:2] == (str(source_image_path), source_stat):
+            return (source_image_path, source_stat)
+
         preview_path = self._world_map_preview_path_for(source_image_path, render_cache_path)
         preview_stat = _file_stat_key(preview_path)
         if preview_stat is not None and preview_stat[1] >= source_stat[1]:
@@ -13688,12 +13706,13 @@ class MetroMapViewer:
                     (WORLD_MAP_PREVIEW_MAX_DIMENSION, WORLD_MAP_PREVIEW_MAX_DIMENSION),
                     resampling_filter,
                 )
-                preview_path.parent.mkdir(parents=True, exist_ok=True)
-                preview_image.save(preview_path)
+                # Display is read-only: generated previews live only in memory.
             except Exception as exc:
                 self.world_map_preview_queue.put((False, str(source_image_path), str(exc)))
                 return
-            self.world_map_preview_queue.put((True, str(source_image_path), str(preview_path)))
+            self.world_map_preview_queue.put(
+                (True, str(source_image_path), (source_stat, preview_image))
+            )
 
         threading.Thread(target=build_preview, daemon=True).start()
         self._schedule_world_map_preview_poll()
@@ -13708,9 +13727,12 @@ class MetroMapViewer:
         handled_message = False
         while True:
             try:
-                _succeeded, _source, _detail = self.world_map_preview_queue.get_nowait()
+                succeeded, source, detail = self.world_map_preview_queue.get_nowait()
             except queue.Empty:
                 break
+            if succeeded and isinstance(detail, tuple):
+                source_stat, preview_image = detail
+                self._world_map_memory_preview = (source, source_stat, preview_image)
             handled_message = True
             self.world_map_preview_build_key = None
 
@@ -13813,7 +13835,14 @@ class MetroMapViewer:
                 break
             display_image_path, display_image_stat = display_image
             try:
-                candidate_source_image = Image.open(display_image_path).convert('RGBA')
+                memory_preview = getattr(self, '_world_map_memory_preview', None)
+                if memory_preview is not None and memory_preview[:2] == (
+                    str(display_image_path), display_image_stat,
+                ):
+                    candidate_source_image = memory_preview[2]
+                else:
+                    with Image.open(display_image_path) as display_source:
+                        candidate_source_image = display_source.convert('RGBA')
             except OSError:
                 continue
             image_path = display_image_path
@@ -15335,6 +15364,11 @@ def _record_history_snapshot(snapshot_text: str) -> None:
 
 
 def _write_network_payload(payload: MetroNetworkPayload) -> None:
+    # Only explicit edit/save commands enter this boundary.
+    _normalize_network_payload(payload)
+    network.validate_network_payload(
+        payload, unassociated_station_label=UNASSOCIATED_STATION_LABEL,
+    )
     network.write_network_payload(
         payload,
         network_path=METRO_NETWORK_PATH,
@@ -15472,9 +15506,14 @@ def _line_tunneled_stop_vars_from_payload(
 
 
 def _normalize_line_tunneled_stop_vars(payload: MetroNetworkPayload) -> bool:
+    # Membership is unordered at runtime; persist in semantic line sequence.
+    memberships = _line_tunneled_stop_vars_from_payload(payload)
     normalized = {
-        line_name: list(stop_vars)
-        for line_name, stop_vars in _line_tunneled_stop_vars_from_payload(payload).items()
+        line_name: [
+            stop_var for stop_var in payload['line_stop_vars'][line_name]
+            if stop_var in stop_vars
+        ]
+        for line_name, stop_vars in memberships.items()
         if stop_vars
     }
     if payload.get('line_tunneled_stop_vars') == normalized:
@@ -15483,37 +15522,30 @@ def _normalize_line_tunneled_stop_vars(payload: MetroNetworkPayload) -> bool:
     return True
 
 
-def _load_network_payload() -> MetroNetworkPayload:
-    if not METRO_NETWORK_PATH.exists():
-        raise FileNotFoundError(f'Network data file not found: {METRO_NETWORK_PATH}')
-
-    payload = cast(MetroNetworkPayload, json.loads(METRO_NETWORK_PATH.read_text(encoding='utf-8')))
-    payload_changed = False
-
-    if network.normalize_stop_metadata(
+def _normalize_network_payload(payload: MetroNetworkPayload) -> None:
+    """Normalize only the supplied in-memory value; never persist on read."""
+    network.normalize_stop_metadata(
         payload,
         checkpoint_fields=CHECKPOINT_FIELDS,
         chime_directions=CHIME_DIRECTIONS,
-    ):
-        payload_changed = True
-    if _normalize_path_nodes(payload):
-        payload_changed = True
-    if _normalize_alignment_reminders(payload):
-        payload_changed = True
-    if _normalize_extra_edges(payload):
-        payload_changed = True
-    if _normalize_city_limits(payload):
-        payload_changed = True
-    if _normalize_railway_finish_progress(payload):
-        payload_changed = True
-    if _normalize_railway_finish_origins(payload):
-        payload_changed = True
-    if _normalize_line_tunneled_stop_vars(payload):
-        payload_changed = True
+    )
+    _normalize_path_nodes(payload)
+    _normalize_alignment_reminders(payload)
+    _normalize_extra_edges(payload)
+    _normalize_city_limits(payload)
+    _normalize_railway_finish_progress(payload)
+    _normalize_railway_finish_origins(payload)
+    _normalize_line_tunneled_stop_vars(payload)
 
-    if payload_changed:
-        _write_network_payload(payload)
 
+def _load_network_payload() -> MetroNetworkPayload:
+    if not METRO_NETWORK_PATH.exists():
+        raise FileNotFoundError(f'Network data file not found: {METRO_NETWORK_PATH}')
+    payload = cast(
+        MetroNetworkPayload,
+        json.loads(METRO_NETWORK_PATH.read_text(encoding='utf-8')),
+    )
+    _normalize_network_payload(payload)
     return payload
 
 
@@ -15803,9 +15835,14 @@ def _update_line_tunneled_stop_vars_in_payload(
     line_names: Sequence[str],
     tunneled: bool,
 ) -> None:
+    # Membership is unordered at runtime; persist in semantic line sequence.
+    memberships = _line_tunneled_stop_vars_from_payload(payload)
     normalized = {
-        line_name: list(stop_vars)
-        for line_name, stop_vars in _line_tunneled_stop_vars_from_payload(payload).items()
+        line_name: [
+            stop_var for stop_var in payload['line_stop_vars'][line_name]
+            if stop_var in stop_vars
+        ]
+        for line_name, stop_vars in memberships.items()
         if stop_vars
     }
     valid_line_names = set(_station_line_membership_from_payload(payload, stop_var))

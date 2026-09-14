@@ -1629,7 +1629,7 @@ def _patched_refresh_priority_list(
         **self._route_graph_options(),
     )
     entries = _priority_entries_named_or_frontier(entries)
-    base._write_priority_list_csv(entries)
+    self._priority_csv_entries = entries
     self._refresh_priority_filter_menu(entries)
     self._refresh_priority_line_filter_menu()
     self._populate_priority_list(
