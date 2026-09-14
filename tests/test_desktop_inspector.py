@@ -166,6 +166,8 @@ class DesktopInspectorTests(unittest.TestCase):
         viewer._remove_selected_station_from_line = mock.Mock()
         viewer._activate_station_pathing = mock.Mock()
         viewer._add_path_for_selected_node = mock.Mock()
+        viewer._start_path_node_click_connect = mock.Mock()
+        viewer._cancel_path_node_click_connect = mock.Mock()
         viewer._edit_selected_path_node_coordinates = mock.Mock()
         viewer._remove_selected_path_node = mock.Mock()
         viewer._remove_path_edge = mock.Mock()
@@ -359,6 +361,44 @@ class DesktopInspectorTests(unittest.TestCase):
         self.assertEqual(len(remove_buttons), 2)
         remove_buttons[-1].kwargs["command"]()
         viewer._remove_path_edge.assert_called_once_with(edge)
+
+    def test_path_node_connect_opens_click_to_select_choice(self) -> None:
+        viewer = self._viewer()
+        node = base.PathNode("node_1", 12, 34, label="Market Gate")
+        viewer._selected_path_node = mock.Mock(return_value=node)
+
+        with (
+            mock.patch.object(inspector.tk, "Frame", FakeWidget),
+            mock.patch.object(inspector.tk, "Label", FakeWidget),
+            mock.patch.object(inspector.tk, "Canvas", FakeCanvas),
+            mock.patch.object(base, "STOPS_BY_VAR", {}),
+            mock.patch.object(base, "_extra_edges_for_endpoint_key", return_value=()),
+        ):
+            inspector.sync_inspector(viewer)
+
+        connect_button = _find_widget_by_text(
+            viewer._desktop_workspace_shell.inspector_body,
+            "Connect",
+        )
+        self.assertIsNotNone(connect_button)
+        with (
+            mock.patch.object(inspector.tk, "Frame", FakeWidget),
+            mock.patch.object(inspector.tk, "Label", FakeWidget),
+            mock.patch.object(inspector.tk, "Canvas", FakeCanvas),
+        ):
+            connect_button.kwargs["command"]()
+
+        texts = _widget_texts(viewer._desktop_workspace_shell.inspector_body)
+        self.assertIn("Type Endpoint", texts)
+        self.assertIn("Click to Select", texts)
+
+        click_select_button = _find_widget_by_text(
+            viewer._desktop_workspace_shell.inspector_body,
+            "Click to Select",
+        )
+        self.assertIsNotNone(click_select_button)
+        click_select_button.kwargs["command"]()
+        viewer._start_path_node_click_connect.assert_called_once_with("walk")
 
     def test_sync_inspector_renders_remove_for_derived_path_node(self) -> None:
         viewer = self._viewer()

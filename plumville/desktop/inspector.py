@@ -331,11 +331,18 @@ def _render_selected_path_node(
     viewer.info_popup_variables = []
 
     extra_edges = base._extra_edges_for_endpoint_key(path_node.key)
+    connect_source_key = getattr(viewer, "path_connect_source_node_key", None)
+    connect_target_count = len(getattr(viewer, "path_connect_target_node_keys", ()))
     detail_lines = (
         f"Current node: {path_node.display_label}",
         f"Coords: ({path_node.x}, {path_node.y})",
         f"Type: {base._path_node_type_label(path_node)}",
         f"Path edges: {len(extra_edges)}",
+        *(
+            (f"Click-to-select targets: {connect_target_count}",)
+            if connect_source_key == path_node.key
+            else ()
+        ),
     )
     _make_detail_block(
         shell.inspector_body,
@@ -349,10 +356,12 @@ def _render_selected_path_node(
     actions = _make_section(shell.inspector_body, title="Actions")
     actions.pack(fill="x")
     action_items = [
-        ("Connect", lambda: viewer._add_path_for_selected_node("walk")),
+        ("Connect", lambda active_node=path_node: _render_path_node_connect_choices(viewer, active_node)),
         ("Edit", viewer._edit_selected_path_node_coordinates),
         ("Remove", viewer._remove_selected_path_node),
     ]
+    if connect_source_key == path_node.key:
+        action_items.insert(1, ("Cancel Select", viewer._cancel_path_node_click_connect))
     _action_section(
         viewer,
         actions,
@@ -381,6 +390,37 @@ def _render_selected_path_node(
                 text="Remove",
                 command=lambda edge=extra_edge: viewer._remove_path_edge(edge),
             ).pack(side="right", padx=(8, 0))
+
+
+def _render_path_node_connect_choices(
+    viewer: "base.MetroMapViewer",
+    path_node: base.PathNode,
+) -> None:
+    shell = viewer._desktop_workspace_shell
+    _clear_inspector_body(viewer)
+    shell.inspector_header_label.configure(text="Connect Node")
+
+    _make_detail_block(
+        shell.inspector_body,
+        title="Source",
+        lines=(
+            f"Current node: {path_node.display_label}",
+            f"Coords: ({path_node.x}, {path_node.y})",
+        ),
+    ).pack(fill="x", pady=(0, SECTION_GAP))
+
+    actions = _make_section(shell.inspector_body, title="Connect")
+    actions.pack(fill="x")
+    _action_section(
+        viewer,
+        actions,
+        title="Mode",
+        actions=[
+            ("Type Endpoint", lambda: viewer._add_path_for_selected_node("walk")),
+            ("Click to Select", lambda: viewer._start_path_node_click_connect("walk")),
+            ("Cancel", lambda: _render_selected_path_node(viewer, path_node)),
+        ],
+    )
 
 
 def _render_pathing_context(
@@ -421,6 +461,7 @@ def _render_pathing_context(
     guide = _make_section(shell.inspector_body, title="Map")
     guide.pack(fill="x", pady=(SECTION_GAP, 0))
     for line in (
+        "Editing Mode is active.",
         "Click empty map space to add a node.",
         "Drag from a station or node to another station or node to add a path.",
         str(viewer.path_click_status_var.get()),

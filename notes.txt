@@ -261,6 +261,105 @@ USER VERIFICATION — LEAVE UNCHECKED
     middle and makes sense as the stop.
 
 ----------------------------------------------------------------------
+A9. ACTIVE COORDINATE PATH NODE PLACEMENT RUN W08
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Add an Active Coordinates pathing option so Add Node can use the visible
+    crosshair coordinates.
+[x] Show an Align option only while Active Coordinates is enabled, defaulting
+    to on.
+[x] Snap active-coordinate node placement to a nearby existing path-node x/y
+    alignment when Align is on.
+[x] Allow arrow keys to nudge the visible map crosshair while the map canvas
+    has focus.
+[x] Add focused automated tests.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] With Active Coordinates on, Add Node uses the visible crosshair coordinate
+    instead of the typed coordinate field.
+[ ] Align appears only while Active Coordinates is on and defaults to checked.
+[ ] With Align on, a new node near an existing node's x/y line snaps to that
+    shared row or column.
+[ ] With the map selected, arrow keys nudge the visible crosshair left, right,
+    up, and down.
+
+----------------------------------------------------------------------
+A10. PATH NODE CLICK-CONNECT AND STATION STEP NAVIGATION RUN W09
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Add a Connect choice view for selected path nodes with typed endpoint and
+    Click to Select connection modes.
+[x] Keep Click to Select anchored to the originally selected node while
+    connecting each clicked target node back to that source.
+[x] Prevent empty map clicks from creating new nodes while node Click to Select
+    connection mode is active.
+[x] Make station signage direction headers select and frame the nearest next
+    station on the active line in that displayed direction.
+[x] Add focused automated tests for the inspector choice view, original-source
+    node connection behavior, empty-click suppression, and station step
+    navigation.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] Selecting a path node, then Connect, then Click to Select lets existing
+    path nodes be clicked on the map to add walking-path connections.
+[ ] In Click to Select mode, clicking node 2 and node 3 after starting from
+    node 1 creates node 1 -> node 2 and node 1 -> node 3, without creating
+    node 2 -> node 3.
+[ ] Empty map clicks do not create new path nodes while Click to Select
+    connection mode is active.
+[ ] Selecting a station and clicking `<<<<<` moves to the nearest next station
+    in that displayed line direction.
+[ ] Selecting a station and clicking `>>>>>` moves to the nearest next station
+    in that displayed line direction.
+
+----------------------------------------------------------------------
+A11. PATHING EDITING MODE AND PRIORITY FILTER RUN W10
+----------------------------------------------------------------------
+
+IMPLEMENTATION
+
+[x] Add an explicit Pathing Editing Mode button for map-click node creation
+    and node-to-node path dragging.
+[x] Keep popup/inspector button clicks from creating nodes at the map
+    coordinate underneath the click.
+[x] Make non-node drag starts pan the map while editing mode is active.
+[x] Keep selected-node coordinate, label, typed endpoint, and click-to-select
+    connection functionality intact.
+[x] Show only station names in the Priority List when filtering by need.
+[x] Add focused automated tests.
+[x] Update this checklist and file_priority.txt.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] The Pathing menu exposes an Editing Mode button.
+[ ] In Editing Mode, clicking empty map space creates a node.
+[ ] In Editing Mode, dragging from one existing node/station to another adds
+    a path.
+[ ] In Editing Mode, dragging from non-node map space pans the map.
+[ ] Clicking a popup/inspector button does not create a node underneath it.
+[ ] Need-filtered Priority List entries show station names only.
+
+----------------------------------------------------------------------
+A12. PRIORITY LIST TEXT WRAPPING RUN D01-P
+----------------------------------------------------------------------
+
+[verify] Wrap priority entries and summary to their actual available width.
+[x] Add regression coverage and run required checks.
+
+USER VERIFICATION — LEAVE UNCHECKED
+
+[ ] All needs / Line B shows every word inside the Priority List panel.
+[ ] Resizing the window reflows text; filters and station clicks still work.
+
+----------------------------------------------------------------------
 B. VISUAL RUN V01 — WORKSPACE SHELL
 ----------------------------------------------------------------------
 
@@ -1326,6 +1425,13 @@ NEEDS ANDREW'S LIVE VERIFICATION
     has a Remove action.
 [ ] Individual path connections can be removed from the selected-node
     inspector without deleting unrelated connections.
+[ ] Selected path-node Connect opens a choice view with Type Endpoint and
+    Click to Select.
+[ ] Click to Select connects every clicked target node back to the originally
+    selected node.
+[ ] Empty map clicks do not create new path nodes while Click to Select is
+    active.
+[ ] Station signage direction headers step to the next station on that line.
 [ ] Railways sidebar no longer shows finishing mode, finish coordinates, or a
     Save Point action.
 [ ] Railways progress reads connected track length against planned track length.
@@ -1400,3 +1506,25 @@ NONNEGOTIABLE SAFETY
 - Never expose private desktop data in docs/.
 - Never modify real runtime data merely to satisfy a test.
 - Never commit or push without Andrew's explicit request.
+
+2026-09-13 — Priority List Text Wrapping Run D01-P
+
+- Scope: prevent Priority List text from clipping at the right panel edge.
+- Branch: main; all ten initially modified files preserved. Initial diff-stat:
+  10 files, 9742 insertions, 3040 deletions.
+- Reproduction: supplied desktop screenshot shows clipped All needs / Line B
+  entries; code uses SIDEBAR_WIDTH-based wrap lengths despite narrower labels.
+- Fix: a small stable label Configure hook in legacy_core.py uses actual width
+  minus internal padding, border, and highlight. Applies to entries, empty
+  message, and summary; unchanged widths avoid redundant configuration.
+- Tests: priority-filter tests PASS (13); required py_compile including
+  legacy_core.py PASS; test:paths PASS (5); npm test PASS; diff --check PASS.
+- Full unittest baseline: 288 tests, 2 failures and 2 errors. After: 290 tests,
+  same 2 failures and 2 errors, all in test_station_signage (corrected Line C
+  junctions, placeholder junction suffixes, flipped direction lists, and
+  Triarchidia direction layout). No new full-suite failures.
+- PLUMVILLE_RUN_TK_SMOKE=1 npm run smoke:tk and python3 plumville_app.py
+  both FAIL to launch (exit 134, no traceback); live visual inspection SKIP.
+- Versions: Python 3.13.7, Node v24.11.1, npm 11.6.2.
+- User checks above remain unchecked. Visual status moved [~] to [verify];
+  regression coverage marked [x]. No commit or push performed.

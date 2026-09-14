@@ -1,3 +1,12 @@
+CURRENT SLICE UPDATE — 2026-09-13 — D01-P
+
+Priority List wrapping implemented; awaiting live desktop verification.
+- legacy_core.py: wrap summary, entries, and empty message to allocated width.
+- tests/test_priority_filter.py: resize, padding, empty-state, and click coverage.
+- Priority tests pass; full suite retains four baseline signage problems.
+- Tk smoke/app launch abort with exit 134 here; verify All needs / Line B and
+  resizing on desktop before moving to another major slice.
+
 PLUMVILLE FILE PRIORITY LIST
 
 Last audited against GitHub main: 2026-07-29
@@ -121,6 +130,23 @@ Current desktop pathing state:
   branch points so nearby suggestions share a clear path source;
 - city-limit editing uses inspector controls, inferred/correctable town
   context, pending node selection, and confirm-to-save convex polygons.
+- Path Nodes now include an Active Coordinates option for using the visible
+  map crosshair as Add Node input; its Align option appears only while active,
+  defaults on, and snaps near an existing path-node row or column.
+- The map canvas now supports arrow-key nudging for the visible coordinate
+  crosshair while the canvas has focus.
+- Selected path-node Connect now opens typed endpoint and Click to Select
+  choices; Click to Select keeps the original node as the source while clicked
+  target nodes are connected back to it, and empty map clicks do not create
+  new nodes in that mode.
+- Station signage direction headers now act as map navigation controls,
+  selecting and framing the nearest next station on the active line in the
+  displayed direction.
+- The Pathing sidebar now exposes an explicit Editing Mode button for map-click
+  node creation and node-to-node path dragging; the old visible path-node
+  coordinate/label Add Node form has been removed from the normal sidebar.
+- Editing Mode empty-click node creation is suppressed for popup button
+  releases, and dragging from non-node map space continues to pan the map.
 
 Do not:
 
@@ -168,6 +194,8 @@ Current priority-list state:
 - selecting a line shows all unfinished stations on that line and ignores the
   Need filter until All lines is selected again, while still excluding unnamed
   placeholder stations;
+- selecting a Need filter now lists only matching station names while retaining
+  the same map highlights;
 - desktop startup now uses the same reset view as the R hotkey;
 - station entries render as small zoom-gated dots with dotted gray station
   links and continue to be used as station walking endpoints;

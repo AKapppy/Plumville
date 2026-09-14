@@ -32,6 +32,41 @@ class _FakeMenu:
 
 
 class PriorityFilterTest(unittest.TestCase):
+    def test_priority_labels_reflow_and_preserve_station_clicks(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.priority_list_frame = mock.Mock()
+        viewer.priority_list_frame.winfo_children.return_value = []
+        viewer._focus_stop = mock.Mock()
+        label = mock.Mock()
+        options = dict(padx=3, borderwidth=1, highlightthickness=2,
+                       wraplength=400)
+        label.cget.side_effect = options.__getitem__
+        label.winfo_pixels.side_effect = int
+        label.configure.side_effect = lambda **values: options.update(values)
+        text = "T-t-town: needs façade, station, station entry, paths, city limits, and connected"
+        with mock.patch.object(base.tk, "Label", return_value=label) as factory:
+            viewer._populate_priority_list([("P_TEST", text)])
+        self.assertEqual(factory.call_args.kwargs["text"], text)
+        bindings = dict(call.args for call in label.bind.call_args_list)
+        for width in (250, 180, 360, 1):
+            bindings["<Configure>"](mock.Mock(widget=label, width=width))
+            self.assertEqual(options["wraplength"], max(1, width - 12))
+        label.configure.reset_mock()
+        bindings["<Configure>"](mock.Mock(widget=label, width=1))
+        label.configure.assert_not_called()
+        bindings["<Button-1>"](None)
+        viewer._focus_stop.assert_called_once_with("P_TEST")
+
+    def test_empty_priority_message_also_reflows(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.priority_list_frame = mock.Mock()
+        viewer.priority_list_frame.winfo_children.return_value = []
+        with mock.patch.object(base.tk, "Label") as factory:
+            viewer._populate_priority_list([])
+        factory.return_value.bind.assert_called_once_with(
+            "<Configure>", viewer._resize_priority_label,
+        )
+
     def test_placeholder_all_caps_labels_are_treated_as_unnamed(self) -> None:
         self.assertFalse(base._stop_has_name(base.MetroStop("P_ABCDE", "HL", 0, 0)))
         self.assertFalse(base._stop_has_name(base.MetroStop("P_ABCDE", "TMP2", 0, 0)))
@@ -60,6 +95,42 @@ class PriorityFilterTest(unittest.TestCase):
 
         self.assertEqual({stop_var for stop_var, _text in filtered_entries}, expected_stop_vars)
         self.assertEqual(viewer.priority_highlight_stop_vars, expected_stop_vars)
+
+    def test_selected_need_filter_shows_station_names_only(self) -> None:
+        walking_stop = base.MetroStop("P_WALK", "Walkshire", 0, 0)
+        sign_stop = base.MetroStop("P_SIGN", "Signport", 10, 0)
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.priority_filter_options = {"Walking Paths": "walking_paths"}
+        viewer.priority_filter_var = _FakeVar("Walking Paths")
+        viewer.priority_line_filter_var = _FakeVar(base.PRIORITY_LINE_FILTER_ALL_LABEL)
+        viewer.priority_highlight_stop_vars = set()
+
+        def missing_tasks(stop: base.MetroStop) -> list[str]:
+            if stop.var == walking_stop.var:
+                return ["walking_paths"]
+            return ["signs"]
+
+        with (
+            mock.patch.object(
+                base,
+                "STOPS_BY_VAR",
+                {
+                    walking_stop.var: walking_stop,
+                    sign_stop.var: sign_stop,
+                },
+            ),
+            mock.patch.object(base, "_missing_station_tasks", side_effect=missing_tasks),
+        ):
+            filtered_entries = base.MetroMapViewer._priority_filter_entries(
+                viewer,
+                [
+                    (walking_stop.var, "Walkshire: needs walking paths and signs"),
+                    (sign_stop.var, "Signport: needs signs"),
+                ],
+            )
+
+        self.assertEqual(filtered_entries, [(walking_stop.var, "Walkshire")])
+        self.assertEqual(viewer.priority_highlight_stop_vars, {walking_stop.var})
 
     def test_all_needs_filter_clears_map_highlights(self) -> None:
         entries = [(stop.var, stop.lbl) for stop in base.METRO_STOPS]

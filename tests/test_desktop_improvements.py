@@ -40,6 +40,17 @@ class FakeStringVar:
         self.value = value
 
 
+class FakeBooleanVar:
+    def __init__(self, value: bool = False) -> None:
+        self.value = value
+
+    def get(self) -> bool:
+        return self.value
+
+    def set(self, value: bool) -> None:
+        self.value = value
+
+
 class FakeMarkerCanvas:
     def __init__(self) -> None:
         self.calls: list[tuple[str, tuple[object, ...], dict[str, object]]] = []
@@ -818,6 +829,274 @@ class DesktopMmcpVisualTests(unittest.TestCase):
         self.assertIsNone(viewer.selected_path_node_key)
         viewer._center_on_world_point.assert_called_once_with((123, -456))
         viewer.redraw.assert_called_once_with()
+
+
+class ActiveCoordinatePathingTests(unittest.TestCase):
+    def test_align_active_path_node_coordinates_snaps_to_nearby_row(self) -> None:
+        nodes = (
+            base.PathNode("node_1", 1, 2),
+            base.PathNode("node_2", 100, 50),
+        )
+
+        self.assertEqual(
+            base._aligned_active_path_node_coordinates((20, 3), nodes),
+            (20, 2),
+        )
+
+    def test_align_active_path_node_coordinates_snaps_to_nearby_column(self) -> None:
+        nodes = (base.PathNode("node_1", 21, 200),)
+
+        self.assertEqual(
+            base._aligned_active_path_node_coordinates((20, 3), nodes),
+            (21, 3),
+        )
+
+    def test_align_active_path_node_coordinates_leaves_distant_points_alone(self) -> None:
+        nodes = (base.PathNode("node_1", 1, 2),)
+
+        self.assertEqual(
+            base._aligned_active_path_node_coordinates((20, 20), nodes),
+            (20, 20),
+        )
+
+    def test_active_coordinate_add_uses_visible_crosshair_and_alignment(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.root = object()
+        viewer.path_node_active_coordinates_var = FakeBooleanVar(True)
+        viewer.path_node_align_coordinates_var = FakeBooleanVar(True)
+        viewer.path_node_coordinates_var = FakeStringVar("999, 999")
+        viewer.path_node_label_var = FakeStringVar("Aligned")
+        viewer.path_click_status_var = FakeStringVar("")
+        viewer.cursor_readout_coordinates = (20, 3)
+        viewer.show_cursor_guides = True
+        viewer.hover_canvas_point = (400.0, 300.0)
+        viewer.selected_stop_var = "P_A"
+        viewer.selected_path_node_key = None
+        viewer._clear_metro_segment_selection = mock.Mock()
+        viewer._cursor_canvas_point_for_coordinates = mock.Mock(return_value=(500.0, 250.0))
+        viewer._refresh_after_path_edit = mock.Mock()
+
+        with (
+            mock.patch.object(base, "_all_path_nodes", return_value=(base.PathNode("node_1", 1, 2),)),
+            mock.patch.object(base, "add_path_node") as add_path_node,
+        ):
+            base.MetroMapViewer._add_path_node_from_sidebar(viewer)
+
+        add_path_node.assert_called_once_with("20, 2", label="Aligned")
+        self.assertIsNone(viewer.selected_stop_var)
+        self.assertEqual(viewer.selected_path_node_key, "coord:20,2")
+        self.assertEqual(viewer.cursor_readout_coordinates, (20, 2))
+        self.assertTrue(viewer.show_cursor_guides)
+        self.assertEqual(viewer.hover_canvas_point, (500.0, 250.0))
+        self.assertEqual(viewer.path_node_coordinates_var.get(), "999, 999")
+        self.assertEqual(viewer.path_node_label_var.get(), "")
+        viewer._clear_metro_segment_selection.assert_called_once_with()
+        viewer._refresh_after_path_edit.assert_called_once_with(refresh_path_status=False)
+
+    def test_align_checkbox_only_shows_while_active_coordinates_are_enabled(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        align_checkbox = mock.Mock()
+        viewer.path_node_align_checkbox = align_checkbox
+        viewer.path_node_active_coordinates_var = FakeBooleanVar(False)
+
+        base.MetroMapViewer._sync_active_path_node_align_control(viewer)
+
+        align_checkbox.pack_forget.assert_called_once_with()
+        align_checkbox.pack.assert_not_called()
+
+        align_checkbox.reset_mock()
+        viewer.path_node_active_coordinates_var.set(True)
+
+        base.MetroMapViewer._sync_active_path_node_align_control(viewer)
+
+        align_checkbox.pack.assert_called_once_with(anchor="w", padx=16, pady=(0, 8))
+        align_checkbox.pack_forget.assert_not_called()
+
+    def test_arrow_key_nudges_visible_crosshair_on_map(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.cursor_readout_coordinates = (20, 3)
+        viewer.show_cursor_guides = True
+        viewer.hover_canvas_point = (400.0, 300.0)
+        viewer._cursor_canvas_point_for_coordinates = mock.Mock(return_value=(401.0, 299.0))
+        viewer.redraw = mock.Mock()
+
+        result = base.MetroMapViewer._on_cursor_nudge_key(
+            viewer,
+            SimpleNamespace(keysym="Up"),
+        )
+
+        self.assertEqual(result, "break")
+        self.assertEqual(viewer.cursor_readout_coordinates, (20, 2))
+        self.assertEqual(viewer.hover_canvas_point, (401.0, 299.0))
+        viewer._cursor_canvas_point_for_coordinates.assert_called_once_with((20, 2))
+        viewer.redraw.assert_called_once_with()
+
+    def test_arrow_key_ignores_hidden_crosshair(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.cursor_readout_coordinates = (20, 3)
+        viewer.show_cursor_guides = False
+        viewer.hover_canvas_point = None
+        viewer.redraw = mock.Mock()
+
+        result = base.MetroMapViewer._on_cursor_nudge_key(
+            viewer,
+            SimpleNamespace(keysym="Up"),
+        )
+
+        self.assertIsNone(result)
+        self.assertEqual(viewer.cursor_readout_coordinates, (20, 3))
+        viewer.redraw.assert_not_called()
+
+    def test_click_select_connects_targets_to_original_path_node(self) -> None:
+        source = base.PathNode("node_1", 10, 20, label="Source")
+        first_target = base.PathNode("node_2", 30, 40, label="First")
+        second_target = base.PathNode("node_3", 50, 60, label="Second")
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.root = object()
+        viewer.path_click_mode_var = FakeBooleanVar(True)
+        viewer.path_click_status_var = FakeStringVar("")
+        viewer.path_connect_source_node_key = source.key
+        viewer.path_connect_kind = "walk"
+        viewer.path_connect_target_node_keys = ()
+        viewer.selected_stop_var = None
+        viewer.selected_path_node_key = None
+        viewer.hover_canvas_point = None
+        viewer.cursor_readout_coordinates = None
+        viewer.show_cursor_guides = False
+        viewer._path_node_hit_test = mock.Mock(side_effect=(first_target, second_target))
+        viewer._clear_metro_segment_selection = mock.Mock()
+        viewer._refresh_after_path_edit = mock.Mock()
+
+        with (
+            mock.patch.object(
+                base,
+                "_all_path_nodes_by_key",
+                return_value={
+                    source.key: source,
+                    first_target.key: first_target,
+                    second_target.key: second_target,
+                },
+            ),
+            mock.patch.object(base, "add_extra_edge") as add_extra_edge,
+        ):
+            first_handled = base.MetroMapViewer._handle_path_node_click_connect(viewer, 1, 2)
+            second_handled = base.MetroMapViewer._handle_path_node_click_connect(viewer, 3, 4)
+
+        self.assertTrue(first_handled)
+        self.assertTrue(second_handled)
+        self.assertEqual(
+            add_extra_edge.call_args_list,
+            [
+                mock.call("10, 20", "30, 40", "walk"),
+                mock.call("10, 20", "50, 60", "walk"),
+            ],
+        )
+        self.assertEqual(
+            viewer.path_connect_target_node_keys,
+            (first_target.key, second_target.key),
+        )
+        self.assertEqual(viewer.selected_path_node_key, source.key)
+
+    def test_click_select_empty_map_click_does_not_add_node(self) -> None:
+        source = base.PathNode("node_1", 10, 20, label="Source")
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.root = object()
+        viewer.path_click_mode_var = FakeBooleanVar(True)
+        viewer.path_click_status_var = FakeStringVar("")
+        viewer.path_connect_source_node_key = source.key
+        viewer.path_connect_kind = "walk"
+        viewer.path_connect_target_node_keys = ()
+        viewer._path_node_hit_test = mock.Mock(return_value=None)
+        viewer.redraw = mock.Mock()
+
+        with (
+            mock.patch.object(base, "_all_path_nodes_by_key", return_value={source.key: source}),
+            mock.patch.object(base, "add_extra_edge") as add_extra_edge,
+        ):
+            handled = base.MetroMapViewer._handle_path_node_click_connect(viewer, 1, 2)
+
+        self.assertTrue(handled)
+        add_extra_edge.assert_not_called()
+        viewer.redraw.assert_called_once_with()
+
+    def test_pathing_mode_drag_from_non_node_pans_map(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.info_popup_frame = None
+        viewer.drag_start = (10, 10)
+        viewer.drag_origin = (10, 10)
+        viewer.is_dragging = False
+        viewer.path_click_mode_var = FakeBooleanVar(True)
+        viewer.path_drag_start_endpoint_key = None
+        viewer.pan_x = 0.0
+        viewer.pan_y = 0.0
+        viewer.hover_canvas_point = (10.0, 10.0)
+        viewer.cursor_readout_coordinates = (1, 1)
+        viewer.show_cursor_guides = True
+        viewer._begin_viewport_interaction = mock.Mock()
+        viewer._move_viewport_canvas_items = mock.Mock()
+
+        base.MetroMapViewer._on_drag(
+            viewer,
+            SimpleNamespace(x=20, y=21, widget=object()),
+        )
+
+        self.assertTrue(viewer.is_dragging)
+        self.assertEqual(viewer.drag_start, (20, 21))
+        self.assertEqual(viewer.pan_x, 10.0)
+        self.assertEqual(viewer.pan_y, 11.0)
+        self.assertIsNone(viewer.hover_canvas_point)
+        self.assertIsNone(viewer.cursor_readout_coordinates)
+        self.assertFalse(viewer.show_cursor_guides)
+        viewer._begin_viewport_interaction.assert_called_once_with()
+        viewer._move_viewport_canvas_items.assert_called_once_with(10, 11)
+
+    def test_popup_button_release_does_not_create_path_node(self) -> None:
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.drag_start = (10, 10)
+        viewer.drag_origin = (10, 10)
+        viewer.is_dragging = False
+        viewer._widget_is_in_info_popup = mock.Mock(return_value=True)
+        viewer._finish_viewport_interaction = mock.Mock()
+        viewer._clear_path_drag = mock.Mock()
+        viewer._handle_path_click_edit = mock.Mock(return_value=True)
+
+        base.MetroMapViewer._on_drag_end(
+            viewer,
+            SimpleNamespace(x=10, y=10, widget=object()),
+        )
+
+        viewer._finish_viewport_interaction.assert_called_once_with()
+        viewer._clear_path_drag.assert_called_once_with()
+        viewer._handle_path_click_edit.assert_not_called()
+        self.assertIsNone(viewer.drag_start)
+        self.assertIsNone(viewer.drag_origin)
+        self.assertFalse(viewer.is_dragging)
+
+    def test_station_signage_direction_selects_next_station_on_line(self) -> None:
+        current = base.MetroStop("P_A1", "Alpha", 0, 0)
+        next_stop = base.MetroStop("P_A2", "Beta", 100, 0)
+        farther_stop = base.MetroStop("P_A3", "Gamma", 200, 0)
+        viewer = base.MetroMapViewer.__new__(base.MetroMapViewer)
+        viewer.station_signage_line_by_stop = {}
+        viewer._focus_stop = mock.Mock()
+
+        with mock.patch.object(
+            base,
+            "STOPS_BY_VAR",
+            {
+                current.var: current,
+                next_stop.var: next_stop,
+                farther_stop.var: farther_stop,
+            },
+        ):
+            base.MetroMapViewer._select_station_signage_direction_target(
+                viewer,
+                "A",
+                (next_stop.var, farther_stop.var),
+            )
+
+        self.assertEqual(viewer.station_signage_line_by_stop[next_stop.var], "A")
+        viewer._focus_stop.assert_called_once_with(next_stop.var)
 
 
 class DesktopRouteFitTests(unittest.TestCase):

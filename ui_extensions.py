@@ -43,7 +43,7 @@ def _append_pathing_extensions(
     ).grid(row=0, column=1, sticky="ew", padx=(8, 0))
     self._make_sidebar_button(
         button_row,
-        text="Add Path",
+        text="Editing Mode",
         command=self._activate_intercity_pathing,
     ).grid(row=0, column=2, sticky="ew", padx=(8, 0))
 

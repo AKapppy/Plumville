@@ -76,6 +76,7 @@ PATH_NODE_CLICK_TOLERANCE: Final[int] = 10
 PATH_NODE_FILL: Final[str] = '#0d1620'
 PATH_NODE_OUTLINE: Final[str] = '#8ad4ff'
 PATH_NODE_LABEL_COLOR: Final[str] = '#c8ebff'
+ACTIVE_COORDINATE_ALIGN_TOLERANCE: Final[int] = 6
 PATH_EDIT_HANDLE_RADIUS: Final[int] = 5
 PATH_EDIT_HANDLE_TOLERANCE: Final[int] = 10
 PATH_EDIT_ACTIVE_OUTLINE_WIDTH: Final[int] = 9
@@ -1053,6 +1054,32 @@ def _parse_coordinate_sequence_text(text: str) -> tuple[tuple[int, int], ...] | 
             return None
         coordinates.append(coordinates_value)
     return tuple(coordinates)
+
+
+def _aligned_active_path_node_coordinates(
+    coordinates: tuple[int, int],
+    path_nodes: Sequence[PathNode],
+    *,
+    tolerance: int = ACTIVE_COORDINATE_ALIGN_TOLERANCE,
+) -> tuple[int, int]:
+    x, y = coordinates
+    candidates: list[tuple[int, float, str, int]] = []
+    for path_node in path_nodes:
+        dx = abs(path_node.x - x)
+        dy = abs(path_node.y - y)
+        distance_sq = float(((path_node.x - x) ** 2) + ((path_node.y - y) ** 2))
+        if dx and dx <= tolerance:
+            candidates.append((dx, distance_sq, 'x', path_node.x))
+        if dy and dy <= tolerance:
+            candidates.append((dy, distance_sq, 'y', path_node.y))
+
+    if not candidates:
+        return coordinates
+
+    _delta, _distance_sq, axis, aligned_value = min(candidates)
+    if axis == 'x':
+        return (aligned_value, y)
+    return (x, aligned_value)
 
 
 def _resolve_stop_var_runtime(identifier: str) -> str | None:
@@ -6734,6 +6761,9 @@ class MetroMapViewer:
         self.city_limits_pending_node_keys: tuple[str, ...] = ()
         self.pathing_town_stop_var: str | None = None
         self.active_path_edge_id: str | None = None
+        self.path_connect_source_node_key: str | None = None
+        self.path_connect_kind: ExtraEdgeKind = 'walk'
+        self.path_connect_target_node_keys: tuple[str, ...] = ()
         self.path_drag_start_endpoint_key: str | None = None
         self.path_drag_current_canvas_point: tuple[int, int] | None = None
         self.path_drag_preview_item_ids: list[int] = []
@@ -6830,11 +6860,13 @@ class MetroMapViewer:
         self.walk_path_label_var = tk.StringVar(master=self.root)
         self.path_node_coordinates_var = tk.StringVar(master=self.root)
         self.path_node_label_var = tk.StringVar(master=self.root)
+        self.path_node_active_coordinates_var = tk.BooleanVar(master=self.root, value=False)
+        self.path_node_align_coordinates_var = tk.BooleanVar(master=self.root, value=True)
         self.path_click_mode_var = tk.BooleanVar(master=self.root, value=False)
         self.path_drag_kind_var = tk.StringVar(master=self.root, value='Walk')
         self.path_click_status_var = tk.StringVar(
             master=self.root,
-            value='Turn on map pathing to add nodes and drag paths on the map.',
+            value='Enter Editing Mode to add nodes and drag paths on the map.',
         )
         self.route_summary_var = tk.StringVar(
             master=self.root,
@@ -6942,6 +6974,8 @@ class MetroMapViewer:
         self.canvas.bind('<MouseWheel>', self._on_mousewheel)
         self.canvas.bind('<Button-4>', self._on_zoom_in)
         self.canvas.bind('<Button-5>', self._on_zoom_out)
+        for arrow_key in ('Left', 'Right', 'Up', 'Down'):
+            self.canvas.bind(f'<{arrow_key}>', self._on_cursor_nudge_key)
         self.canvas.focus_set()
 
         self.root.bind('r', self._on_reset_view)
@@ -7100,7 +7134,8 @@ class MetroMapViewer:
             justify='left',
             wraplength=SIDEBAR_WIDTH - 32,
         )
-        planning_summary_label.pack(anchor='w', padx=16, pady=(4, 12))
+        planning_summary_label.pack(fill='x', padx=16, pady=(4, 12))
+        planning_summary_label.bind('<Configure>', self._resize_priority_label)
         priority_filter_row = tk.Frame(priority_section, bg=BACKGROUND_COLOR)
         priority_filter_row.pack(fill='x', padx=16, pady=(0, 8))
         tk.Label(
@@ -7292,52 +7327,16 @@ class MetroMapViewer:
         self.route_steps_text.pack_forget()
 
         pathing_section = self._make_collapsible_sidebar_section('Pathing', expanded=False)
-        self.path_nodes_heading = self._make_sidebar_caption('Path Nodes', parent=pathing_section)
+        self.path_nodes_heading = self._make_sidebar_caption('Map Editing', parent=pathing_section)
         self.path_nodes_heading.pack(anchor='w', padx=16)
 
-        node_coords_row = tk.Frame(pathing_section, bg=BACKGROUND_COLOR)
-        node_coords_row.pack(fill='x', padx=16, pady=(4, 6))
-        tk.Label(
-            node_coords_row,
-            text='Coords',
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            width=5,
-            anchor='w',
-        ).pack(side='left')
-        self._make_sidebar_entry(node_coords_row, self.path_node_coordinates_var).pack(
-            side='left',
-            fill='x',
-            expand=True,
-            padx=(0, 10),
-        )
-
-        node_label_row = tk.Frame(pathing_section, bg=BACKGROUND_COLOR)
-        node_label_row.pack(fill='x', padx=16, pady=(0, 8))
-        tk.Label(
-            node_label_row,
-            text='Label',
-            bg=BACKGROUND_COLOR,
-            fg=TEXT_COLOR,
-            font=('Helvetica', SIDEBAR_TEXT_FONT_SIZE),
-            width=5,
-            anchor='w',
-        ).pack(side='left')
-        self._make_sidebar_entry(node_label_row, self.path_node_label_var).pack(side='left', fill='x', expand=True)
-
         node_button_row = tk.Frame(pathing_section, bg=BACKGROUND_COLOR)
-        node_button_row.pack(fill='x', padx=16, pady=(0, 12))
+        node_button_row.pack(fill='x', padx=16, pady=(4, 12))
         self._make_sidebar_button(
             node_button_row,
-            text='Add Node',
-            command=self._add_path_node_from_sidebar,
-        ).pack(side='left')
-        self._make_sidebar_button(
-            node_button_row,
-            text='Clear Fields',
-            command=self._clear_walk_path_fields,
-        ).pack(side='left', padx=(10, 0))
+            text='Editing Mode',
+            command=self._activate_intercity_pathing,
+        ).pack(side='left', fill='x', expand=True)
 
         drag_kind_row = tk.Frame(pathing_section, bg=BACKGROUND_COLOR)
         drag_kind_row.pack(fill='x', padx=16, pady=(0, 8))
@@ -8583,12 +8582,25 @@ class MetroMapViewer:
             return entries
 
         filtered_entries = [
-            (stop_var, text)
-            for stop_var, text in entries
+            (stop_var, _display_label(STOPS_BY_VAR[stop_var].lbl))
+            for stop_var, _text in entries
             if selected_task in _missing_station_tasks(STOPS_BY_VAR[stop_var])
         ]
         self.priority_highlight_stop_vars = {stop_var for stop_var, _text in filtered_entries}
         return filtered_entries
+
+    @staticmethod
+    def _resize_priority_label(event: tk.Event) -> None:
+        # The desktop shell can allocate less than SIDEBAR_WIDTH. Use the
+        # actual label width, excluding Tk's internal padding and borders.
+        label = event.widget
+        inset = sum(
+            label.winfo_pixels(label.cget(option))
+            for option in ('padx', 'borderwidth', 'highlightthickness')
+        )
+        wraplength = max(1, event.width - 2 * inset)
+        if label.winfo_pixels(label.cget('wraplength')) != wraplength:
+            label.configure(wraplength=wraplength)
 
     def _populate_priority_list(self, entries: list[tuple[str, str]]) -> None:
         if not hasattr(self, 'priority_list_frame'):
@@ -8598,7 +8610,7 @@ class MetroMapViewer:
             child.destroy()
 
         if not entries:
-            tk.Label(
+            empty_label = tk.Label(
                 self.priority_list_frame,
                 text='Nothing to work on right now.',
                 bg=INFO_BOX_BACKGROUND,
@@ -8607,7 +8619,9 @@ class MetroMapViewer:
                 anchor='w',
                 justify='left',
                 wraplength=SIDEBAR_WIDTH - 80,
-            ).pack(fill='x')
+            )
+            empty_label.pack(fill='x')
+            empty_label.bind('<Configure>', self._resize_priority_label)
             return
 
         for index, (stop_var, text) in enumerate(entries):
@@ -8623,6 +8637,7 @@ class MetroMapViewer:
                 cursor='hand2',
             )
             item_label.pack(fill='x', pady=(0, 8 if index < len(entries) - 1 else 0))
+            item_label.bind('<Configure>', self._resize_priority_label)
             item_label.bind('<Enter>', lambda _event, label=item_label: label.configure(fg=PATH_NODE_LABEL_COLOR))
             item_label.bind('<Leave>', lambda _event, label=item_label: label.configure(fg=TEXT_COLOR))
             item_label.bind('<Button-1>', lambda _event, target_stop_var=stop_var: self._focus_stop(target_stop_var))
@@ -8907,6 +8922,19 @@ class MetroMapViewer:
         self._clear_metro_segment_selection()
         self._focus_station_view(stop)
 
+    def _select_station_signage_direction_target(
+        self,
+        line_name: str,
+        stop_vars: tuple[str, ...],
+    ) -> None:
+        if not stop_vars:
+            return
+        target_stop_var = stop_vars[0]
+        if target_stop_var not in STOPS_BY_VAR:
+            return
+        self.station_signage_line_by_stop[target_stop_var] = line_name
+        self._focus_stop(target_stop_var)
+
     def _jump_to_first_search_result(self) -> None:
         self._refresh_search_results()
         if not self.search_match_stop_vars:
@@ -9156,7 +9184,7 @@ class MetroMapViewer:
         self.active_path_edge_id = None if extra_edge is None else extra_edge.id
         self.path_edge_list_dirty = True
         if extra_edge is None:
-            self.path_click_status_var.set('Turn on map pathing to add nodes and drag paths on the map.')
+            self.path_click_status_var.set('Enter Editing Mode to add nodes and drag paths on the map.')
             return
         self.path_click_status_var.set(
             f'Editing {_extra_edge_full_summary(extra_edge)}. Click the line to add a point, or a middle point to remove it.'
@@ -9169,15 +9197,17 @@ class MetroMapViewer:
             active_edge = self._active_path_edge()
             if active_edge is None:
                 self.path_click_status_var.set(
-                    'Click empty map space to add a node. Drag from an existing station/node to another to add a path.'
+                    'Editing Mode: click empty map space to add a node. Drag from an existing station/node to another to add a path.'
                 )
             else:
                 self._set_active_path_edge(active_edge)
         else:
             self.show_path_nodes_var.set(False)
+            self.path_connect_source_node_key = None
+            self.path_connect_target_node_keys = ()
             self.city_limits_edit_stop_var = None
             self.city_limits_pending_node_keys = ()
-            self.path_click_status_var.set('Map pathing is off. Typed coordinates still work.')
+            self.path_click_status_var.set('Editing Mode is off. Selected-node tools still work.')
         self.redraw()
 
     def _activate_station_pathing(self, stop_var: str) -> None:
@@ -9253,18 +9283,66 @@ class MetroMapViewer:
     def _show_add_poi_dialog(self) -> None:
         show_add_poi_dialog(self)
 
+    def _sync_active_path_node_align_control(self) -> None:
+        align_checkbox = getattr(self, 'path_node_align_checkbox', None)
+        if align_checkbox is None:
+            return
+        if self.path_node_active_coordinates_var.get():
+            align_checkbox.pack(anchor='w', padx=16, pady=(0, 8))
+        else:
+            align_checkbox.pack_forget()
+
+    def _on_active_path_node_coordinates_changed(self) -> None:
+        self._sync_active_path_node_align_control()
+
+    def _cursor_crosshair_is_visible(self) -> bool:
+        return bool(
+            self.cursor_readout_coordinates is not None
+            and self.show_cursor_guides
+            and self.hover_canvas_point is not None
+        )
+
+    def _cursor_canvas_point_for_coordinates(
+        self,
+        coordinates: tuple[int, int],
+    ) -> tuple[float, float]:
+        return self.world_to_canvas((float(coordinates[0]), float(-coordinates[1])))
+
+    def _sidebar_path_node_coordinates(self) -> tuple[int, int] | None:
+        if self.path_node_active_coordinates_var.get():
+            if not self._cursor_crosshair_is_visible():
+                return None
+            coordinates = cast(tuple[int, int], self.cursor_readout_coordinates)
+            if self.path_node_align_coordinates_var.get():
+                return _aligned_active_path_node_coordinates(coordinates, _all_path_nodes())
+            return coordinates
+
+        return _parse_coordinate_text(self.path_node_coordinates_var.get().strip())
+
     def _add_path_node_from_sidebar(self) -> None:
         from tkinter import messagebox
 
-        coordinates_text = self.path_node_coordinates_var.get().strip()
-        if not coordinates_text:
-            messagebox.showerror(
-                'Missing Path Node Coordinates',
-                'Enter Minecraft coordinates as x, y.',
-                parent=self.root,
-            )
+        using_active_coordinates = self.path_node_active_coordinates_var.get()
+        coordinates = self._sidebar_path_node_coordinates()
+        if coordinates is None:
+            if using_active_coordinates:
+                messagebox.showerror(
+                    'Missing Active Coordinates',
+                    'Show the map crosshair before adding a path node with Active Coordinates.',
+                    parent=self.root,
+                )
+            else:
+                raw_coordinates_text = self.path_node_coordinates_var.get().strip()
+                messagebox.showerror(
+                    'Missing Path Node Coordinates'
+                    if not raw_coordinates_text
+                    else 'Invalid Path Node Coordinates',
+                    'Enter Minecraft coordinates as x, y.',
+                    parent=self.root,
+                )
             return
 
+        coordinates_text = f'{coordinates[0]}, {coordinates[1]}'
         node_label = self.path_node_label_var.get().strip() or None
         try:
             add_path_node(coordinates_text, label=node_label)
@@ -9272,9 +9350,24 @@ class MetroMapViewer:
             messagebox.showerror('Could Not Add Path Node', str(exc), parent=self.root)
             return
 
-        self.path_node_coordinates_var.set('')
+        if not using_active_coordinates:
+            self.path_node_coordinates_var.set('')
         self.path_node_label_var.set('')
-        self.redraw()
+        self.selected_stop_var = None
+        self.selected_path_node_key = _coordinate_endpoint_key(coordinates[0], coordinates[1])
+        self._clear_metro_segment_selection()
+        self.cursor_readout_coordinates = coordinates
+        self.show_cursor_guides = using_active_coordinates
+        self.hover_canvas_point = (
+            self._cursor_canvas_point_for_coordinates(coordinates)
+            if using_active_coordinates
+            else None
+        )
+        if hasattr(self, 'path_click_status_var'):
+            self.path_click_status_var.set(
+                f'Added node at ({coordinates[0]}, {coordinates[1]}).'
+            )
+        self._refresh_after_path_edit(refresh_path_status=False)
 
     def _add_path_for_selected_node(self, kind: ExtraEdgeKind) -> None:
         from tkinter import messagebox, simpledialog
@@ -9320,6 +9413,94 @@ class MetroMapViewer:
 
         self.selected_path_node_key = path_node.key
         self._refresh_after_path_edit()
+
+    def _start_path_node_click_connect(self, kind: ExtraEdgeKind = 'walk') -> None:
+        path_node = self._selected_path_node()
+        if path_node is None:
+            return
+
+        self.path_connect_source_node_key = path_node.key
+        self.path_connect_kind = kind
+        self.path_connect_target_node_keys = ()
+        path_drag_kind_var = getattr(self, 'path_drag_kind_var', None)
+        if path_drag_kind_var is not None:
+            path_drag_kind_var.set('Metro' if kind == 'connector' else 'Walk')
+        self.path_click_mode_var.set(True)
+        show_path_nodes_var = getattr(self, 'show_path_nodes_var', None)
+        if show_path_nodes_var is not None:
+            show_path_nodes_var.set(True)
+        self._clear_path_drag()
+        self._set_active_path_edge(None)
+        self.selected_stop_var = None
+        self.selected_path_node_key = path_node.key
+        self._clear_metro_segment_selection()
+        self.hover_canvas_point = None
+        self.cursor_readout_coordinates = path_node.coordinates
+        self.show_cursor_guides = False
+        self.path_click_status_var.set(
+            f'Click existing path nodes to connect them to {path_node.display_label}.'
+        )
+        self.redraw()
+
+    def _cancel_path_node_click_connect(self) -> None:
+        self.path_connect_source_node_key = None
+        self.path_connect_target_node_keys = ()
+        self.path_click_status_var.set('Click-to-select connection is off.')
+        self.redraw()
+
+    def _handle_path_node_click_connect(self, canvas_x: int, canvas_y: int) -> bool:
+        source_key = getattr(self, 'path_connect_source_node_key', None)
+        if source_key is None or not self.path_click_mode_var.get():
+            return False
+
+        source_node = _all_path_nodes_by_key().get(source_key)
+        if source_node is None:
+            self.path_connect_source_node_key = None
+            self.path_connect_target_node_keys = ()
+            self.path_click_status_var.set('That starting node is no longer available.')
+            self.redraw()
+            return True
+
+        target_node = self._path_node_hit_test(canvas_x, canvas_y)
+        if target_node is None:
+            self.path_click_status_var.set(
+                f'Click an existing path node to connect it to {source_node.display_label}.'
+            )
+            self.redraw()
+            return True
+        if target_node.key == source_node.key:
+            self.path_click_status_var.set('Choose another path node to connect.')
+            self.redraw()
+            return True
+
+        from tkinter import messagebox
+
+        try:
+            add_extra_edge(
+                f'{source_node.x}, {source_node.y}',
+                f'{target_node.x}, {target_node.y}',
+                self.path_connect_kind,
+            )
+        except ValueError as exc:
+            messagebox.showerror('Could Not Add Path Edge', str(exc), parent=self.root)
+            return True
+
+        selected_targets = tuple(
+            dict.fromkeys((*self.path_connect_target_node_keys, target_node.key))
+        )
+        self.path_connect_target_node_keys = selected_targets
+        self.selected_stop_var = None
+        self.selected_path_node_key = source_node.key
+        self._clear_metro_segment_selection()
+        self.hover_canvas_point = None
+        self.cursor_readout_coordinates = target_node.coordinates
+        self.show_cursor_guides = False
+        self.path_click_status_var.set(
+            f'Connected {source_node.display_label} to {target_node.display_label}. '
+            f'Click another path node to add another connection, or cancel in the inspector.'
+        )
+        self._refresh_after_path_edit(refresh_path_status=False)
+        return True
 
     def _remove_selected_path_node(self) -> None:
         from tkinter import messagebox
@@ -10350,17 +10531,25 @@ class MetroMapViewer:
         stop_vars: tuple[str, ...],
         line_name: str,
         width: int,
+        title_command: Callable[[], None] | None = None,
     ) -> None:
-        tk.Label(
-            parent,
-            text=title,
-            bg=INFO_BOX_BACKGROUND,
-            fg=INFO_CHECKBOX_TEXT_COLOR,
-            font=('Menlo', INFO_TEXT_FONT_SIZE, 'bold'),
-            anchor='center',
-            justify='center',
-            width=width,
-        ).pack(anchor='n')
+        if title_command is None:
+            tk.Label(
+                parent,
+                text=title,
+                bg=INFO_BOX_BACKGROUND,
+                fg=INFO_CHECKBOX_TEXT_COLOR,
+                font=('Menlo', INFO_TEXT_FONT_SIZE, 'bold'),
+                anchor='center',
+                justify='center',
+                width=width,
+            ).pack(anchor='n')
+        else:
+            self._make_info_button(
+                parent,
+                text=title,
+                command=title_command,
+            ).pack(anchor='n', fill='x')
         if not stop_vars:
             tk.Label(
                 parent,
@@ -10482,6 +10671,10 @@ class MetroMapViewer:
                 stop_vars=left_stop_vars,
                 line_name=selected_line,
                 width=18,
+                title_command=lambda active_stop_vars=left_stop_vars: self._select_station_signage_direction_target(
+                    selected_line,
+                    active_stop_vars,
+                ),
             )
             self._draw_signage_station_list(
                 right_column,
@@ -10489,6 +10682,10 @@ class MetroMapViewer:
                 stop_vars=right_stop_vars,
                 line_name=selected_line,
                 width=18,
+                title_command=lambda active_stop_vars=right_stop_vars: self._select_station_signage_direction_target(
+                    selected_line,
+                    active_stop_vars,
+                ),
             )
             return
 
@@ -14820,6 +15017,11 @@ class MetroMapViewer:
                 self.drag_origin = None
                 self.is_dragging = False
                 return
+            if self._handle_path_node_click_connect(release_x, release_y):
+                self.drag_start = None
+                self.drag_origin = None
+                self.is_dragging = False
+                return
             if self._handle_path_click_edit(release_x, release_y):
                 self.drag_start = None
                 self.drag_origin = None
@@ -14900,6 +15102,29 @@ class MetroMapViewer:
         self.cursor_readout_coordinates = None
         self.show_cursor_guides = False
         self.zoom_at(anchor_x, anchor_y, factor)
+
+    def _on_cursor_nudge_key(self, event: object) -> str | None:
+        if not self._cursor_crosshair_is_visible():
+            return None
+
+        offsets = {
+            'Left': (-1, 0),
+            'Right': (1, 0),
+            'Up': (0, -1),
+            'Down': (0, 1),
+        }
+        keysym = str(getattr(event, 'keysym', ''))
+        offset = offsets.get(keysym)
+        if offset is None:
+            return None
+
+        current_x, current_y = cast(tuple[int, int], self.cursor_readout_coordinates)
+        next_coordinates = (current_x + offset[0], current_y + offset[1])
+        self.cursor_readout_coordinates = next_coordinates
+        self.show_cursor_guides = True
+        self.hover_canvas_point = self._cursor_canvas_point_for_coordinates(next_coordinates)
+        self.redraw()
+        return 'break'
 
     def _on_zoom_in(self, event: object) -> None:
         anchor_x = float(getattr(event, 'x', self.width / 2))
