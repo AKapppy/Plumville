@@ -30,6 +30,21 @@ CHECKLIST RULES
 - Do not commit or push unless Andrew explicitly requests it.
 
 ----------------------------------------------------------------------
+M01 — MIGRATION READINESS CLEANUP AND ARCHITECTURE INVENTORY
+----------------------------------------------------------------------
+
+The 2026-09-14 local M01 request supersedes the older D01/visual run scope
+for this run only. Existing visual verification remains pending.
+
+[x] Audit local sizes, architecture, redundancy, and migration disposition.
+[x] Remove proven no-op path-detection statistics wrapper; verify hooks.
+[blocked] Runtime preservation acceptance: baseline imports rotated private
+    history; four missing entries observed after the first size snapshot.
+    See M01_AUDIT_REPORT.md before further live-data probes.
+[ ] User: verify desktop startup, pathing, inspector, and Priority List.
+[hold] Separate Swift/Xcode project, accounts, cloud sync, and collaboration.
+
+----------------------------------------------------------------------
 A. CURRENT PHASE — DESKTOP VISUAL REBUILD
 ----------------------------------------------------------------------
 
@@ -1528,3 +1543,26 @@ NONNEGOTIABLE SAFETY
 - Versions: Python 3.13.7, Node v24.11.1, npm 11.6.2.
 - User checks above remain unchecked. Visual status moved [~] to [verify];
   regression coverage marked [x]. No commit or push performed.
+
+2026-09-14 — M01 Migration Readiness Cleanup and Architecture Inventory
+
+- Local initial checkout: main / b6c26cf; clean status. Explicit M01 scope takes
+  precedence over older D01 instructions for this run; no Swift/Xcode work.
+- Added MIGRATION_INVENTORY.md and M01_AUDIT_REPORT.md with local size audit,
+  architecture ownership, compatibility evidence and ranked deferred work.
+- Removed only path_detection.py's no-op statistics wrapper and installer
+  bookkeeping. Added subprocess regression; 64 targeted checks pass.
+- Baseline: 290 Python tests, two signage failures and two signage errors.
+  After: 291 tests, same four problems; py_compile, five path tests and npm
+  smoke/validation/preview pass. git diff --check passes.
+- Tk smoke and both app entrypoints abort with SIGABRT; no live verification.
+  worldgen status returns zero but rewrites environment state via ensure_layout.
+- Safety incident: legacy import normalizes frozenset-based tunneling lists and
+  saves order-only JSON changes, updating backup/rotating private history.
+  Restored only verified order-only tracked JSON to initial bytes. Four history
+  entries missing relative to post-baseline scan; no private recovery attempted.
+  All subsequent executable tests used an isolated copy of tracked source.
+- Full runtime preservation cannot be claimed. Next priority is read-only
+  loading and isolated test discovery before another real-data test run.
+- User verification remains unchecked; use a disposable/backed-up world copy.
+- No commit, push, branch change or history rewrite.

@@ -14,6 +14,41 @@ DOCS_ROOT = REPO_ROOT / "docs"
 
 
 class EntrypointAndPublicOutputTests(unittest.TestCase):
+    def test_path_detection_preserves_statistics_and_draw_hooks(self) -> None:
+        probe = """
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
+
+# Legacy loading may normalize data on import; this probe must never save it.
+with patch("plumville.core.network.write_network_payload"):
+    import legacy_core as base
+    import path_detection
+
+statistics = Mock()
+edges = Mock()
+nodes = Mock()
+base.MetroMapViewer._refresh_station_stats = statistics
+base.MetroMapViewer._draw_extra_edges = edges
+base.MetroMapViewer._draw_path_nodes = nodes
+path_detection.apply()
+path_detection.apply()
+assert base.MetroMapViewer._refresh_station_stats is statistics
+viewer = SimpleNamespace()
+base.MetroMapViewer._refresh_station_stats(viewer)
+base.MetroMapViewer._draw_extra_edges(viewer)
+base.MetroMapViewer._draw_path_nodes(viewer)
+statistics.assert_called_once_with(viewer)
+edges.assert_called_once_with(viewer)
+nodes.assert_called_once_with(viewer)
+"""
+        subprocess.run(
+            [sys.executable, "-c", probe],
+            cwd=REPO_ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
     def test_metro_stops_extension_application_is_idempotent(self) -> None:
         probe = """
 import json

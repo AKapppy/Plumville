@@ -29,7 +29,6 @@ DIALOG_MUTED = "#c9d1d9"
 _ORIGINAL_DRAW_EXTRA_EDGES: Callable[[base.MetroMapViewer], None] | None = None
 _ORIGINAL_DRAW_PATH_NODES: Callable[[base.MetroMapViewer], None] | None = None
 _ORIGINAL_DRAW_SELECTED_STOP_INFO: Callable[[base.MetroMapViewer], None] | None = None
-_ORIGINAL_REFRESH_STATION_STATS: Callable[[base.MetroMapViewer], None] | None = None
 
 
 class SeedDetectionSession:
@@ -870,11 +869,6 @@ def _patched_draw_path_nodes(self: "base.MetroMapViewer") -> None:
     _draw_preview_nodes(self)
 
 
-def _patched_refresh_station_stats(self: "base.MetroMapViewer") -> None:
-    assert _ORIGINAL_REFRESH_STATION_STATS is not None
-    _ORIGINAL_REFRESH_STATION_STATS(self)
-
-
 def _patched_draw_selected_stop_info(self: "base.MetroMapViewer") -> None:
     if getattr(self, "_path_detection_hide_selected_popup", False):
         return
@@ -912,7 +906,6 @@ def apply() -> None:
     global _ORIGINAL_DRAW_EXTRA_EDGES
     global _ORIGINAL_DRAW_PATH_NODES
     global _ORIGINAL_DRAW_SELECTED_STOP_INFO
-    global _ORIGINAL_REFRESH_STATION_STATS
 
     if getattr(base.MetroMapViewer, "_path_detection_applied", False):
         return
@@ -920,10 +913,8 @@ def apply() -> None:
     _ORIGINAL_DRAW_EXTRA_EDGES = base.MetroMapViewer._draw_extra_edges
     _ORIGINAL_DRAW_PATH_NODES = base.MetroMapViewer._draw_path_nodes
     _ORIGINAL_DRAW_SELECTED_STOP_INFO = base.MetroMapViewer._draw_selected_stop_info
-    _ORIGINAL_REFRESH_STATION_STATS = base.MetroMapViewer._refresh_station_stats
 
     base.MetroMapViewer._draw_extra_edges = _patched_draw_extra_edges
     base.MetroMapViewer._draw_path_nodes = _patched_draw_path_nodes
     base.MetroMapViewer._draw_selected_stop_info = _patched_draw_selected_stop_info
-    base.MetroMapViewer._refresh_station_stats = _patched_refresh_station_stats
     base.MetroMapViewer._path_detection_applied = True

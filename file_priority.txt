@@ -1,3 +1,25 @@
+M01 LOCAL AUDIT — 2026-09-14
+
+This section supersedes the historical visual ordering below for migration
+readiness follow-up. Source: local main at b6c26cf, not a GitHub fetch.
+
+1. Read-only data loading/test isolation: legacy_core.py:15473,15486 and final
+   import-time reload; core/network.py history writer. Baseline probes caused
+   order-only saves and private history rotation. No further real-data testing
+   until this boundary is safe; consult M01_AUDIT_REPORT.md.
+2. Review MIGRATION_INVENTORY.md and M01_AUDIT_REPORT.md. They map current
+   ownership, local sizes, extension order and portable versus UI/backend work.
+3. Investigate four baseline station-signage problems using synthetic fixtures.
+4. Resume existing live desktop verification using disposable data; Priority
+   List wrapping, path editing/connect/snap and inspector checks remain open.
+5. Later: separate domain mutations from persistence, consolidate proven shared
+   helpers, measure redraw/inspector/terrain costs and verify clean dependencies.
+
+M01 cleanup: removed only the path-detection no-op statistics wrapper; 64
+focused tests pass. Full suite: 291 tests, unchanged 2 failures/2 errors. Python
+compile, path suite, npm checks and diff check pass. Tk launches abort here.
+No Swift/Xcode, account, cloud, schema or broad desktop rewrite performed.
+
 CURRENT SLICE UPDATE — 2026-09-13 — D01-P
 
 Priority List wrapping implemented; awaiting live desktop verification.
