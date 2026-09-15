@@ -1,6 +1,7 @@
 # M02 — Read-Only Loading and Test Isolation
 
-Result: **PASS for automated M02 acceptance**. GUI verification remains unchecked.
+Result: **PASS for automated M02 acceptance; final data-safety confirmation
+is qualified by a metadata discrepancy noted below**. GUI verification remains unchecked.
 The full suite retains the documented two signage failures and two signage errors.
 Worldgen live status is explicitly deferred to M03; it is not read-only yet.
 
@@ -195,13 +196,22 @@ No signage assertions were changed. No new full-suite regressions occurred.
 
 ## Data safety and acceptance
 
-No real/private runtime data changed during M02. All executable probes used
-isolated source/synthetic files. Initial/final ignored-file metadata comparisons
-show zero changed, removed or added files. Tracked data/config/assets are checked
-against initial SHA-256 digests; they remain unchanged. Metadata comparisons are
-not a cryptographic content audit of private world files; no private contents or
-filenames were exposed. No history deletion/recovery was attempted in the real
-workspace. Test-only retention tests intentionally operate on disposable history.
+All executable probes used isolated source/synthetic files. The comparison at
+completion on September 14 showed zero changed, removed or added ignored files.
+On September 15, after interruption/resume, one difference was detected: the
+private network backup has an mtime **74 nanoseconds later**, with unchanged size.
+No other ignored file changed, disappeared or appeared. The cause is unestablished;
+no application/import/test was run against real data during this continuation.
+This may be metadata precision drift, but that has not been proven. No initial
+content hash exists for this private backup, so unchanged content cannot be
+established from the metadata comparison. An unconditional zero-change claim is
+therefore not made for the whole elapsed interval.
+
+Tracked data/config/assets still match initial SHA-256 digests. No private
+contents or filenames were exposed. No private history deletion or recovery was
+attempted. The current local commit at resume is `9439542`; it already includes
+M02 implementation and tests. Codex did not create that commit. Only reporting
+and tracking were updated during continuation; no implementation was changed.
 
 All nine M02 automated acceptance criteria are satisfied by the checks above.
 M02 implementation/test checklist items move `[~]` → `[x]`. Manual GUI checks

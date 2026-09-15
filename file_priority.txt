@@ -1,3 +1,11 @@
+M02 RESUME NOTE — 2026-09-15
+
+Automated checks remain passing apart from four baseline signage cases. Final
+runtime verification is qualified: private network-backup mtime differs by +74 ns
+since initial scan, size unchanged; no other ignored-file or tracked-data change.
+No real-data executable probe was run on resume. Cause unestablished; see the M02
+report. No private data repair/rewrite is authorized by this observation.
+
 M02 LOCAL UPDATE — 2026-09-14
 
 1. M03 — worldgen read-only/status safety. Live/CLI status still calls

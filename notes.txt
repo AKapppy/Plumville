@@ -39,6 +39,9 @@ M02 — READ-ONLY LOADING AND TEST ISOLATION
 [x] Remove automatic CSV/terrain-preview writes from desktop refresh.
 [ ] User: verify opening/reading leaves persistence unchanged on test data.
 [ ] User: verify explicit save, undo, and CSV export on test data.
+[verify] Final data-safety comparison after resume: network-backup mtime drift
+    of +74 ns with unchanged size; cause unestablished, no other ignored change.
+    See M02_PERSISTENCE_REPORT.md; no private recovery or rewrite attempted.
 [deferred] M03 candidate — read-only worldgen status.
 
 ----------------------------------------------------------------------
@@ -1598,3 +1601,16 @@ NONNEGOTIABLE SAFETY
   unchanged. No M01 history recovery, no commit/push/pull/branch/history rewrite.
 - See M02_PERSISTENCE_REPORT.md for call graph, exact commands and caveats.
 - Manual checks remain unchecked. Next: M03 worldgen read-only/status safety.
+
+2026-09-15 — M02 continuation / final verification
+
+- Resumed at main / 9439542, which already contained M02; working tree clean.
+  No new implementation work or real-data executable probe performed.
+- Final prior test process: 54 focused passes; 304 total with exactly the four
+  baseline signage problems. Compile/npm/diff results remain as recorded.
+- Final metadata comparison found private network-backup mtime +74 ns, same
+  size, no missing/new ignored files, and no other ignored changes. September
+  14 comparison had been unchanged. Cause unknown; cannot claim zero filesystem
+  changes over interruption. Tracked data/config/assets hashes remain unchanged.
+- Report qualified accordingly; no backup/history writes or recovery attempted.
+  No commit, push, pull, branch change or Git-history rewrite by Codex.
